@@ -15,11 +15,12 @@ import {
 } from 'lucide-react';
 import { Fragment, useState, type ReactNode } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
-import { userLabel } from '@mourden/shared';
+import { ROLE_LABEL, userLabel } from '@mourden/shared';
 import { cx } from '../../components/ui';
 import { logout } from '../../lib/session';
 import { BrandLogo } from '../../components/BrandLogo';
 import { AppModeButton } from '../../components/AppModeButton';
+import { Sidebar, SidebarProfile, SidebarToggle, useSidebarPreference } from '../../components/ui/sidebar';
 import { useApp } from '../../lib/state';
 import { DashboardPage } from './DashboardPage';
 import { InventoryPage } from './InventoryPage';
@@ -95,44 +96,44 @@ const TITLES: [prefix: string, title: string][] = [
   ['/admin', 'Dashboard'],
 ];
 
-function SideNav({ onNavigate }: { onNavigate?: () => void }) {
+function SideNav({ onNavigate, collapsed = false, onExpand, id }: { onNavigate?: () => void; collapsed?: boolean; onExpand?: () => void; id: string }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(NAV.filter((g) => g.items).map((g) => [g.label, g.items!.some((i) => pathname.startsWith(i.to))])),
   );
-  const link = ({ isActive }: { isActive: boolean }) =>
-    cx('press flex h-12 items-center gap-3 rounded-xl px-3 text-sm font-semibold', isActive ? 'bg-primary/10 text-primary' : 'text-fg-muted hover:bg-surface-2 hover:text-fg');
   return (
-    <nav aria-label="Navigasi back office" className="flex flex-col gap-1">
+    <nav id={id} aria-label="Navigasi back office" className="flex flex-col gap-1">
       {NAV.map((g, index) => (
         <Fragment key={g.label}>
-          {(index === 0 || index === 3 || index === 5) && <p className="admin-nav-section">{index === 0 ? 'Ringkasan bisnis' : index === 3 ? 'Operasional' : 'Manajemen'}</p>}
+          {(index === 0 || index === 3 || index === 5) && (collapsed ? <div className="sidebar-section-divider" /> : <p className="sidebar-section-label">{index === 0 ? 'Ringkasan bisnis' : index === 3 ? 'Operasional' : 'Manajemen'}</p>)}
         {g.to ? (
-          <NavLink key={g.label} to={g.to} end={g.to === '/admin'} className={link} onClick={onNavigate}>
-            <g.icon className="size-5" /> {g.label}
+          <NavLink key={g.label} to={g.to} end={g.to === '/admin'} className="sidebar-link" title={g.label} aria-label={g.label} onClick={onNavigate}>
+            <g.icon className="size-5 shrink-0" /> {!collapsed && <span>{g.label}</span>}
           </NavLink>
         ) : (
           <div key={g.label}>
             <button
-              aria-expanded={!!open[g.label]}
-              onClick={() => setOpen((o) => ({ ...o, [g.label]: !o[g.label] }))}
-              className={cx(
-                'press flex h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold',
-                g.items!.some((i) => pathname.startsWith(i.to)) ? 'text-primary' : 'text-fg-muted hover:bg-surface-2 hover:text-fg',
-              )}
+              aria-expanded={!collapsed && !!open[g.label]}
+              aria-controls={`${id}-${index}`}
+              aria-label={g.label}
+              title={g.label}
+              onClick={() => {
+                if (collapsed) onExpand?.();
+                setOpen((o) => ({ ...o, [g.label]: collapsed || !o[g.label] }));
+              }}
+              className={cx('sidebar-link w-full', g.items!.some((i) => pathname.startsWith(i.to)) && 'sidebar-group-active')}
             >
-              <g.icon className="size-5" /> {g.label}
-              <ChevronDown className={cx('ml-auto size-4 transition-transform', open[g.label] && 'rotate-180')} />
+              <g.icon className="size-5 shrink-0" /> {!collapsed && <><span>{g.label}</span><ChevronDown className={cx('ml-auto size-4 shrink-0 transition-transform', open[g.label] && 'rotate-180')} /></>}
             </button>
-            {open[g.label] && (
-              <div className="animate-fade-in mt-0.5 mb-1 flex flex-col gap-0.5 pl-8">
+            {!collapsed && open[g.label] && (
+              <div id={`${id}-${index}`} className="sidebar-submenu mt-1 mb-2 ml-[22px] flex flex-col gap-1 border-l border-neutral-200 pl-3">
                 {g.items!.map((i) => (
                   <NavLink
                     key={i.to}
                     to={i.to}
                     end={i.end}
                     onClick={onNavigate}
-                    className={({ isActive }) => cx('flex min-h-12 items-center rounded-xl px-3 text-xs font-medium', isActive ? 'bg-primary/10 font-semibold text-primary' : 'text-fg-muted hover:bg-surface-2 hover:text-fg')}
+                    className="sidebar-link text-[13px]"
                   >
                     {i.label}
                   </NavLink>
@@ -147,16 +148,16 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function Brand() {
+function Brand({ collapsed = false }: { collapsed?: boolean }) {
   return (
-    <div className="flex items-center gap-2.5">
-      <BrandLogo className="h-11 w-14 rounded-2xl" />
-      <div className="leading-tight">
-        <p className="text-[17px] font-extrabold tracking-tight">
-          Mourden <span className="text-primary">POS</span>
+    <div className="flex min-w-0 items-center gap-3">
+      <BrandLogo className="size-10" />
+      {!collapsed && <div className="min-w-0 leading-tight">
+        <p className="truncate text-[16px] font-semibold tracking-tight">
+          Mourden POS
         </p>
-        <p className="brand-caption text-xs text-fg-subtle">Back office</p>
-      </div>
+        <p className="mt-1 text-[11px] text-neutral-500">Back office</p>
+      </div>}
     </div>
   );
 }
@@ -169,6 +170,7 @@ export default function AdminRoutes() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [drawer, setDrawer] = useState(false);
+  const [collapsed, setCollapsed] = useSidebarPreference('mourden.admin.sidebar.collapsed');
   const title = TITLES.find(([p]) => pathname.startsWith(p))?.[1] ?? 'Dashboard';
   const doLogout = () => {
     logout();
@@ -176,27 +178,29 @@ export default function AdminRoutes() {
   };
 
   return (
-    <div className="flex h-full">
-      <aside className="admin-sidebar hidden w-64 shrink-0 flex-col border-r border-line lg:flex">
-        <div className="border-b border-line px-5 py-6">
-          <Brand />
+    <div className="admin-workspace flex h-full">
+      <Sidebar aria-label="Menu admin" collapsed={collapsed} className={cx('hidden lg:flex', collapsed ? 'w-[72px]' : 'w-64')}>
+        <div className="sidebar-brand h-20">
+          <Brand collapsed={collapsed} />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3">
-          <SideNav />
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 py-3">
+          <SideNav id="admin-navigation" collapsed={collapsed} onExpand={() => setCollapsed(false)} />
         </div>
-        <div className="flex flex-col gap-1 border-t border-line p-3">
+        <div className="sidebar-footer flex shrink-0 flex-col gap-1 p-2">
           {mode === 'tablet' && (
-            <Link to="/kasir" className="press bg-grad-success flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-white">
-              <Receipt className="size-5" /> Kembali ke kasir
+            <Link to="/kasir" className="sidebar-link" title="Kembali ke kasir" aria-label="Kembali ke kasir">
+              <Receipt className="size-5 shrink-0" /> {!collapsed && <span>Kembali ke kasir</span>}
             </Link>
           )}
-          <button onClick={doLogout} className="press flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-fg-muted hover:bg-surface-2 hover:text-danger">
-            <LogOut className="size-5" /> Keluar
+          <button onClick={doLogout} className="sidebar-link w-full" title="Keluar" aria-label="Keluar">
+            <LogOut className="size-5 shrink-0" /> {!collapsed && <span>Keluar</span>}
           </button>
+          <SidebarToggle collapsed={collapsed} controls="admin-navigation" onToggle={() => setCollapsed(!collapsed)} />
+          <SidebarProfile name={user.name} role={ROLE_LABEL[user.role]} collapsed={collapsed} />
         </div>
-      </aside>
+      </Sidebar>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="admin-main flex min-w-0 flex-1 flex-col">
         <header className="admin-topbar relative shrink-0">
           <div className="relative flex h-20 items-center gap-3 px-4 lg:px-6">
             <button aria-label="Menu" onClick={() => setDrawer(true)} className="press grid size-12 place-items-center rounded-xl border border-line bg-surface lg:hidden">
@@ -252,7 +256,7 @@ export default function AdminRoutes() {
 
       {drawer && (
         <div className="animate-fade-in fixed inset-0 z-40 bg-black/40 lg:hidden" onPointerDown={(e) => e.target === e.currentTarget && setDrawer(false)}>
-          <div className="admin-sidebar animate-rise flex h-full w-[82%] max-w-xs flex-col shadow-card">
+          <Sidebar aria-label="Menu admin mobile" className="animate-rise flex w-[86%] max-w-xs shadow-card">
             <div className="flex items-center justify-between px-4 py-4">
               <Brand />
               <button aria-label="Tutup menu" onClick={() => setDrawer(false)} className="grid size-11 place-items-center rounded-xl hover:bg-surface-2">
@@ -260,14 +264,16 @@ export default function AdminRoutes() {
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-3">
-              <SideNav onNavigate={() => setDrawer(false)} />
+              <SideNav id="admin-mobile-navigation" onNavigate={() => setDrawer(false)} />
             </div>
-            <div className="border-t border-line p-3">
-              <button onClick={doLogout} className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-danger">
+            <div className="sidebar-footer p-2">
+              {mode === 'tablet' && <Link to="/kasir" className="sidebar-link"><Receipt className="size-5" /> Kembali ke kasir</Link>}
+              <button onClick={doLogout} className="sidebar-link w-full">
                 <LogOut className="size-5" /> Keluar
               </button>
+              <SidebarProfile name={user.name} role={ROLE_LABEL[user.role]} />
             </div>
-          </div>
+          </Sidebar>
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 /* Scoped to non-cashier routes. Never move these tokens to :root: the cashier
-   catalog, cart, payment dialogs and sidebar must retain their existing design. */
+   catalog, cart and payment dialogs must retain their existing design. */
 .workspace-theme {
   --bg: #f7f7fa;
   --surface: #ffffff;
@@ -45,33 +45,60 @@
   letter-spacing: .045em;
 }
 
-.admin-sidebar {
-  --fg: #302d3d;
-  --fg-muted: #676173;
-  --fg-subtle: #797283;
-  --primary: #7058a3;
-  --surface-2: #f4f1f8;
-  --line: #e7e5ed;
-  color: var(--fg);
-  background: linear-gradient(165deg, #fff 50%, #f8f6fb);
+/* Sidebar bersama: bentuk referensi yang sederhana, aksen cerah dalam area kecil. */
+.mourden-sidebar {
+  color: #414344;
+  background: linear-gradient(165deg, #fff0e3 0, #f7f5f2 145px, #f3f5f4 55%, #eaf7f2 100%);
+  border-right: 1px solid #e2e6e3;
+  transition: width 180ms ease;
 }
-.admin-sidebar .brand-caption {
-  margin-top: 5px;
-  font-size: 10px;
-  letter-spacing: .16em;
-  text-transform: uppercase;
+.sidebar-brand { display: flex; flex-shrink: 0; align-items: center; gap: 12px; padding: 12px 16px; }
+.sidebar-section-label { padding: 12px 12px 8px; color: #777c7a; font-size: 10px; font-weight: 600; letter-spacing: .07em; }
+.sidebar-section-divider { height: 1px; width: 20px; margin: 12px auto 8px; background: #dce3df; }
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #505653;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: left;
+  transition: background-color 150ms, color 150ms;
 }
-.admin-nav-section {
-  padding: 24px 12px 9px;
-  color: #847b90;
-  font-size: 10px;
+.sidebar-link > svg { stroke-width: 1.8; }
+.sidebar-link:hover { background: #ffffffb3; color: #202b26; }
+.sidebar-link[aria-current='page'], .sidebar-group-active {
+  background: #dcf4e9;
+  color: #22614e;
+}
+.sidebar-link[aria-current='page'] > svg { color: #159f77; }
+.sidebar-submenu .sidebar-link { min-height: 44px; font-size: 12px; }
+.sidebar-submenu .sidebar-link[aria-current='page'] { background: #e9e4fa; color: #65528c; }
+.sidebar-footer { background: #ffffff38; }
+.sidebar-profile { display: flex; min-height: 64px; align-items: center; gap: 12px; padding: 12px; }
+.sidebar-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffdfad;
+  color: #80511d;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: .16em;
-  text-transform: uppercase;
+  box-shadow: 0 0 0 3px #fff9;
 }
-.admin-sidebar a[aria-current='page'] {
-  background: linear-gradient(100deg, #ede7f7, #f5f2fa);
-  box-shadow: inset 3px 0 #a58ac7, inset 0 0 0 1px #e8e0f2;
+.mourden-sidebar[data-collapsed='true'] :is(.sidebar-brand, .sidebar-link, .sidebar-profile) { justify-content: center; padding-inline: 0; }
+.mourden-sidebar :is(a, button):focus-visible { outline: 2px solid #26a980; outline-offset: -2px; }
+.admin-workspace { background: #f4f5f4; }
+@media (min-width: 1024px) {
+  .admin-main { border-radius: 24px 0 0 0; background: var(--bg); }
+  .admin-main > .admin-topbar { border-top-left-radius: 24px; }
 }
 .admin-topbar {
   background: rgb(255 255 255 / 94%);
@@ -98,7 +125,7 @@
   color: #7058a3;
 }
 
-/* Header is the only redesigned surface on /kasir. Its 56px height is unchanged. */
+/* Cashier header retains its 56px height. Sidebar styling is isolated above. */
 .pos-header {
   color: #302d3d;
   background: linear-gradient(110deg, #fff 20%, #f4f0f9 72%, #f8f4ee);
