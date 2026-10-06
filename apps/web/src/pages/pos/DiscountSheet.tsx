@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { discountAmountOf, formatNumber, formatRupiah, type Discount } from '@mourden/shared';
+import { discountAmountOf, formatNumber, formatRupiah, type Discount, type PublicUser } from '@mourden/shared';
 import { OwnerApproval } from '../../components/OwnerApproval';
 import { Button, Modal, NumPad, Segmented, applyNumKey, cx, inputClass } from '../../components/ui';
 import { useApp } from '../../lib/state';
@@ -14,7 +14,7 @@ export function DiscountSheet({ subtotal, onClose }: { subtotal: number; onClose
   const maxPct = useApp((s) => s.data?.settings.policy.maxCashierDiscountPct ?? 100);
   const [type, setType] = useState<Discount['type']>(cart.discount?.type ?? 'percent');
   const [raw, setRaw] = useState(cart.discount ? String(cart.discount.value) : '');
-  const [reason, setReason] = useState(cart.discount?.reason ?? '');
+  const [reason, setReason] = useState((cart.discount?.reason ?? '').replace(/ \(ACC .*\)$/, ''));
   const [askOwner, setAskOwner] = useState(false);
 
   const value = Math.min(type === 'percent' ? 100 : subtotal, parseInt(raw || '0', 10));
@@ -23,8 +23,10 @@ export function DiscountSheet({ subtotal, onClose }: { subtotal: number; onClose
   const pctOfSubtotal = subtotal ? (amount / subtotal) * 100 : 0;
   const needsOwner = user.role !== 'owner' && pctOfSubtotal > maxPct;
 
-  const apply = (approvedBy: string | null) => {
-    setDiscount(value > 0 ? discount : null, approvedBy);
+  /** Persetujuan owner dicatat di alasan diskon agar terlihat di struk, riwayat, dan laporan. */
+  const apply = (approvedBy: PublicUser | null) => {
+    const reasonText = approvedBy ? `${discount.reason} (ACC ${approvedBy.name})`.trim() : discount.reason;
+    setDiscount(value > 0 ? { ...discount, reason: reasonText } : null);
     onClose();
   };
 
@@ -91,7 +93,7 @@ export function DiscountSheet({ subtotal, onClose }: { subtotal: number; onClose
         <OwnerApproval
           reason={`Diskon ${formatRupiah(amount)} (${Math.round(pctOfSubtotal)}%) melebihi batas kasir.`}
           onClose={() => setAskOwner(false)}
-          onApproved={(owner) => apply(owner.id)}
+          onApproved={(owner) => apply(owner)}
         />
       )}
     </>

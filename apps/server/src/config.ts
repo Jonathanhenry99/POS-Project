@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 const isProd = process.env.NODE_ENV === 'production';
 
 function required(name: string, devDefault: string): string {
@@ -15,5 +17,5 @@ export const config = {
   /** Origin web yang diizinkan (dipisah koma). Kosong = hanya same-origin. */
   corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   /** Folder hasil build web untuk disajikan oleh server yang sama (production). */
-  webDist: process.env.WEB_DIST ?? new URL('../../web/dist', import.meta.url).pathname,
+  webDist: process.env.WEB_DIST ?? fileURLToPath(new URL('../../web/dist', import.meta.url)),
 };

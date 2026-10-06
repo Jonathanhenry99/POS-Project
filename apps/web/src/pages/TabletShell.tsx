@@ -1,5 +1,5 @@
 import { Boxes, CloudOff, CloudUpload, History, LayoutDashboard, Lock, Printer, Receipt, RefreshCw, Wallet, Wifi } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { can, ROLE_LABEL } from '@mourden/shared';
 import { cx } from '../components/ui';
@@ -108,11 +108,6 @@ function SyncPill() {
 function PrinterPill() {
   const status = usePrintStatus();
   const config = usePrinterConfig();
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => tick((n) => n + 1), 15_000);
-    return () => clearInterval(t);
-  }, []);
   const driver = DRIVERS.find((d) => d.id === config.driver);
   const error = status.state === 'error';
   return (

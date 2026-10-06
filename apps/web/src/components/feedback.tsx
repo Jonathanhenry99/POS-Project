@@ -1,6 +1,5 @@
 // Toast dan dialog konfirmasi global.
 import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
-import { useState } from 'react';
 import { createStore, useStore } from '../lib/store';
 import { Button, Modal, cx } from './ui';
 
@@ -23,7 +22,7 @@ export function toast(message: string, tone: ToastTone = 'success') {
 export function Toaster() {
   const items = useStore(toastStore, (s) => s.items);
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex flex-col items-center gap-2 px-3">
+    <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex flex-col items-center gap-2 px-3 md:bottom-6">
       {items.map((t) => (
         <div
           key={t.id}
@@ -65,12 +64,10 @@ export function confirmDialog(opts: { title: string; message: string; confirmLab
 
 export function ConfirmHost() {
   const req = useStore(confirmStore, (s) => s.req);
-  const [, force] = useState(0);
   if (!req) return null;
   const close = (ok: boolean) => {
     req.resolve(ok);
     confirmStore.set({ req: null });
-    force((n) => n + 1);
   };
   return (
     <Modal

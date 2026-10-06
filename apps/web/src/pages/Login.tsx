@@ -11,7 +11,16 @@ export function LoginPage() {
   const mode = useApp((s) => s.mode);
   const user = useApp((s) => s.user);
   if (user) return <Navigate to="/" replace />;
-  return mode === 'tablet' ? <TabletLogin /> : <OnlineLogin />;
+  return (
+    <>
+      {!window.isSecureContext && (
+        <p className="bg-red-600 px-4 py-2 text-center text-sm font-semibold text-white">
+          Aplikasi dibuka lewat HTTP biasa. Login PIN offline dan mode aplikasi (PWA) butuh HTTPS. Gunakan alamat https:// dari server.
+        </p>
+      )}
+      {mode === 'tablet' ? <TabletLogin /> : <OnlineLogin />}
+    </>
+  );
 }
 
 function Brand() {
@@ -29,9 +38,11 @@ function Brand() {
   );
 }
 
+const NO_USERS: CachedUser[] = [];
+
 /** Tablet: pilih nama lalu masukkan PIN (dicek di tablet, bisa offline). */
 function TabletLogin() {
-  const users = useApp((s) => s.data?.users ?? []);
+  const users = useApp((s) => s.data?.users) ?? NO_USERS;
   const deviceName = useApp((s) => s.device?.name);
   const [selected, setSelected] = useState<CachedUser | null>(null);
   const [error, setError] = useState('');

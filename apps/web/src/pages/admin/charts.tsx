@@ -38,10 +38,10 @@ export function ColumnChart({ data, format = formatNumber, height = 160 }: { dat
             aria-label={`${d.label}: ${format(d.value)}`}
             onPointerEnter={() => setActive(i)}
             onClick={() => setActive(i)}
-            className="flex h-full min-w-0 flex-1 items-end"
+            className="flex h-full min-w-0 flex-1 items-end justify-center"
           >
             <span
-              className={cx('w-full rounded-t-[4px] transition-colors', shown === i ? 'bg-brand-800' : 'bg-brand-400')}
+              className={cx('w-full max-w-12 rounded-t-[4px] transition-colors', shown === i ? 'bg-brand-800' : 'bg-brand-400')}
               style={{ height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? 2 : 0 }}
             />
           </button>

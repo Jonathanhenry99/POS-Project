@@ -2,6 +2,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router';
 import { can, type Permission } from '@mourden/shared';
 import { ConfirmHost, Toaster } from './components/feedback';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { Spinner } from './components/ui';
 import { useApp } from './lib/state';
@@ -57,7 +58,7 @@ export function App() {
   const ready = useApp((s) => s.ready);
   if (!ready) return <Splash />;
   return (
-    <>
+    <ErrorBoundary>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/aktivasi" element={<ActivatePage />} />
@@ -90,6 +91,6 @@ export function App() {
       <Toaster />
       <ConfirmHost />
       <UpdatePrompt />
-    </>
+    </ErrorBoundary>
   );
 }

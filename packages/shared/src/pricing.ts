@@ -93,16 +93,19 @@ export function validateOrderMath(order: Order): string[] {
   return problems;
 }
 
-/** Saran nominal uang tunai: uang pas lalu pecahan umum di atas total. */
+/**
+ * Saran nominal uang tunai: uang pas lalu pembulatan ke atas per pecahan uang.
+ * Pecahan besar diutamakan (pelanggan biasanya membayar dengan 50rb/100rb), maksimal 6 tombol.
+ */
 export function cashSuggestions(total: number): number[] {
   if (total <= 0) return [];
-  const notes = [1000, 5000, 10000, 20000, 50000, 100000];
+  const notes = [100000, 50000, 20000, 10000, 5000, 1000];
   const set = new Set<number>([total]);
   for (const n of notes) {
-    const up = Math.ceil(total / n) * n;
-    if (up > total) set.add(up);
+    if (set.size >= 6) break;
+    set.add(Math.ceil(total / n) * n);
   }
-  return [...set].sort((a, b) => a - b).slice(0, 5);
+  return [...set].sort((a, b) => a - b).slice(0, 6);
 }
 
 export function emptySummary(): ShiftSummary {

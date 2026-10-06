@@ -7,13 +7,11 @@ import { createStore, useStore } from '../../lib/store';
 interface CartState {
   lines: CartLine[];
   discount: Discount | null;
-  /** PIN owner sudah dimasukkan untuk diskon di atas batas kasir. */
-  discountApprovedBy: string | null;
   customerName: string;
 }
 
 const KEY = 'mourden.cart';
-const EMPTY: CartState = { lines: [], discount: null, discountApprovedBy: null, customerName: '' };
+const EMPTY: CartState = { lines: [], discount: null, customerName: '' };
 
 function load(): CartState {
   try {
@@ -60,8 +58,8 @@ export function removeLine(key: string) {
   cartStore.set((s) => ({ ...s, lines: s.lines.filter((l) => l.key !== key) }));
 }
 
-export function setDiscount(discount: Discount | null, approvedBy: string | null = null) {
-  cartStore.set({ discount, discountApprovedBy: approvedBy });
+export function setDiscount(discount: Discount | null) {
+  cartStore.set({ discount });
 }
 
 export function setCustomerName(customerName: string) {

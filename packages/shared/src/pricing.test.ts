@@ -53,6 +53,7 @@ describe('cashSuggestions', () => {
   it('uang pas lalu pecahan berikutnya', () => {
     expect(cashSuggestions(97335)).toEqual([97335, 98000, 100000]);
     expect(cashSuggestions(25000)).toEqual([25000, 30000, 40000, 50000, 100000]);
+    expect(cashSuggestions(103950)).toEqual([103950, 105000, 110000, 120000, 150000, 200000]);
   });
 });
 
