@@ -6,7 +6,7 @@ export interface ReceiptPrinter {
   isAvailable(): Promise<boolean>;
 }
 
-export type DriverId = 'rawbt' | 'webserial' | 'webusb' | 'browser';
+export type DriverId = 'rawbt' | 'webserial' | 'webusb' | 'browser' | 'bridge';
 
 export interface DriverInfo {
   id: DriverId;
@@ -42,6 +42,9 @@ export interface PrinterConfig extends ReceiptLayout {
   autoPrint: boolean;
   /** Jumlah salinan struk penjualan. */
   copies: number;
+  bridgeUrl?: string;
+  bridgeToken?: string;
+  bridgePrinterId?: string;
 }
 
 export const DEFAULT_PRINTER_CONFIG: PrinterConfig = {

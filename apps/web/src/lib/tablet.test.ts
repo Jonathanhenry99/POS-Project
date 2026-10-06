@@ -6,6 +6,7 @@ import { db, resetDbForTests, type BootstrapData } from './idb';
 import { checkout, closeShift, listOrders, openShift, voidOrder, closeBusinessDay, ensureBusinessDay, businessDayDetails, listBusinessDays, addCashMovement, type CartLine } from './pos';
 import { appStore } from './state';
 import { flushOutbox, listOutbox, retryFailed } from './sync';
+import { fetchOrderArchive } from './order-archive';
 
 const catalog: Catalog = { categories: [], products: [], optionGroups: [] };
 const data: BootstrapData = { settings: DEFAULT_SETTINGS, catalog, ingredients: [], users: [], fetchedAt: '' };
@@ -83,6 +84,24 @@ describe('RawBT', () => {
 });
 
 describe('transaksi offline-first', () => {
+  it('retry pembayaran keranjang yang sama tidak membuat nomor/transaksi/outbox kedua; meja/pax ikut snapshot', async () => {
+    mockFetch(Array.from({ length: 10 }, () => offline));
+    const input = { lines: [line(25000)], discount: null, customerName: 'Budi', orderType: 'dine_in' as const, method: 'cash' as const, tendered: 50000, reference: '', tableName: 'Meja 2', pax: 3, checkoutId: crypto.randomUUID() };
+    const first = await checkout(input); const again = await checkout(input);
+    expect(again.id).toBe(first.id); expect(again.number).toBe(first.number); expect(await listOrders()).toHaveLength(1);
+    expect(first.tableName).toBe('Meja 2'); expect(first.pax).toBe(3);
+    await flushOutbox(); expect((await listOutbox()).filter((j) => j.path.startsWith('/orders/'))).toHaveLength(1);
+    await (await db()).delete('orders', first.id);
+    await expect(checkout(input)).rejects.toThrow('sudah dibayar');
+  });
+  it('arsip server tidak menimpa void lokal yang masih menunggu sinkron', async () => {
+    mockFetch(Array.from({ length: 10 }, () => offline));
+    const paid = await checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 30000, reference: '' });
+    const voided = await voidOrder(paid, 'Salah input', null); await flushOutbox();
+    mockFetch([() => new Response(JSON.stringify({ orders: [paid], next: null }), { status: 200 })]);
+    const archive = await fetchOrderArchive({ from: '2026-01-01', to: '2026-12-31', q: '', payment: 'all', status: 'all' });
+    expect(archive.orders[0].status).toBe('void'); expect((await (await db()).get('orders', paid.id))!.voidReason).toBe(voided.voidReason);
+  });
   it('nomor struk berurutan per hari dengan kode perangkat', async () => {
     mockFetch([offline, offline, offline]);
     const a = await checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 30000, reference: '' });

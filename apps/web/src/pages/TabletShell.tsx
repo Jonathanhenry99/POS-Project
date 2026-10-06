@@ -1,8 +1,8 @@
 import { Boxes, CloudOff, History, LayoutDashboard, Lock, Printer, Receipt, RefreshCw, Store, Wallet } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { can, formatNumber, userLabel } from '@mourden/shared';
-import { StatusDot, cx } from '../components/ui';
+import { Spinner, StatusDot, cx } from '../components/ui';
 import { listOrders, useOrdersVersion } from '../lib/pos';
 import { logout } from '../lib/session';
 import { appStore, useApp } from '../lib/state';
@@ -61,7 +61,7 @@ export function TabletShell() {
         </div>
       </header>
       <main className="min-h-0 flex-1">
-        <Outlet />
+        <Suspense fallback={<div className="grid h-full place-items-center"><Spinner /></div>}><Outlet /></Suspense>
       </main>
       </div>
     </div>

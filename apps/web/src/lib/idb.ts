@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { AppSettings, BusinessDay, CachedUser, Catalog, Ingredient, Order, Shift } from '@mourden/shared';
+import type { PrintJob } from '../printing/queue';
 
 export interface DeviceInfo {
   id: string;
@@ -49,13 +50,14 @@ interface MourdenDB extends DBSchema {
   orders: { key: string; value: LocalOrder; indexes: { byCreatedAt: string; byShift: string } };
   shifts: { key: string; value: Shift & { sync: SyncState } };
   businessDays: { key: string; value: LocalBusinessDay };
+  printJobs: { key: string; value: PrintJob };
   outbox: { key: number; value: OutboxItem; indexes: { byStatus: string } };
 }
 
 let dbPromise: Promise<IDBPDatabase<MourdenDB>> | null = null;
 
 export function db() {
-  dbPromise ??= openDB<MourdenDB>('mourden-pos', 2, {
+  dbPromise ??= openDB<MourdenDB>('mourden-pos', 3, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) {
       d.createObjectStore('kv');
@@ -67,7 +69,9 @@ export function db() {
       outbox.createIndex('byStatus', 'status');
       }
       if (oldVersion < 2) d.createObjectStore('businessDays', { keyPath: 'id' });
+      if (oldVersion < 3) d.createObjectStore('printJobs', { keyPath: 'id' });
     },
+    blocking() { const prior = dbPromise; dbPromise = null; void prior?.then((connection) => connection.close()); },
   });
   return dbPromise;
 }

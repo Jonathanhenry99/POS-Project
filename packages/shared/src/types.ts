@@ -42,6 +42,15 @@ export interface AppSettings {
   store: StoreSettings;
   pricing: PricingSettings;
   policy: PolicySettings;
+  /** Master kasir opsional; data lama tetap memakai alur existing. */
+  pos?: PosSettings;
+}
+
+export interface PosSettings {
+  tables: string[];
+  notes: { text: string; categoryId: string | null }[];
+  cancellationReasons: { text: string; kind: 'menu' | 'order' | 'void' }[];
+  productStations: Record<string, Station>;
 }
 
 // ---------- Katalog menu ----------
@@ -173,6 +182,8 @@ export interface Order extends Totals {
   createdAt: string;
   customerName: string;
   orderType: OrderType;
+  tableName?: string;
+  pax?: number;
   items: OrderItem[];
   discount: Discount | null;
   /** Snapshot tarif saat transaksi, supaya struk lama tetap konsisten bila pengaturan berubah. */

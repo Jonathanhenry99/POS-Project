@@ -428,3 +428,36 @@ describe('hari usaha dan arsip terminal kasir', () => {
     await request(app).put(`/api/business-days/${day.id}`).set(headers).send(day).expect(400);
   });
 });
+
+describe('master kasir dan arsip transaksi terminal', () => {
+  it('master opsional disimpan/disinkronkan tanpa mengubah pengaturan existing; kasir tidak boleh mengedit', async () => {
+    const before = (await request(app).get('/api/settings').set(asOwner())).body;
+    const pos = { tables: ['Meja 1', 'Meja 2'], notes: [{ text: 'Tanpa gula', categoryId: catalog.categories[0].id }], cancellationReasons: [{ text: 'Pesanan ganda', kind: 'order' }], productStations: { [catalog.products[0].id]: 'bar' } };
+    await request(app).put('/api/settings').set(asDevice('kasir')).send({ pos }).expect(403);
+    const saved = await request(app).put('/api/settings').set(asOwner()).send({ pos }).expect(200);
+    expect(saved.body.pricing).toEqual(before.pricing); expect(saved.body.policy).toEqual(before.policy);
+    const bootstrap = await request(app).get('/api/sync/bootstrap').set(asDevice());
+    expect(bootstrap.body.settings.pos).toEqual(pos);
+    await request(app).put('/api/settings').set(asOwner()).send({ pos: { tables: ['A', 'a'] } }).expect(400);
+  });
+
+  it('arsip memakai cursor waktu/ID tanpa duplikat, menyimpan meja/pax dan memisahkan terminal/role', async () => {
+    for (let i = 0; i < 101; i++) {
+      const order = makeOrder('Americano', ['Hot'], 1, { createdAt: '2020-01-02T05:00:00.000Z', customerName: 'ArchiveFixture', tableName: 'Meja 2', pax: 3 });
+      await request(app).put(`/api/orders/${order.id}`).set(asDevice('kasir')).send(order).expect(201);
+    }
+    const url = '/api/tablet/orders?from=2020-01-02&to=2020-01-02&q=ArchiveFixture&payment=cash';
+    const first = await request(app).get(url).set(asDevice('kasir')).expect(200);
+    expect(first.body.orders).toHaveLength(100); expect(first.body.next).toBeTruthy(); expect(first.body.orders[0].tableName).toBe('Meja 2'); expect(first.body.orders[0].pax).toBe(3);
+    const next = new URLSearchParams({ cursorAt: first.body.next.at, cursorId: first.body.next.id });
+    const last = await request(app).get(`${url}&${next}`).set(asDevice('kasir')).expect(200);
+    expect(last.body.orders).toHaveLength(1); expect(last.body.next).toBeNull();
+    expect(new Set([...first.body.orders, ...last.body.orders].map((o: Order) => o.id)).size).toBe(101);
+    await request(app).get(url).set(asDevice('barista')).expect(403);
+    await request(app).get(url).set(asOwner()).expect(401);
+    const other = await request(app).post('/api/devices/pair').send({ username: 'owner', pin: '123456', name: 'Terminal arsip lain' }).expect(201);
+    const isolated = await request(app).get(url).set({ Authorization: `Device ${other.body.token}`, 'X-Operator': userId('kasir') }).expect(200);
+    expect(isolated.body.orders).toHaveLength(0);
+    await request(app).get('/api/tablet/orders?from=2020-01-03&to=2020-01-02').set(asDevice('kasir')).expect(400);
+  });
+});

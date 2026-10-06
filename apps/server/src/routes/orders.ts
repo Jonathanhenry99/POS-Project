@@ -22,6 +22,8 @@ const orderSchema = z.object({
   createdAt: iso,
   customerName: z.string().max(60),
   orderType: z.enum(['dine_in', 'take_away']).default('dine_in'),
+  tableName: z.string().max(40).default(''),
+  pax: z.number().int().min(0).max(999).default(0),
   items: z
     .array(
       z.object({
@@ -91,8 +93,8 @@ ordersRouter.put('/orders/:id', needDevice, need('pos.sell'), async (req, res) =
       `insert into orders (
          id, number, device_id, shift_id, cashier_id, cashier_name, created_at, business_date, customer_name,
          discount, subtotal, discount_amount, service_pct, service_amount, tax_pct, tax_label, tax_amount,
-         rounding_amount, total, payment_method, payment_amount, tendered, change, payment_reference, order_type
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+         rounding_amount, total, payment_method, payment_amount, tendered, change, payment_reference, order_type, table_name, pax
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
        on conflict (id) do nothing`,
       [
         order.id,
@@ -120,6 +122,8 @@ ordersRouter.put('/orders/:id', needDevice, need('pos.sell'), async (req, res) =
         order.payment.change,
         order.payment.reference,
         order.orderType,
+        order.tableName ?? '',
+        order.pax ?? 0,
       ],
     );
     if (!rowCount) return 'exists' as const;
@@ -208,6 +212,25 @@ const listQuery = dateRangeQuery.extend({
   q: z.string().max(60).optional(),
 });
 
+/** Arsip kasir hanya terminal autentikasi ini; pagination stabil memakai waktu + ID. */
+ordersRouter.get('/tablet/orders', needDevice, need('pos.sell'), async (req, res) => {
+  const q = parse(listQuery.extend({
+    payment: z.enum(['cash', 'qris', 'card', 'all']).default('all'),
+    cursorAt: iso.optional(), cursorId: uuid.optional(),
+  }), req.query);
+  if (q.from > q.to || (!!q.cursorAt !== !!q.cursorId)) throw badRequest('Rentang tanggal atau cursor tidak valid');
+  const params: unknown[] = [req.auth.device!.id, q.from, q.to];
+  let where = 'device_id = $1 and business_date between $2 and $3';
+  if (q.status !== 'all') { params.push(q.status); where += ` and status = $${params.length}`; }
+  if (q.payment !== 'all') { params.push(q.payment); where += ` and payment_method = $${params.length}`; }
+  if (q.q) { params.push(`%${q.q}%`); where += ` and (number ilike $${params.length} or customer_name ilike $${params.length})`; }
+  if (q.cursorAt && q.cursorId) { params.push(q.cursorAt, q.cursorId); where += ` and (created_at, id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`; }
+  const { rows } = await pool.query(`${orderSelect} where ${where} order by created_at desc, id desc limit 101`, params);
+  const page = await withItems(rows.slice(0, 100));
+  const last = page.at(-1);
+  res.json({ orders: page, next: rows.length > 100 && last ? { at: last.createdAt, id: rows[99].id } : null });
+});
+
 ordersRouter.get('/orders', need('admin'), async (req, res) => {
   const q = parse(listQuery, req.query);
   const params: unknown[] = [q.from, q.to];
@@ -232,7 +255,7 @@ ordersRouter.get('/orders/:id', need('admin'), async (req, res) => {
 
 const orderSelect = `
   select id, number, device_id as "deviceId", shift_id as "shiftId", cashier_id as "cashierId", cashier_name as "cashierName",
-    created_at as "createdAt", customer_name as "customerName", order_type as "orderType", discount, subtotal, discount_amount as "discountAmount",
+    created_at as "createdAt", customer_name as "customerName", order_type as "orderType", table_name as "tableName", pax, discount, subtotal, discount_amount as "discountAmount",
     service_pct as "servicePct", service_amount as "serviceAmount", tax_pct as "taxPct", tax_label as "taxLabel",
     tax_amount as "taxAmount", rounding_amount as "roundingAmount", total,
     json_build_object('method', payment_method, 'amount', payment_amount, 'tendered', tendered, 'change', change,

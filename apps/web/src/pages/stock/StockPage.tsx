@@ -8,6 +8,7 @@ import { api, errorMessage } from '../../lib/api';
 import { uuid } from '../../lib/id';
 import { logout } from '../../lib/session';
 import { useApp } from '../../lib/state';
+import { TabletSidebar } from '../../components/TabletSidebar';
 
 interface Sheet {
   station: Station;
@@ -29,7 +30,9 @@ export function StockPage() {
   const canSell = mode === 'tablet' && can(user.role, 'pos.sell');
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex h-full">
+      {mode === 'tablet' && <TabletSidebar />}
+      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
       <header className="sticky top-0 z-10 flex h-16 items-center gap-2 bg-grad-header px-3 text-white">
         {(canSell || can(user.role, 'admin')) && (
           <Link to={canSell ? '/kasir' : '/admin'} className="grid size-11 place-items-center rounded-xl hover:bg-white/10" aria-label="Kembali">
@@ -59,6 +62,7 @@ export function StockPage() {
           ]}
         />
         {tab === 'opname' ? <Opname /> : <RecordMovement />}
+      </div>
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { api, errorMessage } from '../../lib/api';
 import { refreshBootstrap } from '../../lib/sync';
 import { PageHeader } from './AdminRoutes';
 import { storeTimezone, useApi } from './hooks';
+import { PosMasterCard } from './PosMasterCard';
 
 const TIMEZONES = [
   { value: 'Asia/Jakarta', label: 'WIB (Asia/Jakarta)' },
@@ -136,6 +137,7 @@ export function SettingsPage() {
             <Devices />
             <ChangePin />
           </div>
+          <PosMasterCard value={form.pos} onChange={(pos) => setForm((f) => f ? { ...f, pos } : f)} />
         </div>
       )}
     </div>

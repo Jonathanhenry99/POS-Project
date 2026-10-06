@@ -10,6 +10,7 @@ import { isAndroid } from '../../printing/rawbt';
 import { createPrinterProfile, DRIVERS, openCashDrawer, printTest, savePrinterConfig, selectPrinterProfile, usePrintStatus, usePrinterConfig, usePrinterProfiles } from '../../printing/service';
 import { pickSerialPrinter, webSerialSupported } from '../../printing/webserial';
 import { pickUsbPrinter, webUsbSupported } from '../../printing/webusb';
+import { StationRoutingCard } from './StationRoutingCard';
 
 export function PrinterPage() {
   const config = usePrinterConfig();
@@ -56,9 +57,10 @@ export function PrinterPage() {
                   <div className="flex gap-2"><TextInput aria-label="Nama profil printer baru" placeholder="Nama profil baru" value={profileName} onChange={(e) => setProfileName(e.target.value.slice(0, 60))} /><Button variant="outline" disabled={!profileName.trim()} onClick={() => {
                     try { createPrinterProfile(profileName); setProfileName(''); toast('Profil disimpan di perangkat ini.'); } catch (e) { toast(errorMessage(e), 'error'); }
                   }}>Simpan profil</Button></div>
-                  <p className="text-xs text-fg-muted">Profil menyimpan jalur dan format cetak pada perangkat ini. Ini belum merupakan routing beberapa printer. Pilih printer fisik di RawBT atau ulangi pemilihan USB/Serial saat perangkat berubah.</p>
+                  <p className="text-xs text-fg-muted">Profil aktif dipakai untuk struk kasir. Checker mengikuti routing station di bawah. RawBT/USB/Serial memakai printer yang dipilih di perangkat; gunakan bridge dengan ID target berbeda untuk beberapa printer LAN.</p>
                 </div>
               </Card>
+              <StationRoutingCard />
               <Card title="Jalur cetak">
                 <div className="flex flex-col gap-2">
                   {DRIVERS.map((d) => (
@@ -180,6 +182,12 @@ function DriverSetup() {
       <p className="mt-3 text-sm text-fg-muted">Pastikan aplikasi RawBT sudah terpasang dan printer dipilih di RawBT. Lihat tab “Panduan setup”.</p>
     );
   }
+  if (config.driver === 'bridge') return <div className="mt-3 flex flex-col gap-3">
+    <label className="text-sm font-semibold">Alamat service bridge<TextInput className="mt-1" value={config.bridgeUrl ?? ''} onChange={(e) => savePrinterConfig({ bridgeUrl: e.target.value })} placeholder="https://bridge.cafe:9191" /></label>
+    <label className="text-sm font-semibold">Token bridge lokal<TextInput className="mt-1" type="password" autoComplete="off" value={config.bridgeToken ?? ''} onChange={(e) => savePrinterConfig({ bridgeToken: e.target.value })} /></label>
+    <label className="text-sm font-semibold">ID printer di bridge<TextInput className="mt-1" value={config.bridgePrinterId ?? ''} onChange={(e) => savePrinterConfig({ bridgePrinterId: e.target.value.slice(0, 60) })} placeholder="bar / dapur / kasir" /></label>
+    <p className="text-sm text-fg-muted">Jalankan service bridge pada komputer jaringan cafe. Browser dapat meminta izin jaringan lokal; HTTPS/certificate dan origin POS harus dikonfigurasi sesuai panduan docs/print-bridge.md. Token hanya disimpan di profil tablet ini. Cetak tetap perlu diuji dengan printer fisik.</p>
+  </div>;
   if (config.driver === 'webserial') {
     return (
       <div className="mt-3 flex flex-col gap-2">

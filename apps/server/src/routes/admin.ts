@@ -113,6 +113,12 @@ const settingsBody = z.object({
     })
     .partial(),
   policy: z.object({ voidRequiresOwnerPin: z.boolean(), maxCashierDiscountPct: z.number().min(0).max(100) }).partial(),
+  pos: z.object({
+    tables: z.array(z.string().trim().min(1).max(40)).max(100).refine((v) => new Set(v.map((s) => s.toLowerCase())).size === v.length, 'Nama meja harus unik'),
+    notes: z.array(z.object({ text: z.string().trim().min(1).max(200), categoryId: z.uuid().nullable() })).max(100),
+    cancellationReasons: z.array(z.object({ text: z.string().trim().min(3).max(200), kind: z.enum(['menu', 'order', 'void']) })).max(100),
+    productStations: z.record(z.uuid(), z.enum(['bar', 'kitchen', 'umum'])),
+  }).partial(),
 }).partial();
 
 adminRouter.put('/settings', need('admin'), async (req, res) => {
@@ -122,9 +128,10 @@ adminRouter.put('/settings', need('admin'), async (req, res) => {
     store: { ...current.store, ...body.store },
     pricing: { ...current.pricing, ...body.pricing },
     policy: { ...current.policy, ...body.policy },
+    pos: { ...current.pos!, ...body.pos },
   });
   await tx(async (c) => {
-    for (const key of ['store', 'pricing', 'policy'] as const) {
+    for (const key of ['store', 'pricing', 'policy', 'pos'] as const) {
       await c.query(
         `insert into settings (key, value) values ($1, $2)
          on conflict (key) do update set value = excluded.value, updated_at = now()`,

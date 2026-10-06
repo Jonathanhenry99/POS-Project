@@ -4,6 +4,8 @@ import { OwnerApproval } from '../../components/OwnerApproval';
 import { Button, Modal, NumPad, Segmented, applyNumKey, cx, inputClass } from '../../components/ui';
 import { useApp } from '../../lib/state';
 import { setDiscount, useCart } from './cart';
+import { toast } from '../../components/feedback';
+import { errorMessage } from '../../lib/api';
 
 const QUICK_PCT = [5, 10, 15, 20, 25, 50];
 const REASONS = ['Member', 'Promo', 'Karyawan', 'Kompensasi'];
@@ -26,8 +28,7 @@ export function DiscountSheet({ subtotal, onClose }: { subtotal: number; onClose
   /** Persetujuan owner dicatat di alasan diskon agar terlihat di struk, riwayat, dan laporan. */
   const apply = (approvedBy: PublicUser | null) => {
     const reasonText = approvedBy ? `${discount.reason} (ACC ${approvedBy.name})`.trim() : discount.reason;
-    setDiscount(value > 0 ? { ...discount, reason: reasonText } : null);
-    onClose();
+    try { setDiscount(value > 0 ? { ...discount, reason: reasonText } : null); onClose(); } catch (e) { toast(errorMessage(e), 'error'); }
   };
 
   return (
@@ -39,7 +40,7 @@ export function DiscountSheet({ subtotal, onClose }: { subtotal: number; onClose
         footer={
           <>
             {cart.discount && (
-              <Button variant="outline" onClick={() => apply(null)} className="text-danger">
+              <Button variant="outline" onClick={() => { try { setDiscount(null); onClose(); } catch (e) { toast(errorMessage(e), 'error'); } }} className="text-danger">
                 Hapus diskon
               </Button>
             )}

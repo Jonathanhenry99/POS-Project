@@ -6,6 +6,7 @@ dist-ssr
 .env.*
 !.env.example
 .pgdata
+.print-bridge
 coverage
 *.log
 .DS_Store

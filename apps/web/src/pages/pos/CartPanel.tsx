@@ -3,6 +3,8 @@ import { formatNumber, formatRupiah, ORDER_TYPE_LABEL, type AppSettings } from '
 import { cx } from '../../components/ui';
 import { cartTotals, type CartLine } from '../../lib/pos';
 import { clearCart, updateLine, useCart } from './cart';
+import { confirmDialog, toast } from '../../components/feedback';
+import { errorMessage } from '../../lib/api';
 
 export function CartPanel({
   settings,
@@ -21,6 +23,7 @@ export function CartPanel({
   const t = cartTotals(cart.lines, cart.discount, settings.pricing);
   const itemCount = cart.lines.reduce((s, l) => s + l.qty, 0);
   const empty = !cart.lines.length;
+  const change = (fn: () => void) => { try { fn(); } catch (e) { toast(errorMessage(e), 'error'); } };
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-card">
@@ -29,9 +32,10 @@ export function CartPanel({
         <p className="min-w-0 flex-1 truncate font-semibold">
           {ORDER_TYPE_LABEL[cart.orderType]}
           {cart.customerName && <span className="text-fg-muted"> · {cart.customerName}</span>}
+          {(cart.tableName || cart.pax > 0) && <span className="block text-xs text-fg-muted">{cart.tableName}{cart.pax ? ` · ${cart.pax} tamu` : ''}</span>}
         </p>
         {cart.savedId && <span className="rounded-full bg-accent/12 px-2 py-0.5 text-xs font-semibold text-accent">Tersimpan</span>}
-        <button aria-label="Kosongkan pesanan" disabled={empty} onClick={clearCart} className="press grid size-10 place-items-center rounded-xl text-fg-subtle hover:bg-danger/10 hover:text-danger disabled:opacity-30">
+        <button aria-label="Kosongkan pesanan" disabled={empty} onClick={async () => { if (await confirmDialog({ title: 'Kosongkan pesanan?', message: 'Seluruh item pesanan belum dibayar ini akan dihapus. Transaksi lunas tidak berubah.', confirmLabel: 'Kosongkan', danger: true })) change(clearCart); }} className="press grid size-12 place-items-center rounded-xl text-fg-subtle hover:bg-danger/10 hover:text-danger disabled:opacity-30">
           <Trash2 className="size-5" />
         </button>
       </div>
@@ -67,10 +71,10 @@ export function CartPanel({
                   <div className="flex flex-col items-end justify-between gap-1.5">
                     <span className="font-bold tabular">{formatNumber(item.lineTotal)}</span>
                     <div className="flex items-center rounded-xl border border-line bg-surface">
-                      <button aria-label="Kurangi" onClick={() => updateLine(line.key, { qty: line.qty - 1 })} className="press grid size-10 place-items-center rounded-l-xl text-fg-muted hover:text-danger">
+                      <button aria-label="Kurangi" onClick={() => change(() => updateLine(line.key, { qty: line.qty - 1 }))} className="press grid size-12 place-items-center rounded-l-xl text-fg-muted hover:text-danger">
                         <Minus className="size-4" />
                       </button>
-                      <button aria-label="Tambah" onClick={() => updateLine(line.key, { qty: line.qty + 1 })} className="press grid size-10 place-items-center rounded-r-xl border-l border-line text-fg-muted hover:text-primary">
+                      <button aria-label="Tambah" onClick={() => change(() => updateLine(line.key, { qty: line.qty + 1 }))} className="press grid size-12 place-items-center rounded-r-xl border-l border-line text-fg-muted hover:text-primary">
                         <Plus className="size-4" />
                       </button>
                     </div>

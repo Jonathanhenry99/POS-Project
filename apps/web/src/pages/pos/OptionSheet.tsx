@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { formatNumber, formatRupiah, priceLine, type OptionGroup, type OrderItemOption, type Product } from '@mourden/shared';
 import { Button, Modal, cx, inputClass } from '../../components/ui';
 import type { CartLine } from '../../lib/pos';
+import { useApp } from '../../lib/state';
 
 const QUICK_NOTES = ['Less ice', 'Tanpa es', 'Extra panas', 'Dibungkus', 'Pisah'];
 
@@ -22,6 +23,9 @@ export function OptionSheet({
   onSubmit: (options: OrderItemOption[], qty: number, note: string) => void;
   onRemove?: () => void;
 }) {
+  const pos = useApp((s) => s.data?.settings.pos);
+  const masterNotes = pos?.notes ?? [];
+  const quickNotes = [...new Set([...QUICK_NOTES, ...masterNotes.filter((n) => !n.categoryId || n.categoryId === product.categoryId).map((n) => n.text)])];
   const productGroups = useMemo(
     () => product.optionGroupIds.map((id) => groups.find((g) => g.id === id)).filter((g): g is OptionGroup => !!g && g.options.length > 0),
     [product, groups],
@@ -118,11 +122,11 @@ export function OptionSheet({
         <div>
           <p className="mb-2 font-semibold">Catatan</p>
           <div className="mb-2 flex flex-wrap gap-2">
-            {QUICK_NOTES.map((n) => (
+            {quickNotes.map((n) => (
               <button
                 key={n}
-                onClick={() => setNote((cur) => (cur.toLowerCase().includes(n.toLowerCase()) ? cur : cur ? `${cur}, ${n}` : n))}
-                className="h-10 rounded-lg bg-surface-2 px-3 text-sm font-medium active:bg-surface-3"
+                onClick={() => setNote((cur) => (cur.toLowerCase().includes(n.toLowerCase()) ? cur : (cur ? `${cur}, ${n}` : n).slice(0, 200)))}
+                className="min-h-12 rounded-lg bg-surface-2 px-3 text-sm font-medium active:bg-surface-3"
               >
                 {n}
               </button>

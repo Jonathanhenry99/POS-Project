@@ -1,7 +1,7 @@
 // Penyusun struk: data transaksi -> daftar baris. Murni (tanpa efek samping) agar mudah dites.
 import { formatDateTime, formatNumber, formatRupiah } from '../format';
 import { ORDER_TYPE_LABEL, PAYMENT_LABEL } from '../permissions';
-import type { BusinessDay, Order, Shift, StoreSettings } from '../types';
+import type { BusinessDay, Order, OrderItem, Shift, StoreSettings } from '../types';
 import type { Align, ReceiptOp } from './escpos';
 import { rule, twoCol, wrap, wrapIndented } from './layout';
 
@@ -17,6 +17,27 @@ export interface ReceiptLayout {
 }
 
 export const DEFAULT_LAYOUT: ReceiptLayout = { width: 32, feedLines: 4, cut: false, openDrawer: false };
+
+export function checkerReceipt(
+  meta: { station: string; customerName: string; tableName: string; pax: number; orderType: string; at: string },
+  items: Pick<OrderItem, 'name' | 'qty' | 'options' | 'note'>[], store: StoreSettings, layout: ReceiptLayout,
+): ReceiptOp[] {
+  const doc = new Doc(layout.width);
+  doc.wrapped(`CHECKER ${meta.station}`, { align: 'center', bold: true });
+  info(doc, 'Waktu', formatDateTime(meta.at, store.timezone));
+  if (meta.customerName) info(doc, 'Nama', meta.customerName);
+  if (meta.tableName) info(doc, 'Meja', meta.tableName);
+  if (meta.pax) info(doc, 'Pax', String(meta.pax));
+  doc.wrapped(meta.orderType, { bold: true }); doc.rule();
+  for (const item of items) {
+    doc.wrapped(`${item.qty}x ${item.name}`, { bold: true, tall: true });
+    for (const option of item.options) doc.wrapped(`  + ${option.name}`);
+    if (item.note) doc.wrapped(`Catatan: ${item.note}`);
+    doc.rule();
+  }
+  doc.wrapped('PESANAN - BUKAN BUKTI BAYAR', { align: 'center' });
+  return doc.finish(layout);
+}
 
 class Doc {
   ops: ReceiptOp[] = [];
@@ -83,6 +104,8 @@ export function saleReceipt(
   info(doc, 'Waktu', formatDateTime(order.createdAt, store.timezone));
   info(doc, 'Kasir', order.cashierName);
   if (order.customerName) info(doc, 'Nama', order.customerName);
+  if (order.tableName) info(doc, 'Meja', order.tableName);
+  if (order.pax) info(doc, 'Pax', String(order.pax));
   if (order.orderType) doc.text(ORDER_TYPE_LABEL[order.orderType].toUpperCase(), { align: 'center', bold: true });
   doc.rule();
 

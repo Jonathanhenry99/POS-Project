@@ -12,6 +12,7 @@ import {
   type ReceiptOp,
   type Shift,
   type StoreSettings,
+  type Station,
 } from '@mourden/shared';
 import { appStore } from '../lib/state';
 import { uuid } from '../lib/id';
@@ -23,8 +24,12 @@ import { RawBTPrinter } from './rawbt';
 import { DEFAULT_PRINTER_CONFIG, PrinterError, type DriverId, type DriverInfo, type PrinterConfig, type ReceiptPrinter } from './types';
 import { WebSerialPrinter } from './webserial';
 import { WebUSBPrinter } from './webusb';
+import { NetworkBridgePrinter } from './bridge';
+import { claimPrintJob, finishPrintJob, makePrintJob, storePrintJobs } from './queue';
+import { confirmDialog, toast } from '../components/feedback';
 
 export const DRIVERS: DriverInfo[] = [
+  { id: 'bridge', label: 'Bridge jaringan (LAN)', description: 'Service lokal meneruskan data ke printer TCP. Perlu konfigurasi service, jaringan dan izin browser; hasil fisik belum diuji.', experimental: true, needsPairing: false },
   {
     id: 'rawbt',
     label: 'RawBT (Bluetooth)',
@@ -122,7 +127,7 @@ export type PrintStatus =
 export const printStatusStore = createStore<{ status: PrintStatus }>({ status: { state: 'idle' } });
 export const usePrintStatus = () => useStore(printStatusStore, (s) => s.status);
 
-function driverFor(id: DriverId, textForBrowser: () => string): ReceiptPrinter {
+function driverFor(id: DriverId, textForBrowser: () => string, config = printerConfigStore.get(), jobId = uuid(), retryUncertain = false): ReceiptPrinter {
   switch (id) {
     case 'rawbt':
       return new RawBTPrinter();
@@ -132,6 +137,8 @@ function driverFor(id: DriverId, textForBrowser: () => string): ReceiptPrinter {
       return new WebUSBPrinter();
     case 'browser':
       return new BrowserPrintFallback(textForBrowser);
+    case 'bridge':
+      return new NetworkBridgePrinter(config, jobId, retryUncertain);
   }
 }
 
@@ -142,7 +149,9 @@ function storeSettings(): StoreSettings {
 }
 
 /** Mencetak satu dokumen. Tidak pernah melempar error: hasilnya ada di status. */
-async function run(label: string, build: () => ReceiptOp[]): Promise<boolean> {
+async function runImmediate(label: string, build: () => ReceiptOp[]): Promise<boolean> {
+  if (sending) { toast('Tunggu pengiriman cetak selesai', 'info'); return false; }
+  sending = true;
   const config = printerConfigStore.get();
   printStatusStore.set({ status: { state: 'printing', label } });
   try {
@@ -160,10 +169,51 @@ async function run(label: string, build: () => ReceiptOp[]): Promise<boolean> {
         message: err.message,
         code: err.code,
         retry: async () => {
-          await run(label, build);
+          if (await confirmDialog({ title: 'Kirim perintah lagi?', message: 'Periksa printer/laci terlebih dahulu. Perintah sebelumnya mungkin sudah diterima.', confirmLabel: 'Kirim lagi' })) await runImmediate(label, build);
         },
       },
     });
+    return false;
+  } finally { sending = false; }
+}
+
+let sending = false;
+export async function sendPrintJob(id: string, acknowledgeDuplicate = false): Promise<boolean> {
+  if (sending) { toast('Tunggu pengiriman cetak saat ini selesai', 'info'); return false; }
+  sending = true;
+  let job: Awaited<ReturnType<typeof claimPrintJob>> | null = null;
+  try {
+    job = await claimPrintJob(id, acknowledgeDuplicate);
+    printStatusStore.set({ status: { state: 'printing', label: job.label } });
+    const profile = printerProfilesStore.get().list.find((p) => p.id === job!.profileId);
+    const config = { ...job.config, bridgeToken: profile?.config.bridgeToken };
+    // Token boleh diperbarui, tetapi target yang sudah diantrekan tidak berubah diam-diam.
+    const outcome = await driverFor(config.driver, () => toPlainText(job!.ops, config.width), config, job.id, acknowledgeDuplicate).print(toEscPos(job.ops));
+    await finishPrintJob(job, 'handed-off', outcome.message);
+    printStatusStore.set({ status: { state: 'done', label: job.label, confirmed: outcome.kind === 'confirmed', message: outcome.message, at: Date.now() } });
+    return true;
+  } catch (e) {
+    const err = e instanceof PrinterError ? e : new PrinterError('failed', (e as Error)?.message ?? String(e));
+    if (job) {
+      const beforeSend = err.code === 'not-paired' || err.code === 'unsupported' || (job.config.driver === 'rawbt' && err.code === 'unavailable');
+      await finishPrintJob(job, beforeSend ? 'failed' : 'uncertain', err.message).catch(() => {});
+    }
+    printStatusStore.set({ status: { state: 'error', label: job?.label ?? 'Antrean cetak', message: err.message, code: err.code, retry: async () => {
+      if (await confirmDialog({ title: 'Coba cetak lagi?', message: 'Periksa hasil fisik terlebih dahulu. Pengiriman sebelumnya mungkin sudah diterima; mencetak ulang bisa menghasilkan salinan ganda.', confirmLabel: 'Coba lagi' })) await sendPrintJob(id, true);
+    } } });
+    return false;
+  } finally { sending = false; }
+}
+
+async function run(label: string, build: () => ReceiptOp[]): Promise<boolean> {
+  try {
+    const state = printerProfilesStore.get();
+    const profile = state.list.find((p) => p.id === state.activeId)!;
+    const job = makePrintJob(label, build(), { ...profile, config: printerConfigStore.get() });
+    await storePrintJobs([job]);
+    return sendPrintJob(job.id);
+  } catch (e) {
+    printStatusStore.set({ status: { state: 'error', label, message: `Job belum tersimpan: ${String((e as Error).message)}`, code: 'failed', retry: async () => { await run(label, build); } } });
     return false;
   }
 }
@@ -204,7 +254,7 @@ export async function openCashDrawer() {
   const config = printerConfigStore.get();
   if (!config.openDrawer) throw new Error('Aktifkan pengaturan laci dan pastikan laci tersambung ke printer');
   if (config.driver === 'browser') throw new Error('Cetak browser tidak dapat mengirim perintah laci');
-  const success = await run('Buka laci uang', () => [{ kind: 'drawer' }]);
+  const success = await runImmediate('Buka laci uang', () => [{ kind: 'drawer' }]);
   const entry = { id: uuid(), at: new Date().toISOString(), userName: user.name, profileName: printerProfilesStore.get().list.find((p) => p.id === printerProfilesStore.get().activeId)?.name ?? '', driver: config.driver, outcome: success ? 'sent' : 'failed' };
   const d = await db();
   const tx = d.transaction('kv', 'readwrite');

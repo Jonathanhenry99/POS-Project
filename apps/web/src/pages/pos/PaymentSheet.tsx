@@ -1,16 +1,17 @@
 import { Banknote, CreditCard, Printer, QrCode } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { cashSuggestions, formatNumber, formatRupiah, ORDER_TYPE_LABEL, PAYMENT_LABEL, type PaymentMethod } from '@mourden/shared';
 import { Button, ErrorNote, Modal, NumPad, applyNumKey, cx, inputClass } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import type { LocalOrder } from '../../lib/idb';
 import { checkout } from '../../lib/pos';
 import { printOrder, usePrinterConfig } from '../../printing/service';
-import { clearCart, useCart } from './cart';
+import { clearCart, markPaidDraft, useCart } from './cart';
+import { toast } from '../../components/feedback';
 
 const METHODS: { id: PaymentMethod; icon: typeof Banknote; hint: string }[] = [
   { id: 'cash', icon: Banknote, hint: 'Hitung kembalian' },
-  { id: 'qris', icon: QrCode, hint: 'Scan QR merchant' },
+  { id: 'qris', icon: QrCode, hint: 'Merchant / EDC' },
   { id: 'card', icon: CreditCard, hint: 'Mesin EDC' },
 ];
 
@@ -22,6 +23,7 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
   const [reference, setReference] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const paying = useRef(false);
 
   const tendered = parseInt(raw || '0', 10);
   const change = tendered - total;
@@ -34,6 +36,8 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
    * Bila cetak gagal, transaksi tetap tersimpan dan bisa dicetak ulang.
    */
   const pay = async () => {
+    if (paying.current) return;
+    paying.current = true;
     setBusy(true);
     setError('');
     try {
@@ -42,16 +46,21 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
         discount: cart.discount,
         customerName: cart.customerName,
         orderType: cart.orderType,
+        tableName: cart.tableName,
+        pax: cart.pax,
+        checkoutId: cart.checkoutId,
         method,
         tendered: method === 'cash' ? tendered : total,
         reference,
       });
       if (printer.autoPrint) void printOrder(order);
-      clearCart();
+      markPaidDraft(order.id);
+      try { clearCart(); } catch (e) { toast(`Transaksi tersimpan. ${errorMessage(e)} Jangan ulangi pembayaran; kosongkan keranjang setelah penyimpanan tersedia.`, 'error'); }
       onPaid(order);
     } catch (e) {
       setError(errorMessage(e));
       setBusy(false);
+      paying.current = false;
     }
   };
 
@@ -100,7 +109,7 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
           ) : (
             <div className="animate-fade-in flex flex-col gap-3 rounded-3xl border border-warning/40 bg-warning/8 p-4">
               <p className="font-semibold text-fg">
-                Pastikan pembayaran {PAYMENT_LABEL[method]} sudah <u>berhasil</u> di {method === 'qris' ? 'HP/akun merchant' : 'mesin EDC'} sebelum menekan tombol.
+                Pastikan pembayaran {PAYMENT_LABEL[method]} sudah <u>berhasil</u> di {method === 'qris' ? 'akun merchant atau EDC eksternal' : 'mesin EDC eksternal'} sebelum menekan tombol.
               </p>
               <input
                 value={reference}

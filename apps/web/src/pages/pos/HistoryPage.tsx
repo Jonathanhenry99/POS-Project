@@ -1,5 +1,5 @@
 import { Ban, CloudOff, Printer, Receipt, Search } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { businessDate, formatNumber, formatRupiah, formatTime, PAYMENT_LABEL, PAYMENT_METHODS, type PaymentMethod } from '@mourden/shared';
 import { OwnerApproval } from '../../components/OwnerApproval';
 import { PrintStatusCard } from '../../components/PrintStatusCard';
@@ -9,6 +9,7 @@ import { errorMessage } from '../../lib/api';
 import type { LocalOrder } from '../../lib/idb';
 import { listOrders, voidOrder } from '../../lib/pos';
 import { useApp } from '../../lib/state';
+import { fetchOrderArchive, type ArchiveCursor } from '../../lib/order-archive';
 import { previewOrder, printOrder, printStatusStore, usePrintStatus } from '../../printing/service';
 
 const VOID_REASONS = ['Salah input', 'Pelanggan batal', 'Menu habis', 'Komplain'];
@@ -17,7 +18,7 @@ export function HistoryPage() {
   const shift = useApp((s) => s.activeShift);
   const tz = useApp((s) => s.data?.settings.store.timezone ?? 'Asia/Jakarta');
   const syncCount = useApp((s) => s.sync.pending + s.sync.failed);
-  const [scope, setScope] = useState<'shift' | 'all'>('shift');
+  const [scope, setScope] = useState<'shift' | 'all' | 'server'>('shift');
   const [orders, setOrders] = useState<LocalOrder[]>([]);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -26,11 +27,36 @@ export function HistoryPage() {
   const [payment, setPayment] = useState<PaymentMethod | 'all'>('all');
   const [status, setStatus] = useState<'paid' | 'void' | 'all'>('all');
   const [visibleCount, setVisibleCount] = useState(100);
+  const [archiveError, setArchiveError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [next, setNext] = useState<ArchiveCursor | null>(null);
+  const request = useRef(0);
 
   const load = useCallback(async () => {
+    if (scope === 'server') return;
     const list = await listOrders(scope === 'shift' && shift ? { shiftId: shift.id } : {});
     setOrders(list);
   }, [scope, shift]);
+
+  const loadArchive = useCallback(async (cursor: ArchiveCursor | null = null) => {
+    const ticket = ++request.current;
+    setBusy(true); setArchiveError('');
+    try {
+      const today = businessDate(new Date().toISOString(), tz);
+      const result = await fetchOrderArchive({ from: from || today, to: to || today, q: query, status, payment }, cursor);
+      if (ticket !== request.current) return;
+      setOrders((old) => cursor ? [...old, ...result.orders.filter((o) => !old.some((p) => p.id === o.id))] : result.orders);
+      setNext(result.next);
+    } catch (e) { if (ticket === request.current) setArchiveError(errorMessage(e)); }
+    finally { if (ticket === request.current) setBusy(false); }
+  }, [from, to, query, status, payment, tz]);
+
+  useEffect(() => {
+    if (scope !== 'server') { request.current++; setBusy(false); setArchiveError(''); return; }
+    setOrders([]); setNext(null);
+    const timer = setTimeout(() => void loadArchive(), 350);
+    return () => { clearTimeout(timer); request.current++; };
+  }, [scope, loadArchive, syncCount]);
 
   useEffect(() => {
     void load();
@@ -58,6 +84,7 @@ export function HistoryPage() {
             options={[
               { value: 'shift', label: 'Shift ini' },
               { value: 'all', label: 'Semua di tablet' },
+              { value: 'server', label: 'Arsip server' },
             ]}
           />
           <div className="relative">
@@ -72,7 +99,8 @@ export function HistoryPage() {
             </select>
             <select aria-label="Status transaksi" className={cx(inputClass, 'text-sm')} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="all">Semua status</option><option value="paid">Lunas</option><option value="void">Void</option></select>
           </div>
-          <div className="flex items-center justify-between text-xs text-fg-muted"><span>{filtered.length} transaksi · data lokal tablet</span><button className="min-h-11 px-2 font-semibold text-primary" onClick={() => { setFrom(''); setTo(''); setPayment('all'); setStatus('all'); setQuery(''); }}>Reset filter</button></div>
+          <div className="flex items-center justify-between text-xs text-fg-muted"><span>{filtered.length} transaksi · {scope === 'server' ? 'arsip terminal ini' : 'data lokal tablet'}</span><button className="min-h-11 px-2 font-semibold text-primary" onClick={() => { setFrom(''); setTo(''); setPayment('all'); setStatus('all'); setQuery(''); }}>Reset filter</button></div>
+          {scope === 'server' && <><p className="text-xs text-fg-muted">Tanggal kosong memakai hari ini. Arsip yang dimuat disimpan di tablet untuk dibuka lagi saat offline.</p><Button variant="outline" loading={busy} onClick={() => void loadArchive()}>Muat ulang arsip</Button><ErrorNote>{archiveError}</ErrorNote></>}
           {from && to && from > to && <ErrorNote>Rentang tanggal tidak valid.</ErrorNote>}
         </div>
         <ul className="min-h-0 flex-1 divide-y divide-line overflow-y-auto">
@@ -96,7 +124,7 @@ export function HistoryPage() {
                     )}
                   </p>
                   <p className="truncate text-sm text-fg-muted">
-                    {scope === 'all' ? businessDate(o.createdAt, tz) + ' ' : ''}
+                    {scope !== 'shift' ? businessDate(o.createdAt, tz) + ' ' : ''}
                     {formatTime(o.createdAt, tz)} · {PAYMENT_LABEL[o.payment.method]}
                     {o.customerName && ` · ${o.customerName}`}
                   </p>
@@ -106,10 +134,11 @@ export function HistoryPage() {
             </li>
           ))}
           {filtered.length > visibleCount && <li className="p-3"><Button className="w-full" variant="outline" onClick={() => setVisibleCount((count) => count + 100)}>Tampilkan 100 berikutnya</Button></li>}
+          {scope === 'server' && next && <li className="p-3"><Button className="w-full" variant="outline" loading={busy} onClick={() => void loadArchive(next)}>Muat halaman arsip berikutnya</Button></li>}
         </ul>
         {!filtered.length && <Empty icon={<Receipt className="size-10 text-fg-subtle" />} title="Belum ada transaksi" />}
       </div>
-      <div className="min-h-0 overflow-y-auto p-4">{selected ? <OrderDetail key={selected.id} order={selected} onChanged={load} /> : null}</div>
+      <div className="min-h-0 overflow-y-auto p-4">{selected ? <OrderDetail key={selected.id} order={selected} onChanged={() => { if (scope === 'server') void loadArchive(); else void load(); }} /> : null}</div>
     </div>
   );
 }
@@ -164,6 +193,9 @@ function OrderDetail({ order, onChanged }: { order: LocalOrder; onChanged: () =>
 }
 
 function VoidSheet({ order, onClose, onDone }: { order: LocalOrder; onClose: () => void; onDone: () => void }) {
+  const pos = useApp((s) => s.data?.settings.pos);
+  const masterReasons = pos?.cancellationReasons ?? [];
+  const reasons = [...new Set([...VOID_REASONS, ...masterReasons.filter((r) => r.kind === 'void').map((r) => r.text)])];
   const user = useApp((s) => s.user)!;
   const requireOwner = useApp((s) => s.data?.settings.policy.voidRequiresOwnerPin ?? false) && user.role !== 'owner';
   const [reason, setReason] = useState('');
@@ -208,7 +240,7 @@ function VoidSheet({ order, onClose, onDone }: { order: LocalOrder; onClose: () 
           </p>
           <p className="text-sm font-semibold">Alasan pembatalan</p>
           <div className="flex flex-wrap gap-2">
-            {VOID_REASONS.map((r) => (
+            {reasons.map((r) => (
               <button key={r} onClick={() => setReason(r)} className={cx('h-11 rounded-xl px-4 text-sm font-semibold', reason === r ? 'bg-danger text-white' : 'bg-surface-2')}>
                 {r}
               </button>

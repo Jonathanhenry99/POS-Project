@@ -1,4 +1,4 @@
-import { Boxes, CalendarDays, History, LayoutDashboard, PanelLeftClose, PanelLeftOpen, Printer, Receipt, RefreshCw, Store, Wallet, type LucideIcon } from 'lucide-react';
+import { Boxes, CalendarDays, History, LayoutDashboard, PanelLeftClose, PanelLeftOpen, Printer, Receipt, RefreshCw, Store, Utensils, Wallet, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink } from 'react-router';
 import { can, type Permission } from '@mourden/shared';
@@ -10,6 +10,7 @@ const sections: { label: string; items: { to: string; label: string; icon: Lucid
   { label: 'Penjualan', items: [
     { to: '/kasir', label: 'Kasir', icon: Receipt, permission: 'pos.sell' },
     { to: '/riwayat', label: 'Riwayat transaksi', icon: History, permission: 'pos.sell' },
+    { to: '/meja', label: 'Meja & pesanan', icon: Utensils, permission: 'pos.sell' },
   ] },
   { label: 'Operasional', items: [
     { to: '/shift', label: 'Shift & kas', icon: Wallet, permission: 'pos.shift' },
@@ -18,6 +19,7 @@ const sections: { label: string; items: { to: string; label: string; icon: Lucid
   ] },
   { label: 'Perangkat', items: [
     { to: '/printer', label: 'Pengaturan printer', icon: Printer },
+    { to: '/antrean-cetak', label: 'Antrean cetak', icon: Receipt },
     { to: '/sinkron', label: 'Sinkronisasi', icon: RefreshCw },
   ] },
   { label: 'Pengelolaan', items: [

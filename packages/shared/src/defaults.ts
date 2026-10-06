@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     voidRequiresOwnerPin: false,
     maxCashierDiscountPct: 100,
   },
+  pos: { tables: [], notes: [], cancellationReasons: [], productStations: {} },
 };
 
 /** Menggabungkan pengaturan tersimpan dengan default, supaya kunci baru selalu terisi. */
@@ -30,5 +31,6 @@ export function mergeSettings(partial: Partial<{ [K in keyof AppSettings]: Parti
     store: { ...DEFAULT_SETTINGS.store, ...partial?.store },
     pricing: { ...DEFAULT_SETTINGS.pricing, ...partial?.pricing },
     policy: { ...DEFAULT_SETTINGS.policy, ...partial?.policy },
+    pos: { ...DEFAULT_SETTINGS.pos!, ...partial?.pos },
   };
 }

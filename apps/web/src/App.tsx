@@ -12,12 +12,15 @@ import { TabletShell } from './pages/TabletShell';
 
 // Halaman kasir dimuat langsung (harus cepat & tersedia offline); admin dimuat saat dibuka.
 import { PosPage } from './pages/pos/PosPage';
-import { HistoryPage } from './pages/pos/HistoryPage';
-import { ShiftPage } from './pages/pos/ShiftPage';
-import { BusinessDayPage } from './pages/pos/BusinessDayPage';
-import { PrinterPage } from './pages/settings/PrinterPage';
-import { SyncPage } from './pages/settings/SyncPage';
-import { StockPage } from './pages/stock/StockPage';
+// Semua chunk tetap di-precache PWA. Pemisahan ini mengurangi beban awal tablet saat membuka kasir.
+const HistoryPage = lazy(() => import('./pages/pos/HistoryPage').then((m) => ({ default: m.HistoryPage })));
+const ShiftPage = lazy(() => import('./pages/pos/ShiftPage').then((m) => ({ default: m.ShiftPage })));
+const BusinessDayPage = lazy(() => import('./pages/pos/BusinessDayPage').then((m) => ({ default: m.BusinessDayPage })));
+const TablesPage = lazy(() => import('./pages/pos/TablesPage').then((m) => ({ default: m.TablesPage })));
+const PrinterPage = lazy(() => import('./pages/settings/PrinterPage').then((m) => ({ default: m.PrinterPage })));
+const PrintQueuePage = lazy(() => import('./pages/settings/PrintQueuePage').then((m) => ({ default: m.PrintQueuePage })));
+const SyncPage = lazy(() => import('./pages/settings/SyncPage').then((m) => ({ default: m.SyncPage })));
+const StockPage = lazy(() => import('./pages/stock/StockPage').then((m) => ({ default: m.StockPage })));
 
 const AdminRoutes = lazy(() => import('./pages/admin/AdminRoutes'));
 
@@ -72,12 +75,14 @@ export function App() {
         >
           <Route path="/kasir" element={<Guard perm="pos.sell"><PosPage /></Guard>} />
           <Route path="/riwayat" element={<Guard perm="pos.sell"><HistoryPage /></Guard>} />
+          <Route path="/meja" element={<Guard perm="pos.sell"><TablesPage /></Guard>} />
           <Route path="/shift" element={<Guard perm="pos.shift"><ShiftPage /></Guard>} />
           <Route path="/hari" element={<Guard perm="pos.shift"><BusinessDayPage /></Guard>} />
           <Route path="/printer" element={<PrinterPage />} />
+          <Route path="/antrean-cetak" element={<PrintQueuePage />} />
           <Route path="/sinkron" element={<SyncPage />} />
         </Route>
-        <Route path="/stok/*" element={<Guard perm="stock.opname"><StockPage /></Guard>} />
+        <Route path="/stok/*" element={<Guard perm="stock.opname"><Suspense fallback={<Splash />}><StockPage /></Suspense></Guard>} />
         <Route
           path="/admin/*"
           element={

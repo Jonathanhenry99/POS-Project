@@ -86,7 +86,7 @@ businessDaysRouter.get('/tablet/shift-history', needDevice, need('pos.shift'), a
 
 const printerActionSchema = z.object({
   id: z.uuid(), at: z.iso.datetime({ offset: true }), userName: z.string().max(60),
-  profileName: z.string().max(60), driver: z.enum(['rawbt', 'webserial', 'webusb']), outcome: z.enum(['sent', 'failed']),
+  profileName: z.string().max(60), driver: z.enum(['rawbt', 'webserial', 'webusb', 'bridge']), outcome: z.enum(['sent', 'failed']),
 });
 /** Catat perintah laci; 'sent' hanya pengiriman data, bukan bukti laci fisik terbuka. */
 businessDaysRouter.post('/tablet/printer-actions/:id', needDevice, need('pos.shift'), async (req, res) => {

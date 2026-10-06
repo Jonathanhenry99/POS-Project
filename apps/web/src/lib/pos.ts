@@ -72,6 +72,9 @@ export interface CheckoutInput {
   discount: Discount | null;
   customerName: string;
   orderType: OrderType;
+  tableName?: string;
+  pax?: number;
+  checkoutId?: string | null;
   method: PaymentMethod;
   /** Uang diterima (tunai). */
   tendered: number;
@@ -94,6 +97,12 @@ export async function checkout(input: CheckoutInput): Promise<LocalOrder> {
   const date = businessDate(now, data.settings.store.timezone);
   const d = await db();
   const tx = d.transaction(['kv', 'orders', 'outbox', 'shifts'], 'readwrite');
+  if (input.checkoutId) {
+    const existing = await tx.objectStore('orders').get(input.checkoutId);
+    if (existing) { await tx.done; return existing; }
+    const completed = await tx.objectStore('kv').get(`checkout:${input.checkoutId}`);
+    if (completed) { await tx.done; throw new Error('Pesanan ini sudah dibayar. Buka arsip transaksi dan kosongkan keranjang; jangan ulangi pembayaran.'); }
+  }
   const persistedShift = await tx.objectStore('shifts').get(shift.id);
   if (!persistedShift || persistedShift.closedAt || await tx.objectStore('kv').get('activeShiftId') !== shift.id) {
     await tx.done;
@@ -102,7 +111,7 @@ export async function checkout(input: CheckoutInput): Promise<LocalOrder> {
   const seqKey = `seq:${date}`;
   const seq = (((await tx.objectStore('kv').get(seqKey)) as number | undefined) ?? 0) + 1;
   const order: LocalOrder = {
-    id: uuid(),
+    id: input.checkoutId || uuid(),
     number: `${device.code}${date.slice(2).replace(/-/g, '')}-${String(seq).padStart(3, '0')}`,
     deviceId: device.id,
     shiftId: shift.id,
@@ -111,6 +120,8 @@ export async function checkout(input: CheckoutInput): Promise<LocalOrder> {
     createdAt: now,
     customerName: input.customerName.trim(),
     orderType: input.orderType,
+    tableName: input.orderType === 'dine_in' ? input.tableName?.trim().slice(0, 40) ?? '' : '',
+    pax: input.pax ?? 0,
     items,
     discount: input.discount && totals.discountAmount > 0 ? input.discount : null,
     servicePct: pricing.serviceEnabled ? pricing.servicePct : 0,
@@ -137,6 +148,7 @@ export async function checkout(input: CheckoutInput): Promise<LocalOrder> {
   await Promise.all([
     tx.objectStore('kv').put(seq, seqKey),
     tx.objectStore('orders').put(order),
+    tx.objectStore('kv').put({ number: order.number, at: order.createdAt }, `checkout:${order.id}`),
     tx.objectStore('outbox').add(
       outboxItem({ method: 'PUT', path: `/orders/${order.id}`, body, operatorId: user.id, label: `Transaksi ${order.number}`, ref: { store: 'orders', id: order.id } }),
     ),
