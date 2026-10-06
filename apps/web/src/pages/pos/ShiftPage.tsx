@@ -1,4 +1,4 @@
-import { ArrowDownCircle, ArrowUpCircle, Lock, Printer } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Lock, Printer, Receipt, TrendingUp, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { formatDateTime, formatNumber, formatRupiah, PAYMENT_LABEL, PAYMENT_METHODS, type Shift, type ShiftSummary } from '@mourden/shared';
@@ -38,11 +38,29 @@ export function ShiftPage() {
   }
 
   return (
-    <div className="mx-auto grid max-w-5xl gap-4 overflow-y-auto p-4 md:grid-cols-2">
-      <Card title="Shift berjalan">
-        <p className="text-fg-muted">
-          Dibuka {formatDateTime(shift.openedAt, tz)} oleh <b>{shift.openedByName}</b>
+    <div className="h-full overflow-y-auto">
+    <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4">
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight">Shift & kas</h1>
+        <p className="text-sm text-fg-muted">
+          Shift dibuka {formatDateTime(shift.openedAt, tz)} oleh <b>{shift.openedByName}</b>
         </p>
+      </div>
+      {summary && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <ShiftStat label="Total penjualan" value={formatRupiah(summary.netSales)} icon={<TrendingUp className="size-5" />} tone="bg-primary/10 text-primary" />
+          <ShiftStat label="Transaksi" value={`${summary.orderCount}${summary.voidCount ? ` (+${summary.voidCount} void)` : ''}`} icon={<Receipt className="size-5" />} tone="bg-accent/12 text-accent" />
+          <ShiftStat label="Uang di laci seharusnya" value={formatRupiah(summary.expectedCash)} icon={<Wallet className="size-5" />} tone="bg-success/12 text-success" />
+          <ShiftStat
+            label="Kas masuk / keluar"
+            value={`+${formatNumber(summary.cashIn)} / −${formatNumber(summary.cashOut)}`}
+            icon={<ArrowDownCircle className="size-5" />}
+            tone="bg-surface-3 text-fg-muted"
+          />
+        </div>
+      )}
+      <div className="grid gap-4 md:grid-cols-2">
+      <Card title="Rincian shift berjalan">
         {summary && <SummaryTable summary={summary} openingCash={shift.openingCash} />}
       </Card>
       <div className="flex flex-col gap-4">
@@ -75,8 +93,10 @@ export function ShiftPage() {
           Tutup kasir
         </Button>
       </div>
+      </div>
       {cashSheet && <CashMovementSheet onClose={() => setCashSheet(false)} />}
       {closing && summary && <CloseShiftSheet summary={summary} onClose={() => setClosing(false)} onClosed={setLastClosed} />}
+    </div>
     </div>
   );
 }
@@ -262,5 +282,17 @@ function ClosedShiftCard({ shift, tz }: { shift: Shift; tz: string }) {
         <PrintStatusCard />
       </div>
     </Card>
+  );
+}
+
+function ShiftStat({ label, value, icon, tone }: { label: string; value: string; icon: React.ReactNode; tone: string }) {
+  return (
+    <div className="animate-rise flex items-center gap-3 rounded-2xl border border-line bg-surface p-3 shadow-card">
+      <span className={cx('grid size-11 shrink-0 place-items-center rounded-xl', tone)}>{icon}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-lg leading-tight font-extrabold tabular">{value}</span>
+        <span className="text-xs text-fg-muted">{label}</span>
+      </span>
+    </div>
   );
 }

@@ -99,7 +99,7 @@ export function HistoryPage() {
             </select>
             <select aria-label="Status transaksi" className={cx(inputClass, 'text-sm')} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="all">Semua status</option><option value="paid">Lunas</option><option value="void">Void</option></select>
           </div>
-          <div className="flex items-center justify-between text-xs text-fg-muted"><span>{filtered.length} transaksi · {scope === 'server' ? 'arsip terminal ini' : 'data lokal tablet'}</span><button className="min-h-11 px-2 font-semibold text-primary" onClick={() => { setFrom(''); setTo(''); setPayment('all'); setStatus('all'); setQuery(''); }}>Reset filter</button></div>
+          <div className="flex items-center justify-between text-xs text-fg-muted"><span>{filtered.length} transaksi · {scope === 'server' ? 'arsip server tablet ini' : 'data lokal tablet'}</span><button className="min-h-11 px-2 font-semibold text-primary" onClick={() => { setFrom(''); setTo(''); setPayment('all'); setStatus('all'); setQuery(''); }}>Reset filter</button></div>
           {scope === 'server' && <><p className="text-xs text-fg-muted">Tanggal kosong memakai hari ini. Arsip yang dimuat disimpan di tablet untuk dibuka lagi saat offline.</p><Button variant="outline" loading={busy} onClick={() => void loadArchive()}>Muat ulang arsip</Button><ErrorNote>{archiveError}</ErrorNote></>}
           {from && to && from > to && <ErrorNote>Rentang tanggal tidak valid.</ErrorNote>}
         </div>

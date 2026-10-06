@@ -51,7 +51,7 @@ export function BusinessDayPage() {
   const draftCount = saved.length + (cart.lines.length && !cart.savedId ? 1 : 0);
 
   const finishWithoutShift = async () => {
-    const ok = await confirmDialog({ title: 'Tutup hari usaha terminal ini?', message: `Semua shift sudah ditutup.${draftCount ? ` ${draftCount} pesanan belum dibayar tetap tersimpan untuk dilanjutkan.` : ''} Rekap disimpan di tablet dan menunggu sinkron jika offline.`, confirmLabel: 'Tutup hari' });
+    const ok = await confirmDialog({ title: 'Tutup hari usaha di tablet ini?', message: `Semua shift sudah ditutup.${draftCount ? ` ${draftCount} pesanan belum dibayar tetap tersimpan untuk dilanjutkan.` : ''} Rekap disimpan di tablet dan menunggu sinkron jika offline.`, confirmLabel: 'Tutup hari' });
     if (!ok) return;
     setBusy(true); setError('');
     try {
@@ -65,7 +65,7 @@ export function BusinessDayPage() {
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
         <div>
           <h1 className="text-xl font-bold">Ganti Shift / Hari</h1>
-          <p className="text-sm text-fg-muted">{device?.name} · Hari usaha berlaku untuk terminal ini. Kunci kasir tidak menutup shift.</p>
+          <p className="text-sm text-fg-muted">{device?.name} · Hari usaha berlaku untuk tablet ini. Mengunci layar kasir tidak menutup shift.</p>
         </div>
         <Segmented value={tab} onChange={setTab} options={[{ value: 'current', label: 'Rekapitulasi penjualan' }, { value: 'shifts', label: 'Riwayat shift' }, { value: 'days', label: 'Detail rekapitulasi hari' }]} />
         <ErrorNote>{error}</ErrorNote>
@@ -75,7 +75,7 @@ export function BusinessDayPage() {
               {activeDay && summary ? <>
                 <p className="mb-3 text-sm text-fg-muted">Buka {formatDateTime(activeDay.openedAt, timezone)} oleh {activeDay.openedByName}</p>
                 <DaySummary summary={summary} />
-                <p className="mt-3 text-xs text-fg-muted">Shift tertutup memakai snapshot saat penutupan. Void sesudahnya tetap tercatat pada riwayat transaksi.</p>
+                <p className="mt-3 text-xs text-fg-muted">Angka shift yang sudah ditutup dikunci saat penutupan. Void sesudahnya tetap terlihat di Riwayat transaksi.</p>
               </> : <p className="text-fg-muted">Buka shift dari layar Kasir untuk memulai hari usaha baru.</p>}
             </Card>
             <Card title="Pergantian petugas dan tutup toko">
@@ -85,12 +85,12 @@ export function BusinessDayPage() {
                   <Button size="lg" variant="outline" onClick={() => setCloseMode('shift')}>Akhiri shift</Button>
                   <p className="text-sm text-fg-muted">Hitung kas petugas ini. Shift berikut tetap berada dalam hari usaha yang sama.</p>
                   <Button size="lg" icon={<Lock className="size-5" />} onClick={() => setCloseMode('day')}>Tutup toko / hari</Button>
-                  <p className="text-sm text-fg-muted">Tutup shift terakhir lalu simpan rekap hari terminal ini.</p>
+                  <p className="text-sm text-fg-muted">Tutup shift terakhir lalu simpan rekap hari ini.</p>
                 </> : <>
                   <Button onClick={() => navigate('/kasir')}>{activeDay ? 'Buka shift berikutnya' : 'Ke layar kasir'}</Button>
                   {activeDay && <Button variant="outline" loading={busy} onClick={finishWithoutShift}>Tutup hari setelah shift terakhir</Button>}
                 </>}
-                <Button variant="ghost" onClick={() => navigate('/shift')}>Kas masuk / keluar & tutup kasir existing</Button>
+                <Button variant="ghost" onClick={() => navigate('/shift')}>Catat kas masuk / keluar</Button>
                 {!!draftCount && <p className="rounded-xl bg-warning/10 p-3 text-sm">{draftCount} pesanan belum dibayar. Penutupan tidak menghapus pesanan ini.</p>}
                 {(sync.pending > 0 || sync.failed > 0) && <Button variant="soft" onClick={() => navigate('/sinkron')}>Sinkron: {sync.pending} menunggu · {sync.failed} gagal</Button>}
               </div>
@@ -102,11 +102,11 @@ export function BusinessDayPage() {
             <Field label="Sampai tanggal">{(id) => <TextInput id={id} type="date" value={to} onChange={(e) => setTo(e.target.value)} />}</Field>
             <Button variant="outline" icon={<RefreshCw className="size-5" />} loading={busy} disabled={!dateValid} onClick={async () => {
               setBusy(true); setError('');
-              try { const limited = await refreshShiftHistory(from, to); await load(); toast(limited ? 'Arsip dibatasi. Persempit rentang tanggal.' : 'Arsip terminal diperbarui.'); }
+              try { const limited = await refreshShiftHistory(from, to); await load(); toast(limited ? 'Arsip dibatasi. Persempit rentang tanggal.' : 'Arsip tablet ini diperbarui.'); }
               catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
             }}>Ambil arsip server</Button>
           </div>
-          <p className="text-xs text-fg-muted">Arsip lokal tetap tersedia offline. Arsip server membutuhkan internet dan hanya mencakup terminal ini.</p>
+          <p className="text-xs text-fg-muted">Data di tablet tetap bisa dilihat offline. Arsip server butuh internet dan hanya berisi data tablet ini.</p>
           {!dateValid && <ErrorNote>Isi rentang tanggal yang valid.</ErrorNote>}
           {dateValid && tab === 'shifts' && visibleShifts.map((s) => <Card key={s.id} title={s.openedByName} action={s.closedAt ? <Button variant="outline" size="sm" icon={<Printer className="size-4" />} onClick={() => void printShift(s)}>Cetak rekap</Button> : <Badge tone="green">Berjalan</Badge>}>
             <p className="mb-2 text-sm text-fg-muted">{formatDateTime(s.openedAt, timezone)}{s.closedAt && ` – ${formatDateTime(s.closedAt, timezone)}`} · {s.sync === 'synced' ? 'Tersinkron' : s.sync === 'failed' ? 'Sinkron gagal' : 'Menunggu sinkron'}</p>
