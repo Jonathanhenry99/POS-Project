@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/dist
+**/.pgdata
+**/.print-bridge
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+.DS_Store

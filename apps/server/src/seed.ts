@@ -76,12 +76,41 @@ const OPTION_RECIPES: [group: string, option: string, ingredient: string, qty: n
   ['addon', 'Whipped Cream', 'Whipped Cream', 30],
 ];
 
-export async function seed(db: pg.Pool = pool, opts: { demo?: boolean; log?: (s: string) => void } = {}) {
+/** PIN owner production: 6 angka dan bukan pola yang mudah ditebak. */
+export function isStrongOwnerPin(pin: string): boolean {
+  if (!/^\d{6}$/.test(pin)) return false;
+  if (/^(\d)\1{5}$/.test(pin)) return false;
+  const asc = '0123456789012345';
+  const desc = '9876543210987654';
+  if (asc.includes(pin) || desc.includes(pin)) return false;
+  return !['123123', '112233', '121212', '696969', '101010', '200000'].includes(pin);
+}
+
+export interface InitialOwner {
+  name: string;
+  username: string;
+  pin: string;
+}
+
+/**
+ * Isi database kosong.
+ * - Development: akun contoh (PIN bawaan) + contoh menu.
+ * - Production: HANYA satu akun owner dari environment (tanpa PIN bawaan); kasir/barista dibuat owner lewat menu Hak Akses.
+ */
+export async function seed(
+  db: pg.Pool = pool,
+  opts: { demo?: boolean; log?: (s: string) => void; initialOwner?: InitialOwner } = {},
+) {
   const log = opts.log ?? console.log;
   const demo = opts.demo ?? true;
 
   const { rows: u } = await db.query<{ n: number }>('select count(*)::int as n from users');
-  if (u[0].n === 0) {
+  if (u[0].n === 0 && opts.initialOwner) {
+    const o = opts.initialOwner;
+    if (!isStrongOwnerPin(o.pin)) throw new Error('INITIAL_OWNER_PIN harus 6 angka dan tidak mudah ditebak (bukan 123456, 111111, dsb).');
+    await db.query("insert into users (name, username, role, pin_hash) values ($1, $2, 'owner', $3)", [o.name, o.username, await hashPin(o.pin)]);
+    log(`Akun owner pertama dibuat: username "${o.username}". PIN sesuai INITIAL_OWNER_PIN (tidak ditampilkan).`);
+  } else if (u[0].n === 0) {
     for (const a of DEFAULT_ACCOUNTS) {
       await db.query('insert into users (name, username, role, pin_hash) values ($1, $2, $3, $4)', [a.name, a.username, a.role, await hashPin(a.pin)]);
     }

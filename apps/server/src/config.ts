@@ -14,8 +14,14 @@ export const config = {
   port: parseInt(process.env.PORT ?? '8787', 10),
   databaseUrl: required('DATABASE_URL', 'postgres://postgres:postgres@localhost:54329/mourden'),
   jwtSecret: required('JWT_SECRET', 'dev-secret-ganti-di-production'),
+  /** Batas aman panjang rahasia sesi di production. */
+  minJwtSecretLength: 32,
   /** Origin web yang diizinkan (dipisah koma). Kosong = hanya same-origin. */
   corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   /** Folder hasil build web untuk disajikan oleh server yang sama (production). */
   webDist: process.env.WEB_DIST ?? fileURLToPath(new URL('../../web/dist', import.meta.url)),
 };
+
+if (config.isProd && config.jwtSecret.length < config.minJwtSecretLength) {
+  throw new Error(`JWT_SECRET terlalu pendek (minimal ${config.minJwtSecretLength} karakter acak). Contoh: openssl rand -hex 32`);
+}
