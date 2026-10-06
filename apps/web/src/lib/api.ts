@@ -52,7 +52,7 @@ export async function api<T = unknown>(
     clearTimeout(timer);
   }
   if (!res.ok) {
-    let message = `Gagal (${res.status})`;
+    let message = res.status >= 502 && res.status <= 504 ? 'Server tidak merespons. Coba lagi sebentar lagi.' : `Gagal (${res.status})`;
     try {
       message = (await res.json()).error ?? message;
     } catch {

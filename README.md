@@ -49,10 +49,10 @@ Butuh Node.js 22+.
 
 ```bash
 npm install
-npm run db:dev        # Terminal 1: PostgreSQL lokal (tanpa install Postgres/Docker), biarkan terbuka
-npm run db:seed       # Sekali saja: akun default + contoh menu/bahan/resep
-npm run dev           # Terminal 2: server API (port 8787) + web (http://localhost:5180)
+npm run dev           # PostgreSQL lokal + server API (port 8787) + web (http://localhost:5180)
 ```
+
+`npm run dev` otomatis menyalakan PostgreSQL lokal (tanpa install Postgres/Docker; data di `apps/server/.pgdata`) dan mengisi akun default + contoh menu saat database masih kosong. Hentikan dengan Ctrl+C.
 
 Akun default (**segera ganti PIN** di Admin → Pengguna):
 

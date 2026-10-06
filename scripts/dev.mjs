@@ -1,17 +1,51 @@
-// Menjalankan server API dan web (Vite) sekaligus untuk development.
+// Development: nyalakan PostgreSQL lokal (bila belum ada), lalu server API dan web sekaligus.
+// Cukup satu perintah: npm run dev
 import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
 
-const procs = [
-  ['server', ['run', 'dev', '-w', '@mourden/server']],
-  ['web', ['run', 'dev', '-w', '@mourden/web']],
-].map(([name, args]) => {
+const DB_PORT = 54329;
+const procs = [];
+let stopping = false;
+
+function portOpen(port) {
+  return new Promise((resolve) => {
+    const s = connect(port, '127.0.0.1');
+    s.once('connect', () => (s.end(), resolve(true)));
+    s.once('error', () => resolve(false));
+  });
+}
+
+function stopAll(code = 0) {
+  if (stopping) return;
+  stopping = true;
+  for (const p of procs) p.kill('SIGINT');
+  setTimeout(() => process.exit(code), 1500);
+}
+
+function run(name, args) {
   const p = spawn('npm', args, { stdio: 'inherit', shell: process.platform === 'win32' });
   p.on('exit', (code) => {
-    console.log(`[${name}] berhenti (kode ${code})`);
-    procs.forEach((other) => other !== p && other.kill());
-    process.exit(code ?? 0);
+    if (stopping) return;
+    console.error(`\n[${name}] berhenti (kode ${code}). Menghentikan semua proses...`);
+    stopAll(code ?? 1);
   });
+  procs.push(p);
   return p;
-});
+}
 
-process.on('SIGINT', () => procs.forEach((p) => p.kill('SIGINT')));
+process.on('SIGINT', () => stopAll(0));
+process.on('SIGTERM', () => stopAll(0));
+
+// Pakai database lokal bawaan kecuali DATABASE_URL diisi sendiri.
+if (!process.env.DATABASE_URL && !(await portOpen(DB_PORT))) {
+  console.log('Menyalakan PostgreSQL lokal...');
+  run('database', ['run', 'db:dev', '-w', '@mourden/server']);
+  for (let i = 0; i < 60 && !(await portOpen(DB_PORT)); i++) await new Promise((r) => setTimeout(r, 500));
+  if (!(await portOpen(DB_PORT))) {
+    console.error('PostgreSQL lokal gagal menyala.');
+    stopAll(1);
+  }
+}
+
+run('server', ['run', 'dev', '-w', '@mourden/server']);
+run('web', ['run', 'dev', '-w', '@mourden/web']);
