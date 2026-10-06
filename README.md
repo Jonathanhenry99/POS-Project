@@ -53,7 +53,7 @@ npm run dev           # PostgreSQL lokal + server API (port 8787) + web (http://
 
 `npm run dev` otomatis menyalakan PostgreSQL lokal (tanpa install Postgres/Docker; data di `apps/server/.pgdata`) dan mengisi akun default + contoh menu saat database masih kosong. Hentikan dengan Ctrl+C.
 
-Akun default (**segera ganti PIN** di Admin → Pengguna):
+Akun contoh **khusus development** (di production akun ini tidak dibuat; lihat bagian Deploy):
 
 | Peran | Username | PIN |
 |---|---|---|
@@ -73,21 +73,25 @@ npm run typecheck
 
 ## Deploy (agar bisa dipakai di cafe)
 
-Tablet harus membuka aplikasi lewat **HTTPS**. Ini syarat untuk mode PWA, login offline, dan service worker. Cara termudah adalah satu layanan Node + satu database PostgreSQL, misalnya di **Railway** atau **Render** (pilih region Singapura):
+Panduan lengkap langkah demi langkah, dari deploy sampai hari pertama berjualan: **[docs/go-live.md](docs/go-live.md)**.
 
-1. Buat database PostgreSQL (Railway Postgres / Neon / Supabase), lalu salin `DATABASE_URL`.
-2. Buat layanan dari repo ini:
-   - Build command: `npm ci --include=dev && npm run build`
-   - Start command: `npm start`
-3. Isi environment variables (lihat `apps/server/.env.example`): `NODE_ENV=production`, `DATABASE_URL`, `JWT_SECRET` (teks acak panjang).
-4. Saat pertama jalan, server otomatis membuat tabel dan akun default. Menu diisi sendiri lewat Admin → Menu. Untuk contoh menu, jalankan `npm run db:seed` sekali dengan `DATABASE_URL` produksi.
-5. Buka alamat `https://...` di Chrome tablet → aktifkan sebagai tablet kasir → install ke layar utama.
+Ringkasnya, tablet harus membuka aplikasi lewat **HTTPS** (syarat PWA, login offline, service worker). Repo ini punya `Dockerfile`, jadi bisa di-deploy ke Railway, Render, Fly.io, atau VPS mana pun, ditambah satu database PostgreSQL (pilih region Singapura):
+
+| Environment variable | Isi |
+|---|---|
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | URL PostgreSQL dari hosting |
+| `JWT_SECRET` | minimal 32 karakter acak (`openssl rand -hex 32`) |
+| `INITIAL_OWNER_PIN` | PIN owner pertama, 6 angka rahasia yang tidak mudah ditebak |
+| `INITIAL_OWNER_NAME` / `INITIAL_OWNER_USERNAME` | opsional, default `Owner` / `owner` |
+
+Saat pertama jalan, server membuat tabel dan **hanya satu akun owner** dari `INITIAL_OWNER_PIN`. Tidak ada akun berPIN bawaan dan tidak ada menu contoh. Akun kasir/barista/kitchen dibuat owner di Admin → Hak Akses, dan menu diisi di Admin → Pengaturan Menu. Server menolak start bila `JWT_SECRET` terlalu pendek atau database kosong tanpa `INITIAL_OWNER_PIN`.
 
 Mencoba di tablet sebelum deploy (jaringan Wi-Fi yang sama): buka `chrome://flags/#unsafely-treat-insecure-origin-as-secure` di Chrome tablet, tambahkan `http://<IP-komputer>:5180`, lalu restart Chrome.
 
 ## Setup tablet & printer
 
-Panduan lengkap ada **di dalam aplikasi**: Printer → Panduan setup. Isinya:
+Panduan lengkap ada **di dalam aplikasi**: Pengaturan printer → Panduan setup. Isinya:
 - Pairing EP58M.
 - Pengaturan RawBT (58 mm, jadikan default untuk link `rawbt:`).
 - Pengaturan baterai/Autostart HyperOS.
@@ -95,7 +99,7 @@ Panduan lengkap ada **di dalam aplikasi**: Printer → Panduan setup. Isinya:
 
 ## Checklist uji di perangkat asli
 
-Checklist ini juga tersedia sebagai daftar centang di aplikasi (Printer → Panduan setup).
+Checklist ini juga tersedia sebagai daftar centang di aplikasi (Pengaturan printer → Panduan setup).
 
 - [ ] Printer ter-pair di Bluetooth tablet dan tes cetak dari RawBT berhasil
 - [ ] Tombol **Tes printer** langsung mencetak tanpa dialog apa pun
