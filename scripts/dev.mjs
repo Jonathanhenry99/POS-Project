@@ -36,6 +36,16 @@ function run(name, args) {
 process.on('SIGINT', () => stopAll(0));
 process.on('SIGTERM', () => stopAll(0));
 
+// Aplikasi mungkin sudah berjalan di terminal lain.
+const busy = [];
+for (const [port, name] of [[5180, 'web'], [8787, 'server API']]) if (await portOpen(port)) busy.push(`${name} (port ${port})`);
+if (busy.length) {
+  console.error(`\nPort sudah dipakai: ${busy.join(', ')}.`);
+  console.error('Kemungkinan Mourden POS sudah berjalan di terminal lain: buka http://localhost:5180');
+  console.error('Atau hentikan dulu proses itu (Ctrl+C di terminalnya), lalu jalankan npm run dev lagi.\n');
+  process.exit(1);
+}
+
 // Pakai database lokal bawaan kecuali DATABASE_URL diisi sendiri.
 if (!process.env.DATABASE_URL && !(await portOpen(DB_PORT))) {
   console.log('Menyalakan PostgreSQL lokal...');
