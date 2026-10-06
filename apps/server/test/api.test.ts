@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import { computeTotals, mergeSettings, priceLine, type Catalog, type Order, type OrderItemOption } from '@mourden/shared';
+import { computeTotals, computeShiftSummary, computeBusinessDaySummary, mergeSettings, priceLine, type BusinessDay, type Catalog, type Order, type OrderItemOption, type Shift } from '@mourden/shared';
 import { createApp } from '../src/app';
 import { pool, setPool } from '../src/db';
 import { migrate } from '../src/migrate';
@@ -356,5 +356,75 @@ describe('laporan & admin', () => {
     const row = summary.find((r: { productId: string }) => r.productId === p.id);
     expect(row.cost).toBe(3000);
     expect(row.marginPct).toBe(88);
+  });
+});
+
+describe('hari usaha dan arsip terminal kasir', () => {
+  const buildDay = (): BusinessDay => ({
+    id: randomUUID(), deviceId: 'client', businessDate: '2026-10-06', openedAt: '2026-10-06T00:00:00.000Z',
+    openedById: userId('kasir'), openedByName: 'Kasir 1', closedAt: null, closedById: null,
+    closedByName: '', closingNote: '', shiftIds: [], summary: null,
+  });
+  const buildShift = (day: BusinessDay): Shift => ({
+    id: randomUUID(), deviceId: 'client', businessDayId: day.id, openedAt: day.openedAt, openedById: userId('kasir'),
+    openedByName: 'Kasir 1', openingCash: 100000, cashMovements: [], closedAt: null, closedById: null,
+    closedByName: '', countedCash: null, closingNote: '', summary: null,
+  });
+  const closedDay = (day: BusinessDay, shift: Shift): BusinessDay => ({
+    ...day, closedAt: '2026-10-06T16:00:00.000Z', closedById: userId('kasir'), closedByName: 'Kasir 1',
+    shiftIds: [shift.id], summary: computeBusinessDaySummary([shift]),
+  });
+
+  it('tutup hari dan retry idempotent; shift/hari tertutup tidak dibuka kembali', async () => {
+    const day = buildDay(); const base = buildShift(day);
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(day).expect(200);
+    await request(app).put(`/api/shifts/${base.id}`).set(asDevice('kasir')).send(base).expect(200);
+    const shift = { ...base, closedAt: '2026-10-06T15:00:00.000Z', closedById: userId('kasir'), closedByName: 'Kasir 1', countedCash: 100000, summary: computeShiftSummary(base, []), closeMode: 'day' as const };
+    await request(app).put(`/api/shifts/${base.id}`).set(asDevice('kasir')).send(shift).expect(200);
+    const closed = closedDay(day, shift);
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(closed).expect(200);
+    const retry = await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send({ ...closed, closingNote: 'Jangan menulis ulang' });
+    expect(retry.body.status).toBe('closed-unchanged');
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(day).expect(200);
+    const result = await pool.query('select payload from business_days where id=$1', [day.id]);
+    expect(result.rows[0].payload.closedAt).toBe(closed.closedAt);
+    expect(result.rows[0].payload.closingNote).toBe('');
+    const newShift = buildShift(day);
+    await request(app).put(`/api/shifts/${newShift.id}`).set(asDevice('kasir')).send(newShift).expect(400);
+  });
+
+  it('menolak finalisasi ketika order tertutup belum tersinkron; berhasil sesudah order masuk', async () => {
+    const day = buildDay(); const base = buildShift(day);
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(day).expect(200);
+    const order = makeOrder('Americano', [], 1, { shiftId: base.id });
+    const shift = { ...base, closedAt: '2026-10-06T15:00:00.000Z', closedById: userId('kasir'), closedByName: 'Kasir 1', countedCash: 100000 + order.total, summary: computeShiftSummary(base, [order]) };
+    await request(app).put(`/api/shifts/${base.id}`).set(asDevice('kasir')).send(shift).expect(200);
+    const closed = closedDay(day, shift);
+    const rejected = await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(closed);
+    expect(rejected.status).toBe(400); expect(rejected.body.error).toContain('belum lengkap');
+    await request(app).put(`/api/orders/${order.id}`).set(asDevice('kasir')).send(order).expect(201);
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(closed).expect(200);
+  });
+
+  it('menolak rekap hari yang dimanipulasi', async () => {
+    const day = buildDay(); const base = buildShift(day);
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(day).expect(200);
+    const shift = { ...base, closedAt: '2026-10-06T15:00:00.000Z', closedById: userId('kasir'), closedByName: 'Kasir 1', countedCash: 100000, summary: computeShiftSummary(base, []) };
+    await request(app).put(`/api/shifts/${base.id}`).set(asDevice('kasir')).send(shift).expect(200);
+    const closed = closedDay(day, shift); closed.summary!.netSales = 999;
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(closed).expect(400);
+  });
+
+  it('arsip kasir dibatasi terminal, tidak membuka permission laporan admin', async () => {
+    const own = await request(app).get('/api/tablet/shift-history?from=2026-01-01&to=2026-12-31').set(asDevice('kasir'));
+    expect(own.status).toBe(200); expect(own.body.days.length).toBeGreaterThan(0);
+    await request(app).get('/api/tablet/shift-history?from=2026-01-01&to=2026-12-31').set(asDevice('barista')).expect(403);
+    await request(app).get('/api/reports/summary?from=2026-01-01&to=2026-12-31').set(asDevice('kasir')).expect(403);
+    const other = await request(app).post('/api/devices/pair').send({ username: 'owner', pin: '123456', name: 'Terminal lain untuk tes' });
+    const headers = { Authorization: `Device ${other.body.token}`, 'X-Operator': userId('kasir') };
+    const archive = await request(app).get('/api/tablet/shift-history?from=2026-01-01&to=2026-12-31').set(headers);
+    expect(archive.body.days).toHaveLength(0); expect(archive.body.shifts).toHaveLength(0);
+    const day = own.body.days[0];
+    await request(app).put(`/api/business-days/${day.id}`).set(headers).send(day).expect(400);
   });
 });

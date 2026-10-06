@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { AppSettings, CachedUser, Catalog, Ingredient, Order, Shift } from '@mourden/shared';
+import type { AppSettings, BusinessDay, CachedUser, Catalog, Ingredient, Order, Shift } from '@mourden/shared';
 
 export interface DeviceInfo {
   id: string;
@@ -23,6 +23,11 @@ export interface LocalOrder extends Order {
   syncError: string;
 }
 
+export interface LocalBusinessDay extends BusinessDay {
+  sync: SyncState;
+  syncError: string;
+}
+
 export interface OutboxItem {
   seq?: number;
   method: 'PUT' | 'POST';
@@ -36,21 +41,23 @@ export interface OutboxItem {
   lastError: string;
   status: 'pending' | 'failed';
   /** Data lokal yang status sinkronnya ikut diperbarui. */
-  ref: { store: 'orders' | 'shifts'; id: string } | null;
+  ref: { store: 'orders' | 'shifts' | 'businessDays'; id: string } | null;
 }
 
 interface MourdenDB extends DBSchema {
   kv: { key: string; value: unknown };
   orders: { key: string; value: LocalOrder; indexes: { byCreatedAt: string; byShift: string } };
   shifts: { key: string; value: Shift & { sync: SyncState } };
+  businessDays: { key: string; value: LocalBusinessDay };
   outbox: { key: number; value: OutboxItem; indexes: { byStatus: string } };
 }
 
 let dbPromise: Promise<IDBPDatabase<MourdenDB>> | null = null;
 
 export function db() {
-  dbPromise ??= openDB<MourdenDB>('mourden-pos', 1, {
-    upgrade(d) {
+  dbPromise ??= openDB<MourdenDB>('mourden-pos', 2, {
+    upgrade(d, oldVersion) {
+      if (oldVersion < 1) {
       d.createObjectStore('kv');
       const orders = d.createObjectStore('orders', { keyPath: 'id' });
       orders.createIndex('byCreatedAt', 'createdAt');
@@ -58,6 +65,8 @@ export function db() {
       d.createObjectStore('shifts', { keyPath: 'id' });
       const outbox = d.createObjectStore('outbox', { keyPath: 'seq', autoIncrement: true });
       outbox.createIndex('byStatus', 'status');
+      }
+      if (oldVersion < 2) d.createObjectStore('businessDays', { keyPath: 'id' });
     },
   });
   return dbPromise;

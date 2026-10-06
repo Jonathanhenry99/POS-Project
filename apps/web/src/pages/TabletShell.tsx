@@ -7,6 +7,7 @@ import { listOrders, useOrdersVersion } from '../lib/pos';
 import { logout } from '../lib/session';
 import { appStore, useApp } from '../lib/state';
 import { usePrintStatus } from '../printing/service';
+import { TabletSidebar } from '../components/TabletSidebar';
 
 const OWNER_IDLE_LOCK_MS = 10 * 60_000;
 
@@ -32,39 +33,14 @@ export function TabletShell() {
     };
   }, [user.role, navigate]);
 
-  const tab = ({ isActive }: { isActive: boolean }) =>
-    cx(
-      'press flex h-11 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold',
-      isActive ? 'bg-white text-primary shadow-[0_6px_20px_-8px_rgb(0_0_0/0.45)]' : 'text-white/85 hover:bg-white/12 hover:text-white',
-    );
-
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full">
+      <TabletSidebar />
+      <div className="flex min-w-0 flex-1 flex-col">
       <header className="bg-grad-header relative shrink-0 text-white">
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
         <div className="relative flex h-16 items-center gap-3 px-3">
           <StoreBlock />
-          <nav className="ml-2 flex gap-1 rounded-2xl bg-black/10 p-1">
-            <NavLink to="/kasir" className={tab}>
-              <Receipt className="size-5" /> Kasir
-            </NavLink>
-            <NavLink to="/riwayat" className={tab}>
-              <History className="size-5" /> Riwayat
-            </NavLink>
-            <NavLink to="/shift" className={tab}>
-              <Wallet className="size-5" /> Shift
-            </NavLink>
-            {can(user.role, 'stock.opname') && (
-              <NavLink to="/stok" className={tab}>
-                <Boxes className="size-5" /> Stok
-              </NavLink>
-            )}
-            {can(user.role, 'admin') && (
-              <NavLink to="/admin" className={tab}>
-                <LayoutDashboard className="size-5" /> Admin
-              </NavLink>
-            )}
-          </nav>
           <div className="ml-auto flex items-center gap-2">
             <ShiftChip />
             <Clock />
@@ -87,6 +63,7 @@ export function TabletShell() {
       <main className="min-h-0 flex-1">
         <Outlet />
       </main>
+      </div>
     </div>
   );
 }

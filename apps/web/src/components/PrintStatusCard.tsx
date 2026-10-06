@@ -22,8 +22,9 @@ export function PrintStatusCard() {
       <div className="flex items-start gap-3 rounded-2xl bg-success/10 p-4 text-success">
         {status.confirmed ? <CheckCircle2 className="size-6 shrink-0" /> : <Printer className="size-6 shrink-0" />}
         <div>
-          <p className="font-semibold">{status.confirmed ? 'Struk tercetak' : 'Struk dikirim ke printer'}</p>
+          <p className="font-semibold">{status.confirmed ? 'Data diterima jalur printer' : 'Data diserahkan ke jalur cetak'}</p>
           <p className="text-sm">{status.message}</p>
+          <p className="mt-1 text-xs">Periksa hasil pada printer; keluarnya kertas belum dapat dipastikan dari web.</p>
         </div>
       </div>
     );

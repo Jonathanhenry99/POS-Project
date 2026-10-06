@@ -14,6 +14,7 @@ import { TabletShell } from './pages/TabletShell';
 import { PosPage } from './pages/pos/PosPage';
 import { HistoryPage } from './pages/pos/HistoryPage';
 import { ShiftPage } from './pages/pos/ShiftPage';
+import { BusinessDayPage } from './pages/pos/BusinessDayPage';
 import { PrinterPage } from './pages/settings/PrinterPage';
 import { SyncPage } from './pages/settings/SyncPage';
 import { StockPage } from './pages/stock/StockPage';
@@ -72,6 +73,7 @@ export function App() {
           <Route path="/kasir" element={<Guard perm="pos.sell"><PosPage /></Guard>} />
           <Route path="/riwayat" element={<Guard perm="pos.sell"><HistoryPage /></Guard>} />
           <Route path="/shift" element={<Guard perm="pos.shift"><ShiftPage /></Guard>} />
+          <Route path="/hari" element={<Guard perm="pos.shift"><BusinessDayPage /></Guard>} />
           <Route path="/printer" element={<PrinterPage />} />
           <Route path="/sinkron" element={<SyncPage />} />
         </Route>

@@ -81,7 +81,7 @@ export function ShiftPage() {
   );
 }
 
-function SummaryTable({ summary: s, openingCash }: { summary: ShiftSummary; openingCash: number }) {
+export function SummaryTable({ summary: s, openingCash }: { summary: ShiftSummary; openingCash: number }) {
   const row = (label: string, value: number, bold = false) => (
     <div key={label} className={cx('flex justify-between py-1', bold && 'font-bold')}>
       <span>{label}</span>

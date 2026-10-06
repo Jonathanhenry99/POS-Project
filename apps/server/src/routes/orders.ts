@@ -284,20 +284,35 @@ const shiftSchema = z.object({
   countedCash: money.nullable(),
   closingNote: z.string().max(300),
   summary: z.record(z.string(), z.unknown()).nullable(),
+  businessDayId: uuid.optional(),
+  closeMode: z.enum(['shift', 'day']).optional(),
 });
 
 /** Simpan/update shift dari tablet. Shift yang sudah ditutup tidak bisa diubah lagi. */
 ordersRouter.put('/shifts/:id', needDevice, need('pos.shift'), async (req, res) => {
   const s = parse(shiftSchema, req.body);
   if (s.id !== req.params.id) throw badRequest('ID tidak cocok');
-  const { rowCount } = await pool.query(
+  const save = async (c: Db) => {
+  if (s.businessDayId) {
+    await c.query('select id from devices where id = $1 for update', [req.auth.device!.id]);
+    const { rows } = await c.query('select device_id, closed_at from business_days where id = $1', [s.businessDayId]);
+    if (!rows[0] || rows[0].device_id !== req.auth.device!.id) throw badRequest('Hari usaha belum tersinkron atau bukan milik terminal ini');
+    const prior = await c.query('select closed_at, business_day_id, device_id from shifts where id = $1', [s.id]);
+    if (prior.rows[0] && (prior.rows[0].device_id !== req.auth.device!.id || (prior.rows[0].business_day_id && prior.rows[0].business_day_id !== s.businessDayId))) throw badRequest('Shift bukan milik hari/terminal ini');
+    // Pengiriman ulang shift tertutup tetap mengikuti idempotensi existing.
+    if (rows[0].closed_at) {
+      if (!prior.rows[0]?.closed_at || prior.rows[0].business_day_id !== s.businessDayId) throw badRequest('Hari usaha sudah ditutup');
+    }
+  }
+  const { rowCount } = await c.query(
     `insert into shifts (id, device_id, opened_by, opened_by_name, opened_at, opening_cash, cash_movements,
-       closed_by, closed_by_name, closed_at, counted_cash, closing_note, summary)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       closed_by, closed_by_name, closed_at, counted_cash, closing_note, summary, business_day_id, close_mode)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      on conflict (id) do update set
        cash_movements = excluded.cash_movements, closed_by = excluded.closed_by, closed_by_name = excluded.closed_by_name,
        closed_at = excluded.closed_at, counted_cash = excluded.counted_cash, closing_note = excluded.closing_note,
-       summary = excluded.summary, updated_at = now()
+       summary = excluded.summary, business_day_id = coalesce(shifts.business_day_id, excluded.business_day_id),
+       close_mode = excluded.close_mode, updated_at = now()
      where shifts.closed_at is null`,
     [
       s.id,
@@ -313,9 +328,14 @@ ordersRouter.put('/shifts/:id', needDevice, need('pos.shift'), async (req, res) 
       s.countedCash,
       s.closingNote,
       s.summary ? JSON.stringify(s.summary) : null,
+      s.businessDayId ?? null,
+      s.closeMode ?? null,
     ],
   );
-  res.json({ ok: true, status: rowCount ? 'saved' : 'closed-unchanged' });
+  return rowCount ? 'saved' : 'closed-unchanged';
+  };
+  const status = s.businessDayId ? await tx(save) : await save(pool);
+  res.json({ ok: true, status });
 });
 
 ordersRouter.get('/shifts', need('admin'), async (req, res) => {
@@ -330,4 +350,3 @@ ordersRouter.get('/shifts', need('admin'), async (req, res) => {
   );
   res.json(rows);
 });
-

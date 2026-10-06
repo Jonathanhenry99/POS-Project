@@ -1,18 +1,22 @@
 import { Bluetooth, BookOpen, CheckCircle2, FlaskConical, Printer, Usb } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { testReceipt, toPlainText } from '@mourden/shared';
+import { can, testReceipt, toPlainText } from '@mourden/shared';
 import { PrintStatusCard } from '../../components/PrintStatusCard';
-import { toast } from '../../components/feedback';
-import { Badge, Button, Card, Segmented, Toggle, cx } from '../../components/ui';
+import { confirmDialog, toast } from '../../components/feedback';
+import { Badge, Button, Card, Segmented, TextInput, Toggle, cx } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import { useApp } from '../../lib/state';
 import { isAndroid } from '../../printing/rawbt';
-import { DRIVERS, printTest, savePrinterConfig, usePrintStatus, usePrinterConfig } from '../../printing/service';
+import { createPrinterProfile, DRIVERS, openCashDrawer, printTest, savePrinterConfig, selectPrinterProfile, usePrintStatus, usePrinterConfig, usePrinterProfiles } from '../../printing/service';
 import { pickSerialPrinter, webSerialSupported } from '../../printing/webserial';
 import { pickUsbPrinter, webUsbSupported } from '../../printing/webusb';
 
 export function PrinterPage() {
   const config = usePrinterConfig();
+  const profiles = usePrinterProfiles();
+  const user = useApp((s) => s.user);
+  const [profileName, setProfileName] = useState('');
+  const [drawerBusy, setDrawerBusy] = useState(false);
   const status = usePrintStatus();
   const store = useApp((s) => s.data?.settings.store);
   const [tab, setTab] = useState<'atur' | 'panduan'>('atur');
@@ -44,6 +48,17 @@ export function PrinterPage() {
         ) : (
           <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
             <div className="flex flex-col gap-4">
+              <Card title="Profil pengaturan printer">
+                <div className="flex flex-col gap-3">
+                  <select aria-label="Profil printer aktif" className="h-12 rounded-xl border border-line bg-surface-2 px-3" value={profiles.activeId} onChange={(e) => selectPrinterProfile(e.target.value)}>
+                    {profiles.list.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <div className="flex gap-2"><TextInput aria-label="Nama profil printer baru" placeholder="Nama profil baru" value={profileName} onChange={(e) => setProfileName(e.target.value.slice(0, 60))} /><Button variant="outline" disabled={!profileName.trim()} onClick={() => {
+                    try { createPrinterProfile(profileName); setProfileName(''); toast('Profil disimpan di perangkat ini.'); } catch (e) { toast(errorMessage(e), 'error'); }
+                  }}>Simpan profil</Button></div>
+                  <p className="text-xs text-fg-muted">Profil menyimpan jalur dan format cetak pada perangkat ini. Ini belum merupakan routing beberapa printer. Pilih printer fisik di RawBT atau ulangi pemilihan USB/Serial saat perangkat berubah.</p>
+                </div>
+              </Card>
               <Card title="Jalur cetak">
                 <div className="flex flex-col gap-2">
                   {DRIVERS.map((d) => (
@@ -119,6 +134,14 @@ export function PrinterPage() {
                 <Button size="lg" className="w-full" icon={<Printer className="size-5" />} loading={status.state === 'printing'} onClick={() => void printTest()}>
                   Tes printer
                 </Button>
+                {user && can(user.role, 'pos.shift') && <>
+                  <Button className="mt-3 w-full" variant="outline" loading={drawerBusy} disabled={!config.openDrawer || config.driver === 'browser' || status.state === 'printing'} onClick={async () => {
+                    if (!await confirmDialog({ title: 'Buka laci uang?', message: 'Kirim perintah ke printer aktif tanpa mencatat penjualan. Laci harus tersambung dan didukung printer.', confirmLabel: 'Kirim perintah laci' })) return;
+                    setDrawerBusy(true);
+                    try { await openCashDrawer(); } catch (e) { toast(errorMessage(e), 'error'); } finally { setDrawerBusy(false); }
+                  }}>Buka laci tanpa transaksi</Button>
+                  <p className="mt-2 text-xs text-fg-muted">Aktifkan pengaturan laci terlebih dahulu. Perintah dicatat pada log; keberhasilan fisik perlu diperiksa pada perangkat.</p>
+                </>}
                 <div className="mt-3">
                   <PrintStatusCard />
                 </div>

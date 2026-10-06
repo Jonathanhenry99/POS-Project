@@ -1,16 +1,22 @@
 // Penghubung antara aplikasi dan driver printer. Pilihan driver diambil dari pengaturan perangkat.
 import {
   saleReceipt,
+  businessDayReceipt,
+  can,
   shiftReceipt,
   testReceipt,
   toEscPos,
   toPlainText,
   type Order,
+  type BusinessDay,
   type ReceiptOp,
   type Shift,
   type StoreSettings,
 } from '@mourden/shared';
 import { appStore } from '../lib/state';
+import { uuid } from '../lib/id';
+import { db } from '../lib/idb';
+import { enqueue } from '../lib/sync';
 import { createStore, useStore } from '../lib/store';
 import { BrowserPrintFallback } from './browser';
 import { RawBTPrinter } from './rawbt';
@@ -62,8 +68,40 @@ export function loadPrinterConfig(): PrinterConfig {
 
 export const printerConfigStore = createStore<PrinterConfig>(loadPrinterConfig());
 
+const PROFILES_KEY = 'mourden.printer-profiles';
+export interface PrinterProfile { id: string; name: string; config: PrinterConfig }
+function loadProfiles(): { activeId: string; list: PrinterProfile[] } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROFILES_KEY) ?? 'null');
+    if (saved && typeof saved.activeId === 'string' && Array.isArray(saved.list) && saved.list.length && saved.list.every((p: PrinterProfile) => typeof p.id === 'string' && typeof p.name === 'string' && p.config && DRIVERS.some((d) => d.id === p.config.driver))) return saved;
+  } catch { /* profil lama tetap memakai konfigurasi existing */ }
+  return { activeId: 'existing', list: [{ id: 'existing', name: 'Printer kasir', config: { ...printerConfigStore.get() } }] };
+}
+export const printerProfilesStore = createStore(loadProfiles());
+export const usePrinterProfiles = () => useStore(printerProfilesStore, (s) => s);
+function persistProfiles() {
+  try { localStorage.setItem(PROFILES_KEY, JSON.stringify(printerProfilesStore.get())); } catch { /* berlaku selama sesi */ }
+}
+export function createPrinterProfile(name: string) {
+  const label = name.trim().slice(0, 60);
+  if (!label) throw new Error('Isi nama profil printer');
+  if (printerProfilesStore.get().list.some((p) => p.name.toLowerCase() === label.toLowerCase())) throw new Error('Nama profil sudah digunakan');
+  if (printerProfilesStore.get().list.length >= 12) throw new Error('Maksimal 12 profil pada perangkat ini');
+  const profile = { id: uuid(), name: label, config: { ...printerConfigStore.get() } };
+  printerProfilesStore.set((s) => ({ activeId: profile.id, list: [...s.list, profile] }));
+  persistProfiles(); return profile;
+}
+export function selectPrinterProfile(id: string) {
+  const profile = printerProfilesStore.get().list.find((p) => p.id === id);
+  if (!profile) throw new Error('Profil tidak ditemukan');
+  printerProfilesStore.set({ activeId: id });
+  savePrinterConfig(profile.config);
+}
+
 export function savePrinterConfig(patch: Partial<PrinterConfig>) {
   printerConfigStore.set(patch);
+  printerProfilesStore.set((s) => ({ ...s, list: s.list.map((p) => p.id === s.activeId ? { ...p, config: { ...printerConfigStore.get() } } : p) }));
+  persistProfiles();
   try {
     localStorage.setItem(CONFIG_KEY, JSON.stringify(printerConfigStore.get()));
   } catch {
@@ -152,6 +190,29 @@ export function printTest() {
 export function printShift(shift: Shift) {
   const config = printerConfigStore.get();
   return run('Rekap tutup kasir', () => shiftReceipt(shift, storeSettings(), config));
+}
+
+export function printBusinessDay(day: BusinessDay) {
+  const config = printerConfigStore.get();
+  return run('Rekap tutup hari', () => businessDayReceipt(day, storeSettings(), config));
+}
+
+/** Pulsa ESC/POS tanpa transaksi/struk. Tersedia hanya jika drawer diaktifkan dan jalur mendukung byte raw. */
+export async function openCashDrawer() {
+  const user = appStore.get().user;
+  if (!user || !can(user.role, 'pos.shift')) throw new Error('Tidak punya izin membuka laci');
+  const config = printerConfigStore.get();
+  if (!config.openDrawer) throw new Error('Aktifkan pengaturan laci dan pastikan laci tersambung ke printer');
+  if (config.driver === 'browser') throw new Error('Cetak browser tidak dapat mengirim perintah laci');
+  const success = await run('Buka laci uang', () => [{ kind: 'drawer' }]);
+  const entry = { id: uuid(), at: new Date().toISOString(), userName: user.name, profileName: printerProfilesStore.get().list.find((p) => p.id === printerProfilesStore.get().activeId)?.name ?? '', driver: config.driver, outcome: success ? 'sent' : 'failed' };
+  const d = await db();
+  const tx = d.transaction('kv', 'readwrite');
+  const previous = await tx.store.get('printer.actions') as typeof entry[] | undefined;
+  await tx.store.put([entry, ...(previous ?? [])].slice(0, 100), 'printer.actions');
+  await tx.done;
+  await enqueue({ method: 'POST', path: `/tablet/printer-actions/${entry.id}`, body: entry, operatorId: user.id, label: 'Log buka laci uang', ref: null });
+  return success;
 }
 
 /** Cetak tagihan sementara (sebelum bayar) dari isi keranjang. */

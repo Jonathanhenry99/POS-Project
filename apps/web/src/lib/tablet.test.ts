@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { businessDate, DEFAULT_SETTINGS, toEscPos, testReceipt, DEFAULT_LAYOUT, type Catalog } from '@mourden/shared';
 import { rawbtIntentUrl, RawBTPrinter } from '../printing/rawbt';
 import { db, resetDbForTests, type BootstrapData } from './idb';
-import { checkout, closeShift, listOrders, openShift, voidOrder, type CartLine } from './pos';
+import { checkout, closeShift, listOrders, openShift, voidOrder, closeBusinessDay, ensureBusinessDay, businessDayDetails, listBusinessDays, addCashMovement, type CartLine } from './pos';
 import { appStore } from './state';
-import { flushOutbox, listOutbox } from './sync';
+import { flushOutbox, listOutbox, retryFailed } from './sync';
 
 const catalog: Catalog = { categories: [], products: [], optionGroups: [] };
 const data: BootstrapData = { settings: DEFAULT_SETTINGS, catalog, ingredients: [], users: [], fetchedAt: '' };
@@ -54,7 +54,8 @@ beforeEach(async () => {
   await flushOutbox();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await flushOutbox();
   vi.unstubAllGlobals();
 });
 
@@ -171,5 +172,94 @@ describe('transaksi offline-first', () => {
   it('tidak bisa berjualan tanpa shift aktif', async () => {
     await closeShift(200000, '');
     await expect(checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 30000, reference: '' })).rejects.toThrow('shift');
+  });
+});
+
+describe('hari usaha tambahan', () => {
+  it('akhiri shift mempertahankan hari, tutup hari memulai hari baru pada shift berikut', async () => {
+    const first = appStore.get().activeShift!;
+    const day = (await ensureBusinessDay())!;
+    await closeShift(200000, 'Ganti petugas');
+    const second = await openShift(200000);
+    expect(second.businessDayId).toBe(day.id);
+    await closeShift(200000, 'Shift terakhir', 'day');
+    const closed = await closeBusinessDay('Selesai');
+    expect(closed.shiftIds).toEqual(expect.arrayContaining([first.id, second.id]));
+    expect(closed.summary!.openingCash).toBe(200000);
+    expect(closed.summary!.netSales).toBe(0);
+    const next = await openShift(100000);
+    expect(next.businessDayId).not.toBe(day.id);
+  });
+
+  it('tutup hari menolak shift aktif dan tidak menghapus antrean', async () => {
+    vi.stubGlobal('fetch', vi.fn(offline));
+    await checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
+    await flushOutbox();
+    const queue = await listOutbox();
+    await expect(closeBusinessDay('')).rejects.toThrow('shift terakhir');
+    expect(await listOutbox()).toHaveLength(queue.length);
+  });
+
+  it('penutupan offline dipersist atomik, retry dan klik kedua tidak menggandakan penutupan', async () => {
+    vi.stubGlobal('fetch', vi.fn(offline));
+    const o = await checkout({ lines: [line(20000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
+    await addCashMovement('out', 10000, 'Es');
+    await closeShift(200000 + o.total - 10000, 'Tutup', 'day');
+    const day = await closeBusinessDay('');
+    await flushOutbox();
+    const before = await listOutbox();
+    expect(before.at(-1)?.path).toBe(`/business-days/${day.id}`);
+    expect((await listBusinessDays())[0].sync).toBe('pending');
+    await expect(closeBusinessDay('')).rejects.toThrow('Tidak ada');
+    expect(await listOutbox()).toHaveLength(before.length);
+    mockFetch([]);
+    await flushOutbox();
+    expect(await listOutbox()).toHaveLength(0);
+    expect((await listBusinessDays())[0].sync).toBe('synced');
+    expect(day.summary).toMatchObject({ cashOut: 10000, lastCountedCash: 200000 + o.total - 10000 });
+  });
+
+  it('hari gagal finalisasi terlihat gagal dan dapat retry tanpa membuka kembali shift', async () => {
+    await closeShift(200000, '');
+    await flushOutbox();
+    mockFetch([rejected]);
+    await closeBusinessDay('');
+    await flushOutbox();
+    expect((await listBusinessDays())[0].sync).toBe('failed');
+    expect(appStore.get().activeShift).toBeNull();
+    mockFetch([]);
+    await retryFailed();
+    expect((await listBusinessDays())[0].sync).toBe('synced');
+    expect((await listBusinessDays())[0].summary?.shiftCount).toBe(1);
+  });
+
+  it('hari usaha melewati tengah malam tidak mengganti tanggal kalender nomor struk', async () => {
+    const day = (await ensureBusinessDay())!;
+    try {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(`${day.businessDate}T18:10:00.000Z`));
+      const o = await checkout({ lines: [line(20000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
+      const date = businessDate(o.createdAt, data.settings.store.timezone);
+      expect(date).not.toBe(day.businessDate);
+      expect(o.number).toContain(date.slice(2).replaceAll('-', ''));
+      expect((await ensureBusinessDay())!.id).toBe(day.id);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('snapshot hari tertutup tetap tersedia walaupun order lama kemudian menjadi void', async () => {
+    const o = await checkout({ lines: [line(20000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
+    await closeShift(200000 + o.total, '');
+    const day = await closeBusinessDay('');
+    await voidOrder(o, 'Koreksi owner', null);
+    expect((await businessDayDetails(day)).summary.netSales).toBe(o.total);
+    expect((await listOrders())[0].status).toBe('void');
+  });
+
+  it('tab dengan shift lama tidak bisa menjual setelah shift ditutup', async () => {
+    const old = appStore.get().activeShift;
+    await closeShift(200000, '');
+    appStore.set({ activeShift: old });
+    await expect(checkout({ lines: [line(20000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' })).rejects.toThrow('ditutup');
+    expect(await listOrders()).toHaveLength(0);
   });
 });

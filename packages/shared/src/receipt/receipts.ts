@@ -1,7 +1,7 @@
 // Penyusun struk: data transaksi -> daftar baris. Murni (tanpa efek samping) agar mudah dites.
 import { formatDateTime, formatNumber, formatRupiah } from '../format';
 import { ORDER_TYPE_LABEL, PAYMENT_LABEL } from '../permissions';
-import type { Order, Shift, StoreSettings } from '../types';
+import type { BusinessDay, Order, Shift, StoreSettings } from '../types';
 import type { Align, ReceiptOp } from './escpos';
 import { rule, twoCol, wrap, wrapIndented } from './layout';
 
@@ -207,5 +207,38 @@ export function shiftReceipt(shift: Shift, store: StoreSettings, layout: Receipt
   doc.text('Tanda tangan kasir:');
   doc.ops.push({ kind: 'feed', lines: 3 });
   doc.rule('_');
+  return doc.finish(layout);
+}
+
+export function businessDayReceipt(day: BusinessDay, store: StoreSettings, layout: ReceiptLayout): ReceiptOp[] {
+  const doc = new Doc(layout.width);
+  header(doc, store);
+  doc.text('REKAP TUTUP HARI', { align: 'center', bold: true, tall: true });
+  info(doc, 'Hari', day.businessDate);
+  info(doc, 'Buka', formatDateTime(day.openedAt, store.timezone));
+  if (day.closedAt) info(doc, 'Tutup', `${formatDateTime(day.closedAt, store.timezone)} ${day.closedByName}`);
+  const s = day.summary;
+  if (s) {
+    doc.rule();
+    doc.cols('Shift', String(s.shiftCount));
+    doc.cols('Transaksi', String(s.orderCount));
+    doc.cols('Penjualan kotor', formatNumber(s.grossSales));
+    doc.cols('Diskon', formatNumber(-s.discountTotal));
+    doc.cols('Service', formatNumber(s.serviceTotal));
+    doc.cols('Pajak', formatNumber(s.taxTotal));
+    doc.cols('Total penjualan', formatRupiah(s.netSales), { bold: true });
+    for (const method of ['cash', 'qris', 'card'] as const) doc.cols(PAYMENT_LABEL[method], formatNumber(s.byMethod[method]));
+    doc.cols(`Void (${s.voidCount})`, formatNumber(s.voidAmount));
+    doc.rule();
+    doc.cols('Modal shift pertama', formatNumber(s.openingCash));
+    doc.cols('Kas masuk semua shift', formatNumber(s.cashIn));
+    doc.cols('Kas keluar semua shift', formatNumber(-s.cashOut));
+    doc.cols('Kas akhir shift terakhir', formatNumber(s.lastCountedCash ?? 0));
+    doc.cols('Selisih seluruh shift', formatNumber(s.cashDifference), { bold: true });
+    doc.wrapped('Modal pergantian shift tidak dijumlah sebagai pendapatan.');
+  }
+  if (day.closingNote) { doc.rule(); doc.wrapped(`Catatan: ${day.closingNote}`); }
+  doc.rule();
+  doc.wrapped('Rekap terminal ini, berdasarkan snapshot tutup tiap shift.');
   return doc.finish(layout);
 }

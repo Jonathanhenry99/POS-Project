@@ -1,6 +1,6 @@
 import { Ban, CloudOff, Printer, Receipt, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { formatNumber, formatRupiah, formatTime, PAYMENT_LABEL } from '@mourden/shared';
+import { businessDate, formatNumber, formatRupiah, formatTime, PAYMENT_LABEL, PAYMENT_METHODS, type PaymentMethod } from '@mourden/shared';
 import { OwnerApproval } from '../../components/OwnerApproval';
 import { PrintStatusCard } from '../../components/PrintStatusCard';
 import { toast } from '../../components/feedback';
@@ -21,9 +21,14 @@ export function HistoryPage() {
   const [orders, setOrders] = useState<LocalOrder[]>([]);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [payment, setPayment] = useState<PaymentMethod | 'all'>('all');
+  const [status, setStatus] = useState<'paid' | 'void' | 'all'>('all');
+  const [visibleCount, setVisibleCount] = useState(100);
 
   const load = useCallback(async () => {
-    const list = await listOrders(scope === 'shift' && shift ? { shiftId: shift.id } : { limit: 300 });
+    const list = await listOrders(scope === 'shift' && shift ? { shiftId: shift.id } : {});
     setOrders(list);
   }, [scope, shift]);
 
@@ -33,9 +38,15 @@ export function HistoryPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? orders.filter((o) => o.number.toLowerCase().includes(q) || o.customerName.toLowerCase().includes(q)) : orders;
-  }, [orders, query]);
-  const selected = orders.find((o) => o.id === selectedId) ?? filtered[0] ?? null;
+    return orders.filter((o) => {
+      const date = businessDate(o.createdAt, tz);
+      return (!q || o.number.toLowerCase().includes(q) || o.customerName.toLowerCase().includes(q)) &&
+        (!from || date >= from) && (!to || date <= to) && (payment === 'all' || o.payment.method === payment) &&
+        (status === 'all' || o.status === status);
+    });
+  }, [orders, query, from, to, payment, status, tz]);
+  useEffect(() => { setVisibleCount(100); }, [query, scope, from, to, payment, status]);
+  const selected = filtered.find((o) => o.id === selectedId) ?? filtered[0] ?? null;
 
   return (
     <div className="grid h-full grid-cols-[minmax(320px,40%)_1fr]">
@@ -53,9 +64,19 @@ export function HistoryPage() {
             <Search className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-fg-subtle" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari nomor / nama" className={cx(inputClass, 'h-11 pl-10')} />
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-fg-muted">Dari tanggal<input aria-label="Riwayat dari tanggal" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={cx(inputClass, 'mt-1 text-sm')} /></label>
+            <label className="text-xs text-fg-muted">Sampai tanggal<input aria-label="Riwayat sampai tanggal" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={cx(inputClass, 'mt-1 text-sm')} /></label>
+            <select aria-label="Metode pembayaran" className={cx(inputClass, 'text-sm')} value={payment} onChange={(e) => setPayment(e.target.value as PaymentMethod | 'all')}>
+              <option value="all">Semua pembayaran</option>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_LABEL[m]}</option>)}
+            </select>
+            <select aria-label="Status transaksi" className={cx(inputClass, 'text-sm')} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="all">Semua status</option><option value="paid">Lunas</option><option value="void">Void</option></select>
+          </div>
+          <div className="flex items-center justify-between text-xs text-fg-muted"><span>{filtered.length} transaksi · data lokal tablet</span><button className="min-h-11 px-2 font-semibold text-primary" onClick={() => { setFrom(''); setTo(''); setPayment('all'); setStatus('all'); setQuery(''); }}>Reset filter</button></div>
+          {from && to && from > to && <ErrorNote>Rentang tanggal tidak valid.</ErrorNote>}
         </div>
         <ul className="min-h-0 flex-1 divide-y divide-line overflow-y-auto">
-          {filtered.map((o) => (
+          {filtered.slice(0, visibleCount).map((o) => (
             <li key={o.id}>
               <button
                 onClick={() => {
@@ -75,7 +96,7 @@ export function HistoryPage() {
                     )}
                   </p>
                   <p className="truncate text-sm text-fg-muted">
-                    {scope === 'all' ? new Date(o.createdAt).toLocaleDateString('id-ID') + ' ' : ''}
+                    {scope === 'all' ? businessDate(o.createdAt, tz) + ' ' : ''}
                     {formatTime(o.createdAt, tz)} · {PAYMENT_LABEL[o.payment.method]}
                     {o.customerName && ` · ${o.customerName}`}
                   </p>
@@ -84,6 +105,7 @@ export function HistoryPage() {
               </button>
             </li>
           ))}
+          {filtered.length > visibleCount && <li className="p-3"><Button className="w-full" variant="outline" onClick={() => setVisibleCount((count) => count + 100)}>Tampilkan 100 berikutnya</Button></li>}
         </ul>
         {!filtered.length && <Empty icon={<Receipt className="size-10 text-fg-subtle" />} title="Belum ada transaksi" />}
       </div>

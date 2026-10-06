@@ -39,9 +39,14 @@ async function markRef(item: OutboxItem, sync: 'synced' | 'failed', error = '') 
   if (item.ref.store === 'orders') {
     const o = await d.get('orders', item.ref.id);
     if (o) await d.put('orders', { ...o, sync, syncError: error });
-  } else {
+  } else if (item.ref.store === 'shifts') {
     const s = await d.get('shifts', item.ref.id);
     if (s) await d.put('shifts', { ...s, sync });
+  } else {
+    const day = await d.get('businessDays', item.ref.id);
+    const remaining = (await d.getAll('outbox')).filter((job) => job.ref?.store === 'businessDays' && job.ref.id === item.ref!.id);
+    const failed = remaining.find((job) => job.status === 'failed');
+    if (day) await d.put('businessDays', { ...day, sync: failed ? 'failed' : remaining.length ? 'pending' : sync, syncError: failed?.lastError ?? error });
   }
 }
 

@@ -1,6 +1,7 @@
 export * from './types';
 export * from './permissions';
 export * from './pricing';
+export * from './business-day';
 export * from './format';
 export * from './pin';
 export * from './defaults';

@@ -228,6 +228,45 @@ export interface Shift {
   countedCash: number | null;
   closingNote: string;
   summary: ShiftSummary | null;
+  /** Metadata tambahan; shift lama tetap valid tanpa hari usaha. */
+  businessDayId?: string;
+  closeMode?: 'shift' | 'day';
+}
+
+/** Hari operasional satu terminal. Tidak mengganti tanggal kalender transaksi/laporan lama. */
+export interface BusinessDay {
+  id: string;
+  deviceId: string;
+  businessDate: string;
+  openedAt: string;
+  openedById: string;
+  openedByName: string;
+  closedAt: string | null;
+  closedById: string | null;
+  closedByName: string;
+  closingNote: string;
+  shiftIds: string[];
+  summary: BusinessDaySummary | null;
+}
+
+export interface BusinessDaySummary {
+  shiftCount: number;
+  orderCount: number;
+  voidCount: number;
+  voidAmount: number;
+  grossSales: number;
+  discountTotal: number;
+  serviceTotal: number;
+  taxTotal: number;
+  netSales: number;
+  byMethod: Record<PaymentMethod, number>;
+  cashIn: number;
+  cashOut: number;
+  /** Modal hanya shift pertama; modal tiap shift tidak dijumlah sebagai pendapatan. */
+  openingCash: number;
+  lastExpectedCash: number;
+  lastCountedCash: number | null;
+  cashDifference: number;
 }
 
 // ---------- Stok ----------
