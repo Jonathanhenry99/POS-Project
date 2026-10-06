@@ -9,6 +9,8 @@ export type Station = 'bar' | 'kitchen' | 'umum';
 
 export type RoundingMode = 'none' | 'down' | 'nearest';
 
+export type OrderType = 'dine_in' | 'take_away';
+
 // ---------- Pengaturan toko (disimpan di server, di-cache di tablet) ----------
 
 export interface StoreSettings {
@@ -170,6 +172,7 @@ export interface Order extends Totals {
   cashierName: string;
   createdAt: string;
   customerName: string;
+  orderType: OrderType;
   items: OrderItem[];
   discount: Discount | null;
   /** Snapshot tarif saat transaksi, supaya struk lama tetap konsisten bila pengaturan berubah. */

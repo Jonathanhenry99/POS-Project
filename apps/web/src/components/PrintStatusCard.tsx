@@ -10,8 +10,8 @@ export function PrintStatusCard() {
 
   if (status.state === 'printing') {
     return (
-      <div className="flex items-center gap-3 rounded-2xl bg-stone-100 p-4">
-        <Loader2 className="size-6 animate-spin text-stone-500" />
+      <div className="flex items-center gap-3 rounded-2xl bg-surface-2 p-4">
+        <Loader2 className="size-6 animate-spin text-fg-muted" />
         <span className="font-semibold">Mencetak {status.label}…</span>
       </div>
     );
@@ -19,7 +19,7 @@ export function PrintStatusCard() {
 
   if (status.state === 'done') {
     return (
-      <div className="flex items-start gap-3 rounded-2xl bg-emerald-50 p-4 text-emerald-900">
+      <div className="flex items-start gap-3 rounded-2xl bg-success/10 p-4 text-success">
         {status.confirmed ? <CheckCircle2 className="size-6 shrink-0" /> : <Printer className="size-6 shrink-0" />}
         <div>
           <p className="font-semibold">{status.confirmed ? 'Struk tercetak' : 'Struk dikirim ke printer'}</p>
@@ -32,7 +32,7 @@ export function PrintStatusCard() {
   const title =
     status.code === 'not-paired' ? 'Printer belum dipilih' : status.code === 'unavailable' ? 'Printer tidak terdeteksi' : status.code === 'unsupported' ? 'Jalur cetak tidak didukung' : 'Gagal mencetak';
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-900">
+    <div className="flex flex-col gap-3 rounded-2xl border border-danger/30 bg-danger/10 p-4 text-danger">
       <div className="flex items-start gap-3">
         <AlertTriangle className="size-6 shrink-0" />
         <div>

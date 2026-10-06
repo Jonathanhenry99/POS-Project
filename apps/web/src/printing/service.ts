@@ -154,6 +154,13 @@ export function printShift(shift: Shift) {
   return run('Rekap tutup kasir', () => shiftReceipt(shift, storeSettings(), config));
 }
 
+/** Cetak tagihan sementara (sebelum bayar) dari isi keranjang. */
+export function printBill(draft: Order) {
+  const config = printerConfigStore.get();
+  const store = storeSettings();
+  return run('Tagihan', () => saleReceipt(draft, store, config, { bill: true }));
+}
+
 /** Teks pratinjau struk untuk layar. */
 export function previewOrder(order: Order): string {
   const config = printerConfigStore.get();

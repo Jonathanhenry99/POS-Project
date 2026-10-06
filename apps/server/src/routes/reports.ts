@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { PAYMENT_LABEL, type PaymentMethod } from '@mourden/shared';
+import { ORDER_TYPE_LABEL, PAYMENT_LABEL, type OrderType, type PaymentMethod } from '@mourden/shared';
 import { need } from '../auth';
 import { pool } from '../db';
 import { dateRangeQuery, parse } from '../http';
@@ -14,17 +14,20 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
   const range = [q.from, q.to];
   const paid = "business_date between $1 and $2 and status = 'paid'";
 
-  const [totals, voids, byMethod, byHour, byDay, top, byCategory] = await Promise.all([
+  const [totals, voids, byMethod, byHour, byDay, top, byCategory, cogs, heatmap, slow, byType] = await Promise.all([
     pool.query(
       `select count(*)::int as "orderCount", coalesce(sum(subtotal), 0)::int as "grossSales",
          coalesce(sum(discount_amount), 0)::int as "discountTotal", coalesce(sum(service_amount), 0)::int as "serviceTotal",
-         coalesce(sum(tax_amount), 0)::int as "taxTotal", coalesce(sum(total), 0)::int as "netSales"
+         coalesce(sum(tax_amount), 0)::int as "taxTotal", coalesce(sum(rounding_amount), 0)::int as "roundingTotal",
+         coalesce(sum(total), 0)::int as "netSales"
        from orders where ${paid}`,
       range,
     ),
     pool.query(
-      `select count(*)::int as count, coalesce(sum(total), 0)::int as amount from orders
-       where business_date between $1 and $2 and status = 'void'`,
+      `select count(*)::int as count, coalesce(sum(total), 0)::int as amount,
+         coalesce(sum(total) filter (where payment_method = 'cash'), 0)::int as "cashAmount",
+         count(*) filter (where payment_method = 'cash')::int as "cashCount"
+       from orders where business_date between $1 and $2 and status = 'void'`,
       range,
     ),
     pool.query(
@@ -57,9 +60,39 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
        group by 1 order by amount desc`,
       range,
     ),
+    // HPP = biaya bahan yang tercatat saat penjualan (dikurangi pengembalian dari void).
+    pool.query(
+      `select coalesce(-sum(m.qty * m.unit_cost), 0)::float8 as cogs
+       from stock_movements m join orders o on o.id = m.ref_id
+       where m.ref_type = 'order' and m.type in ('sale', 'void') and o.business_date between $1 and $2`,
+      range,
+    ),
+    // Peta keramaian: hari (1=Senin..7=Minggu) x jam.
+    pool.query(
+      `select extract(isodow from created_at at time zone $3)::int as dow, extract(hour from created_at at time zone $3)::int as hour,
+         count(*)::int as count, sum(total)::int as amount
+       from orders where ${paid} group by 1, 2`,
+      [...range, tz],
+    ),
+    // Menu aktif yang tidak terjual sama sekali di rentang ini.
+    pool.query(
+      `select p.id, p.name from products p
+       where p.active and not exists (
+         select 1 from order_items oi join orders o on o.id = oi.order_id
+         where oi.product_id = p.id and o.business_date between $1 and $2 and o.status = 'paid'
+       ) order by p.name limit 20`,
+      range,
+    ),
+    pool.query(
+      `select order_type as type, count(*)::int as count, sum(total)::int as amount
+       from orders where ${paid} group by 1 order by amount desc`,
+      range,
+    ),
   ]);
 
   const t = totals.rows[0];
+  const revenue = t.grossSales - t.discountTotal;
+  const cogsValue = Math.round(cogs.rows[0].cogs);
   res.json({
     from: q.from,
     to: q.to,
@@ -67,11 +100,20 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
     avgTicket: t.orderCount ? Math.round(t.netSales / t.orderCount) : 0,
     voidCount: voids.rows[0].count,
     voidAmount: voids.rows[0].amount,
+    voidCash: { count: voids.rows[0].cashCount, amount: voids.rows[0].cashAmount },
+    voidNonCash: { count: voids.rows[0].count - voids.rows[0].cashCount, amount: voids.rows[0].amount - voids.rows[0].cashAmount },
+    discountCount: (await pool.query(`select count(*)::int as n from orders where ${paid} and discount_amount > 0`, range)).rows[0].n,
     byMethod: byMethod.rows.map((r) => ({ ...r, label: PAYMENT_LABEL[r.method as PaymentMethod] })),
     byHour: byHour.rows,
     byDay: byDay.rows,
     topProducts: top.rows,
     byCategory: byCategory.rows,
+    cogs: cogsValue,
+    grossProfit: revenue - cogsValue,
+    grossMarginPct: revenue > 0 ? Math.round(((revenue - cogsValue) / revenue) * 1000) / 10 : 0,
+    heatmap: heatmap.rows,
+    slowMovers: slow.rows,
+    byOrderType: byType.rows.map((r) => ({ ...r, label: ORDER_TYPE_LABEL[r.type as OrderType] })),
   });
 });
 

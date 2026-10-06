@@ -38,9 +38,9 @@ export function TransactionsPage() {
       {loading && !data && <Spinner className="mx-auto my-10" />}
       {data && !data.length && <Empty title="Tidak ada transaksi" />}
       {data && data.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+        <div className="overflow-hidden rounded-2xl border border-line bg-surface">
           <table className="w-full text-sm">
-            <thead className="bg-stone-50 text-left text-stone-500">
+            <thead className="bg-surface-2 text-left text-fg-muted">
               <tr>
                 <th className="px-3 py-2">No</th>
                 <th className="px-3 py-2">Waktu</th>
@@ -49,16 +49,16 @@ export function TransactionsPage() {
                 <th className="px-3 py-2 text-right">Total</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100">
+            <tbody className="divide-y divide-line">
               {data.map((o) => (
-                <tr key={o.id} onClick={() => setSelected(o)} className="cursor-pointer hover:bg-stone-50">
+                <tr key={o.id} onClick={() => setSelected(o)} className="cursor-pointer hover:bg-surface-2">
                   <td className="px-3 py-3 font-semibold">
                     {o.number} {o.status === 'void' && <Badge tone="red">VOID</Badge>}
                   </td>
                   <td className="px-3 py-3">{formatDateTime(o.createdAt, tz)}</td>
                   <td className="hidden px-3 py-3 sm:table-cell">{o.cashierName}</td>
                   <td className="px-3 py-3">{PAYMENT_LABEL[o.payment.method]}</td>
-                  <td className={cx('px-3 py-3 text-right font-semibold tabular', o.status === 'void' && 'text-stone-400 line-through')}>{formatNumber(o.total)}</td>
+                  <td className={cx('px-3 py-3 text-right font-semibold tabular', o.status === 'void' && 'text-fg-subtle line-through')}>{formatNumber(o.total)}</td>
                 </tr>
               ))}
             </tbody>
@@ -120,37 +120,37 @@ function OrderModal({ order: o, onClose, onVoided }: { order: Order; onClose: ()
             </Button>
           </>
         ) : (
-          <Button variant="outline" className="text-red-600" onClick={() => setVoiding(true)}>
+          <Button variant="outline" className="text-danger" onClick={() => setVoiding(true)}>
             Batalkan (void)
           </Button>
         ))
       }
     >
       <div className="flex flex-col gap-3 text-sm">
-        <p className="text-stone-600">
+        <p className="text-fg-muted">
           {formatDateTime(o.createdAt, tz)} · {o.cashierName}
           {o.customerName && ` · ${o.customerName}`}
         </p>
         {o.status === 'void' && (
-          <p className="rounded-xl bg-red-50 p-3 text-red-800">
+          <p className="rounded-xl bg-danger/10 p-3 text-danger">
             Dibatalkan oleh {o.voidedByName} {o.voidedAt && `(${formatDateTime(o.voidedAt, tz)})`}. Alasan: {o.voidReason}
           </p>
         )}
-        <ul className="divide-y divide-stone-100">
+        <ul className="divide-y divide-line">
           {o.items.map((i) => (
             <li key={i.id} className="flex justify-between gap-3 py-2">
               <span>
                 <b>
                   {i.qty}× {i.name}
                 </b>
-                {i.options.length > 0 && <span className="block text-stone-500">{i.options.map((x) => x.name).join(', ')}</span>}
-                {i.note && <span className="block text-amber-700 italic">{i.note}</span>}
+                {i.options.length > 0 && <span className="block text-fg-muted">{i.options.map((x) => x.name).join(', ')}</span>}
+                {i.note && <span className="block text-warning italic">{i.note}</span>}
               </span>
               <span className="tabular">{formatNumber(i.lineTotal)}</span>
             </li>
           ))}
         </ul>
-        <dl className="tabular space-y-1 border-t border-stone-200 pt-2">
+        <dl className="tabular space-y-1 border-t border-line pt-2">
           <Row label="Subtotal" value={o.subtotal} />
           {o.discountAmount > 0 && <Row label={`Diskon${o.discount?.reason ? ` (${o.discount.reason})` : ''}`} value={-o.discountAmount} />}
           {o.serviceAmount > 0 && <Row label={`Service ${o.servicePct}%`} value={o.serviceAmount} />}
@@ -164,10 +164,10 @@ function OrderModal({ order: o, onClose, onVoided }: { order: Order; onClose: ()
           {o.payment.change > 0 && <Row label="Kembali" value={o.payment.change} />}
         </dl>
         {voiding && (
-          <div className="flex flex-col gap-2 rounded-xl bg-red-50 p-3">
-            <p className="font-semibold text-red-800">Alasan pembatalan</p>
+          <div className="flex flex-col gap-2 rounded-xl bg-danger/10 p-3">
+            <p className="font-semibold text-danger">Alasan pembatalan</p>
             <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass} placeholder="Contoh: salah input" autoFocus />
-            <p className="text-xs text-red-700">Stok bahan akan dikembalikan. Uang tunai yang sudah masuk laci tidak otomatis berubah.</p>
+            <p className="text-xs text-danger">Stok bahan akan dikembalikan. Uang tunai yang sudah masuk laci tidak otomatis berubah.</p>
           </div>
         )}
         <ErrorNote>{error}</ErrorNote>
@@ -178,7 +178,7 @@ function OrderModal({ order: o, onClose, onVoided }: { order: Order; onClose: ()
 
 function Row({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex justify-between text-stone-600">
+    <div className="flex justify-between text-fg-muted">
       <dt>{label}</dt>
       <dd>{formatNumber(value)}</dd>
     </div>

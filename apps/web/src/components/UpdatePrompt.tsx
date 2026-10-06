@@ -17,7 +17,7 @@ export function UpdatePrompt() {
   }, []);
   if (!update) return null;
   return (
-    <div className="fixed bottom-4 left-4 z-30 flex items-center gap-3 rounded-2xl bg-stone-900 px-4 py-3 text-white shadow-xl">
+    <div className="fixed bottom-4 left-4 z-30 flex items-center gap-3 rounded-2xl bg-fg px-4 py-3 text-white shadow-xl">
       <span className="text-sm font-semibold">Versi baru aplikasi tersedia.</span>
       <Button size="sm" variant="warning" icon={<RefreshCw className="size-4" />} onClick={() => void update()}>
         Perbarui

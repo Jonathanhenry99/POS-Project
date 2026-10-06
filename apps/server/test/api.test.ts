@@ -61,6 +61,7 @@ function makeOrder(productName: string, optionNames: string[], qty: number, over
     cashierName: 'Kasir 1',
     createdAt: new Date().toISOString(),
     customerName: '',
+    orderType: 'dine_in',
     items,
     discount: null,
     servicePct: pricing.servicePct,
@@ -307,7 +308,7 @@ describe('laporan & admin', () => {
     expect(res.body.orderCount).toBe(0);
     expect(res.body.voidCount).toBe(3);
 
-    const o = makeOrder('Matcha Latte', ['Regular', 'Hot'], 3, { payment: undefined as never });
+    const o = makeOrder('Matcha Latte', ['Regular', 'Hot'], 3, { payment: undefined as never, orderType: 'take_away' });
     o.payment = { method: 'qris', amount: o.total, tendered: o.total, change: 0, reference: 'QR-1' };
     await request(app).put(`/api/orders/${o.id}`).set(asDevice('kasir')).send(o).expect(201);
 
@@ -316,6 +317,12 @@ describe('laporan & admin', () => {
     expect(after.netSales).toBe(o.total);
     expect(after.byMethod).toEqual([{ method: 'qris', label: 'QRIS', count: 1, amount: o.total }]);
     expect(after.topProducts[0]).toMatchObject({ name: 'Matcha Latte', qty: 3 });
+    // HPP: 3 x (10 gr matcha x 350 + 200 ml susu x harga susu terbaru 20 + 1 cup x 900) = 3 x 8.400
+    expect(after.cogs).toBe(25200);
+    expect(after.grossProfit).toBe(o.subtotal - o.discountAmount - 25200);
+    expect(after.byOrderType).toEqual([{ type: 'take_away', label: 'Take Away', count: 1, amount: o.total }]);
+    expect(after.heatmap).toHaveLength(1);
+    expect(after.slowMovers.some((p: { name: string }) => p.name === 'Croissant Butter')).toBe(true);
 
     const csv = await request(app).get(`/api/reports/orders.csv?from=${today}&to=${today}`).set(asOwner());
     expect(csv.status).toBe(200);

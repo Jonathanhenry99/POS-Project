@@ -12,6 +12,7 @@
     "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
     "@mourden/shared": "*",
     "idb": "^8.0.3",
     "lucide-react": "^1.52.0",

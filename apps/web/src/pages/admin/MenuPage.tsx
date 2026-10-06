@@ -63,24 +63,24 @@ function Products({ catalog, reload }: { catalog: Catalog; reload: () => void })
           Tambah produk
         </Button>
       </div>
-      <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-        <ul className="divide-y divide-stone-100">
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <ul className="divide-y divide-line">
           {list.map((p) => (
             <li key={p.id}>
-              <button onClick={() => setEditing(p)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-stone-50">
+              <button onClick={() => setEditing(p)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2">
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2 font-semibold">
                     {p.name}
                     {!p.active && <Badge>Nonaktif</Badge>}
                     {p.soldOut && <Badge tone="red">Habis</Badge>}
                   </p>
-                  <p className="text-sm text-stone-500">
+                  <p className="text-sm text-fg-muted">
                     {catName(p.categoryId)}
                     {p.optionGroupIds.length > 0 && ` · ${p.optionGroupIds.map((g) => catalog.optionGroups.find((x) => x.id === g)?.name).filter(Boolean).join(', ')}`}
                   </p>
                 </div>
                 <span className="font-semibold tabular">{formatNumber(p.price)}</span>
-                <Pencil className="size-4 text-stone-400" />
+                <Pencil className="size-4 text-fg-subtle" />
               </button>
             </li>
           ))}
@@ -148,7 +148,7 @@ function ProductForm({ catalog, product, onClose, onSaved }: { catalog: Catalog;
         </div>
         <Field label="Kode / SKU (opsional)">{(id) => <TextInput id={id} value={form.sku} onChange={(e) => set('sku', e.target.value)} />}</Field>
         <div>
-          <p className="mb-2 text-sm font-semibold text-stone-700">Varian & add-on yang berlaku</p>
+          <p className="mb-2 text-sm font-semibold text-fg">Varian & add-on yang berlaku</p>
           <div className="flex flex-wrap gap-2">
             {catalog.optionGroups.map((g) => {
               const on = form.optionGroupIds.includes(g.id);
@@ -156,7 +156,7 @@ function ProductForm({ catalog, product, onClose, onSaved }: { catalog: Catalog;
                 <button
                   key={g.id}
                   onClick={() => set('optionGroupIds', on ? form.optionGroupIds.filter((x) => x !== g.id) : [...form.optionGroupIds, g.id])}
-                  className={cx('h-11 rounded-xl border-2 px-3 text-sm font-semibold', on ? 'border-brand-700 bg-brand-50' : 'border-stone-200')}
+                  className={cx('h-11 rounded-xl border-2 px-3 text-sm font-semibold', on ? 'border-primary bg-primary/8' : 'border-line')}
                 >
                   {g.name}
                 </button>
@@ -182,14 +182,14 @@ function Categories({ catalog, reload }: { catalog: Catalog; reload: () => void 
       <Button className="mb-3" icon={<Plus className="size-5" />} onClick={() => setEditing('new')}>
         Tambah kategori
       </Button>
-      <ul className="divide-y divide-stone-100 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+      <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
         {catalog.categories.map((c) => (
           <li key={c.id}>
-            <button onClick={() => setEditing(c)} className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-stone-50">
+            <button onClick={() => setEditing(c)} className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-surface-2">
               <span className="font-semibold">
                 {c.name} {!c.active && <Badge>Nonaktif</Badge>}
               </span>
-              <span className="text-sm text-stone-500">
+              <span className="text-sm text-fg-muted">
                 {count(c.id)} produk · urutan {c.sort}
               </span>
             </button>
@@ -245,13 +245,13 @@ function Groups({ catalog, reload }: { catalog: Catalog; reload: () => void }) {
       </Button>
       <div className="grid gap-3 md:grid-cols-2">
         {catalog.optionGroups.map((g) => (
-          <button key={g.id} onClick={() => setEditing(g)} className="rounded-2xl border border-stone-200 bg-white p-4 text-left hover:bg-stone-50">
+          <button key={g.id} onClick={() => setEditing(g)} className="rounded-2xl border border-line bg-surface p-4 text-left hover:bg-surface-2">
             <p className="flex items-center gap-2 font-semibold">
               {g.name}
               <Badge tone="blue">{g.multi ? 'Pilih banyak' : 'Pilih satu'}</Badge>
               {g.required && <Badge tone="amber">Wajib</Badge>}
             </p>
-            <p className="mt-1 text-sm text-stone-600">
+            <p className="mt-1 text-sm text-fg-muted">
               {g.options
                 .filter((o) => o.active)
                 .map((o) => (o.priceDelta ? `${o.name} (+${formatNumber(o.priceDelta)})` : o.name))
@@ -307,7 +307,7 @@ function GroupForm({ group, onClose, onSaved }: { group: OptionGroup | null; onC
                 <div className="w-40 shrink-0">
                   <MoneyInput value={o.priceDelta} onChange={(n) => setOptions((list) => list.map((x, j) => (j === i ? { ...x, priceDelta: n } : x)))} />
                 </div>
-                <button aria-label="Hapus pilihan" disabled={options.length === 1} onClick={() => setOptions((list) => list.filter((_, j) => j !== i))} className="grid size-11 shrink-0 place-items-center rounded-xl text-stone-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-30">
+                <button aria-label="Hapus pilihan" disabled={options.length === 1} onClick={() => setOptions((list) => list.filter((_, j) => j !== i))} className="grid size-11 shrink-0 place-items-center rounded-xl text-fg-muted hover:bg-danger/10 hover:text-danger disabled:opacity-30">
                   <Trash2 className="size-5" />
                 </button>
               </div>

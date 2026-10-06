@@ -36,15 +36,15 @@ export function ActivatePage() {
 
   return (
     <div className="flex min-h-full items-center justify-center p-4">
-      <form onSubmit={submit} className="flex w-full max-w-md flex-col gap-4 rounded-3xl bg-white p-6 shadow-sm">
-        <Link to="/login" className="flex items-center gap-1 text-sm font-semibold text-stone-600">
+      <form onSubmit={submit} className="flex w-full max-w-md flex-col gap-4 rounded-3xl bg-surface p-6 shadow-sm">
+        <Link to="/login" className="flex items-center gap-1 text-sm font-semibold text-fg-muted">
           <ArrowLeft className="size-4" /> Kembali
         </Link>
         <div className="flex items-center gap-3">
-          <ShieldCheck className="size-8 text-emerald-600" />
+          <ShieldCheck className="size-8 text-success" />
           <h1 className="text-xl font-bold">Aktifkan tablet kasir</h1>
         </div>
-        <p className="text-sm text-stone-600">
+        <p className="text-sm text-fg-muted">
           Setelah aktif, tablet ini bisa dipakai berjualan dan mencetak struk walau internet putus. Kasir cukup login dengan PIN. Hanya owner
           yang bisa mengaktifkan.
         </p>

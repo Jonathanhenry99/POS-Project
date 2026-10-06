@@ -84,8 +84,8 @@ describe('RawBT', () => {
 describe('transaksi offline-first', () => {
   it('nomor struk berurutan per hari dengan kode perangkat', async () => {
     mockFetch([offline, offline, offline]);
-    const a = await checkout({ lines: [line(25000)], discount: null, customerName: '', method: 'cash', tendered: 30000, reference: '' });
-    const b = await checkout({ lines: [line(30000, 2)], discount: null, customerName: 'Budi', method: 'qris', tendered: 0, reference: '' });
+    const a = await checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 30000, reference: '' });
+    const b = await checkout({ lines: [line(30000, 2)], discount: null, customerName: 'Budi', orderType: 'take_away', method: 'qris', tendered: 0, reference: '' });
     const date = businessDate(new Date().toISOString(), 'Asia/Jakarta').slice(2).replace(/-/g, '');
     expect(a.number).toBe(`A${date}-001`);
     expect(b.number).toBe(`A${date}-002`);
@@ -96,12 +96,12 @@ describe('transaksi offline-first', () => {
   });
 
   it('menolak uang tunai kurang dari total', async () => {
-    await expect(checkout({ lines: [line(25000)], discount: null, customerName: '', method: 'cash', tendered: 10000, reference: '' })).rejects.toThrow('kurang');
+    await expect(checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 10000, reference: '' })).rejects.toThrow('kurang');
   });
 
   it('saat offline transaksi tetap tersimpan dan menunggu di antrean', async () => {
     mockFetch([offline, offline]);
-    const order = await checkout({ lines: [line(25000)], discount: null, customerName: '', method: 'cash', tendered: 50000, reference: '' });
+    const order = await checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
     await flushOutbox();
     const [saved] = await listOrders();
     expect(saved.id).toBe(order.id);
@@ -114,7 +114,7 @@ describe('transaksi offline-first', () => {
 
   it('saat online kembali, antrean terkirim berurutan dan transaksi ditandai tersinkron', async () => {
     mockFetch([offline, offline]);
-    const order = await checkout({ lines: [line(25000)], discount: null, customerName: '', method: 'cash', tendered: 50000, reference: '' });
+    const order = await checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
     await flushOutbox();
     const calls = mockFetch([ok]);
     await flushOutbox();
@@ -128,8 +128,8 @@ describe('transaksi offline-first', () => {
 
   it('data yang ditolak server ditandai gagal tanpa menahan antrean lain', async () => {
     mockFetch([offline, offline, offline]);
-    await checkout({ lines: [line(25000)], discount: null, customerName: '', method: 'cash', tendered: 50000, reference: '' });
-    await checkout({ lines: [line(15000)], discount: null, customerName: '', method: 'cash', tendered: 50000, reference: '' });
+    await checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
+    await checkout({ lines: [line(15000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
     await flushOutbox();
     mockFetch([rejected, ok]);
     await flushOutbox();
@@ -144,7 +144,7 @@ describe('transaksi offline-first', () => {
 
   it('void offline diantrekan setelah transaksinya', async () => {
     mockFetch([offline, offline]);
-    const order = await checkout({ lines: [line(25000)], discount: null, customerName: '', method: 'cash', tendered: 50000, reference: '' });
+    const order = await checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
     const voided = await voidOrder(order, 'Salah input', null);
     expect(voided.status).toBe('void');
     const queue = await listOutbox();
@@ -154,9 +154,9 @@ describe('transaksi offline-first', () => {
 
   it('tutup kasir menghitung kas seharusnya dan menutup shift', async () => {
     mockFetch([offline, offline, offline, offline]);
-    const a = await checkout({ lines: [line(20000)], discount: null, customerName: '', method: 'cash', tendered: 50000, reference: '' });
-    await checkout({ lines: [line(40000)], discount: null, customerName: '', method: 'card', tendered: 0, reference: '' });
-    const c = await checkout({ lines: [line(10000)], discount: null, customerName: '', method: 'cash', tendered: 10500, reference: '' });
+    const a = await checkout({ lines: [line(20000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
+    await checkout({ lines: [line(40000)], discount: null, customerName: '', orderType: 'dine_in', method: 'card', tendered: 0, reference: '' });
+    const c = await checkout({ lines: [line(10000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 10500, reference: '' });
     await voidOrder(c, 'Batal', null);
     const shift = await closeShift(221000, '');
     expect(shift.summary!.orderCount).toBe(2);
@@ -170,6 +170,6 @@ describe('transaksi offline-first', () => {
 
   it('tidak bisa berjualan tanpa shift aktif', async () => {
     await closeShift(200000, '');
-    await expect(checkout({ lines: [line(25000)], discount: null, customerName: '', method: 'cash', tendered: 30000, reference: '' })).rejects.toThrow('shift');
+    await expect(checkout({ lines: [line(25000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 30000, reference: '' })).rejects.toThrow('shift');
   });
 });

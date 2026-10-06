@@ -65,15 +65,15 @@ function StockLevels() {
         <Button icon={<Plus className="size-5" />} onClick={() => setEditing('new')}>
           Tambah bahan
         </Button>
-        <span className="ml-auto text-sm text-stone-600">Nilai stok ± {formatRupiah(value)}</span>
+        <span className="ml-auto text-sm text-fg-muted">Nilai stok ± {formatRupiah(value)}</span>
       </div>
       <ErrorNote>{error}</ErrorNote>
       {loading && !data && <Spinner className="mx-auto my-10" />}
       {data && !list.length && <Empty title="Belum ada bahan" />}
       {list.length > 0 && (
-        <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white">
+        <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
           <table className="w-full min-w-[720px] text-sm">
-            <thead className="bg-stone-50 text-left text-stone-500">
+            <thead className="bg-surface-2 text-left text-fg-muted">
               <tr>
                 <th className="px-3 py-2">Bahan</th>
                 <th className="px-3 py-2 text-right">Stok</th>
@@ -84,20 +84,20 @@ function StockLevels() {
                 <th className="px-3 py-2 text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100">
+            <tbody className="divide-y divide-line">
               {list.map((i) => (
                 <tr key={i.id}>
                   <td className="px-3 py-2">
                     <p className="font-semibold">{i.name}</p>
-                    <p className="text-xs text-stone-500">
+                    <p className="text-xs text-fg-muted">
                       {STATION_LABEL[i.station]} · {formatRupiah(i.costPerUnit)}/{i.unit}
                     </p>
                   </td>
                   <td className="px-3 py-2 text-right font-semibold tabular">
                     {formatNumber(i.stock)} {i.unit}
                   </td>
-                  <td className="px-3 py-2 text-right text-stone-500 tabular">{formatNumber(i.minStock)}</td>
-                  <td className="px-3 py-2 text-right text-stone-500 tabular">{i.avgDailyUsage ? formatNumber(i.avgDailyUsage) : '-'}</td>
+                  <td className="px-3 py-2 text-right text-fg-muted tabular">{formatNumber(i.minStock)}</td>
+                  <td className="px-3 py-2 text-right text-fg-muted tabular">{i.avgDailyUsage ? formatNumber(i.avgDailyUsage) : '-'}</td>
                   <td className="px-3 py-2 text-right tabular">{i.daysLeft === null ? '-' : `± ${i.daysLeft} hari`}</td>
                   <td className="px-3 py-2">
                     <Badge tone={i.status === 'aman' ? 'green' : i.status === 'menipis' ? 'amber' : 'red'}>{i.status}</Badge>
@@ -105,10 +105,10 @@ function StockLevels() {
                   <td className="px-3 py-2">
                     <div className="flex justify-end gap-1">
                       <IconBtn label="Barang masuk" onClick={() => setMoving({ item: i, type: 'purchase' })}>
-                        <PackagePlus className="size-5 text-emerald-700" />
+                        <PackagePlus className="size-5 text-success" />
                       </IconBtn>
                       <IconBtn label="Terbuang" onClick={() => setMoving({ item: i, type: 'waste' })}>
-                        <PackageMinus className="size-5 text-red-700" />
+                        <PackageMinus className="size-5 text-danger" />
                       </IconBtn>
                       <IconBtn label="Koreksi stok" onClick={() => setMoving({ item: i, type: 'adjust' })}>
                         <SlidersHorizontal className="size-5" />
@@ -132,7 +132,7 @@ function StockLevels() {
 
 function IconBtn({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button aria-label={label} title={label} onClick={onClick} className="grid size-10 place-items-center rounded-lg hover:bg-stone-100">
+    <button aria-label={label} title={label} onClick={onClick} className="grid size-10 place-items-center rounded-lg hover:bg-surface-3">
       {children}
     </button>
   );
@@ -240,7 +240,7 @@ function MovementForm({ item, type, onClose, onSaved }: { item: StockLevel; type
   return (
     <Modal open size="sm" onClose={onClose} title={`${title} · ${item.name}`} footer={<Button className="flex-1" size="lg" loading={busy} disabled={amount <= 0} onClick={submit}>Simpan</Button>}>
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-stone-600">
+        <p className="text-sm text-fg-muted">
           Stok sekarang: {formatNumber(item.stock)} {item.unit}
         </p>
         {type === 'adjust' && (
@@ -293,20 +293,20 @@ function Movements() {
       {loading && !data && <Spinner className="mx-auto my-10" />}
       {data && !data.length && <Empty title="Tidak ada pergerakan" />}
       {data && data.length > 0 && (
-        <ul className="divide-y divide-stone-100 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+        <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
           {data.map((m) => (
             <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
               <div>
                 <p className="font-semibold">
                   {m.ingredientName} <Badge>{TYPE_LABEL[m.type]}</Badge>
                 </p>
-                <p className="text-xs text-stone-500">
+                <p className="text-xs text-fg-muted">
                   {formatDateTime(m.createdAt, tz)}
                   {m.userName && ` · ${m.userName}`}
                   {m.note && ` · ${m.note}`}
                 </p>
               </div>
-              <span className={cx('font-semibold tabular', m.qty < 0 ? 'text-red-700' : 'text-emerald-700')}>
+              <span className={cx('font-semibold tabular', m.qty < 0 ? 'text-danger' : 'text-success')}>
                 {m.qty > 0 ? '+' : ''}
                 {formatNumber(m.qty)} {m.unit}
               </span>
@@ -346,16 +346,16 @@ function OpnameHistory() {
       <ul className="flex flex-col gap-2">
         {data?.map((o) => (
           <li key={o.id}>
-            <button onClick={() => setOpen(o)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-left hover:bg-stone-50">
+            <button onClick={() => setOpen(o)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-left hover:bg-surface-2">
               <div>
                 <p className="font-semibold">
                   {formatDateLabel(o.businessDate)} · {STATION_LABEL[o.station]}
                 </p>
-                <p className="text-sm text-stone-500">
+                <p className="text-sm text-fg-muted">
                   {o.userName} · {o.itemCount} bahan · {o.diffCount} selisih
                 </p>
               </div>
-              <span className={cx('font-semibold tabular', o.diffValue < 0 ? 'text-red-700' : o.diffValue > 0 ? 'text-emerald-700' : 'text-stone-500')}>{formatRupiah(o.diffValue)}</span>
+              <span className={cx('font-semibold tabular', o.diffValue < 0 ? 'text-danger' : o.diffValue > 0 ? 'text-success' : 'text-fg-muted')}>{formatRupiah(o.diffValue)}</span>
             </button>
           </li>
         ))}
@@ -366,7 +366,7 @@ function OpnameHistory() {
             <Spinner className="mx-auto my-6" />
           ) : (
             <table className="w-full text-sm">
-              <thead className="text-left text-stone-500">
+              <thead className="text-left text-fg-muted">
                 <tr>
                   <th className="py-1">Bahan</th>
                   <th className="py-1 text-right">Sistem</th>
@@ -374,13 +374,13 @@ function OpnameHistory() {
                   <th className="py-1 text-right">Selisih</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-100">
+              <tbody className="divide-y divide-line">
                 {detail.data.items.map((i) => (
                   <tr key={i.ingredientId}>
                     <td className="py-2">{i.name}</td>
                     <td className="py-2 text-right tabular">{formatNumber(i.systemQty)}</td>
                     <td className="py-2 text-right tabular">{formatNumber(i.countedQty)}</td>
-                    <td className={cx('py-2 text-right font-semibold tabular', i.diff < 0 ? 'text-red-700' : i.diff > 0 ? 'text-emerald-700' : 'text-stone-400')}>
+                    <td className={cx('py-2 text-right font-semibold tabular', i.diff < 0 ? 'text-danger' : i.diff > 0 ? 'text-success' : 'text-fg-subtle')}>
                       {i.diff > 0 ? '+' : ''}
                       {formatNumber(i.diff)} {i.unit}
                     </td>

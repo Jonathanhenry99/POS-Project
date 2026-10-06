@@ -1,17 +1,17 @@
-import { Boxes, CloudOff, CloudUpload, History, LayoutDashboard, Lock, Printer, Receipt, RefreshCw, Wallet, Wifi } from 'lucide-react';
-import { useEffect } from 'react';
+import { Boxes, CloudOff, History, LayoutDashboard, Lock, Printer, Receipt, RefreshCw, Store, Wallet } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
-import { can, ROLE_LABEL } from '@mourden/shared';
-import { cx } from '../components/ui';
+import { can, formatNumber, userLabel } from '@mourden/shared';
+import { StatusDot, cx } from '../components/ui';
+import { listOrders, useOrdersVersion } from '../lib/pos';
 import { logout } from '../lib/session';
 import { appStore, useApp } from '../lib/state';
-import { DRIVERS, usePrintStatus, usePrinterConfig } from '../printing/service';
+import { usePrintStatus } from '../printing/service';
 
 const OWNER_IDLE_LOCK_MS = 10 * 60_000;
 
 export function TabletShell() {
   const user = useApp((s) => s.user)!;
-  const storeName = useApp((s) => s.data?.settings.store.name);
   const navigate = useNavigate();
 
   // Owner yang lupa keluar di tablet otomatis terkunci setelah 10 menit tidak ada aktivitas.
@@ -33,50 +33,55 @@ export function TabletShell() {
   }, [user.role, navigate]);
 
   const tab = ({ isActive }: { isActive: boolean }) =>
-    cx('flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold', isActive ? 'bg-white text-brand-900' : 'text-brand-100 hover:bg-white/10');
+    cx(
+      'press flex h-11 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold',
+      isActive ? 'bg-white text-primary shadow-[0_6px_20px_-8px_rgb(0_0_0/0.45)]' : 'text-white/85 hover:bg-white/12 hover:text-white',
+    );
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-2 bg-brand-900 px-3 text-white">
-        <span className="mr-2 hidden max-w-40 truncate text-lg font-extrabold md:block">{storeName}</span>
-        <nav className="flex gap-1">
-          <NavLink to="/kasir" className={tab}>
-            <Receipt className="size-5" /> Kasir
-          </NavLink>
-          <NavLink to="/riwayat" className={tab}>
-            <History className="size-5" /> Riwayat
-          </NavLink>
-          <NavLink to="/shift" className={tab}>
-            <Wallet className="size-5" /> Shift
-          </NavLink>
-          {can(user.role, 'stock.opname') && (
-            <NavLink to="/stok" className={tab}>
-              <Boxes className="size-5" /> Stok
+      <header className="bg-grad-header relative shrink-0 text-white">
+        <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
+        <div className="relative flex h-16 items-center gap-3 px-3">
+          <StoreBlock />
+          <nav className="ml-2 flex gap-1 rounded-2xl bg-black/10 p-1">
+            <NavLink to="/kasir" className={tab}>
+              <Receipt className="size-5" /> Kasir
             </NavLink>
-          )}
-          {can(user.role, 'admin') && (
-            <NavLink to="/admin" className={tab}>
-              <LayoutDashboard className="size-5" /> Admin
+            <NavLink to="/riwayat" className={tab}>
+              <History className="size-5" /> Riwayat
             </NavLink>
-          )}
-        </nav>
-        <div className="ml-auto flex items-center gap-1">
-          <SyncPill />
-          <PrinterPill />
-          <button
-            onClick={() => {
-              logout();
-              navigate('/login', { replace: true });
-            }}
-            className="flex h-11 items-center gap-2 rounded-xl px-3 text-left hover:bg-white/10"
-            title="Kunci / ganti kasir"
-          >
-            <span className="hidden text-right leading-tight sm:block">
-              <span className="block text-sm font-semibold">{user.name}</span>
-              <span className="block text-xs text-brand-200">{ROLE_LABEL[user.role]}</span>
-            </span>
-            <Lock className="size-5" />
-          </button>
+            <NavLink to="/shift" className={tab}>
+              <Wallet className="size-5" /> Shift
+            </NavLink>
+            {can(user.role, 'stock.opname') && (
+              <NavLink to="/stok" className={tab}>
+                <Boxes className="size-5" /> Stok
+              </NavLink>
+            )}
+            {can(user.role, 'admin') && (
+              <NavLink to="/admin" className={tab}>
+                <LayoutDashboard className="size-5" /> Admin
+              </NavLink>
+            )}
+          </nav>
+          <div className="ml-auto flex items-center gap-2">
+            <ShiftChip />
+            <Clock />
+            <SyncPill />
+            <PrinterPill />
+            <button
+              onClick={() => {
+                logout();
+                navigate('/login', { replace: true });
+              }}
+              className="press grid size-11 place-items-center rounded-xl bg-white/12 hover:bg-white/20"
+              title="Kunci / ganti kasir"
+              aria-label="Kunci / ganti kasir"
+            >
+              <Lock className="size-5" />
+            </button>
+          </div>
         </div>
       </header>
       <main className="min-h-0 flex-1">
@@ -86,38 +91,102 @@ export function TabletShell() {
   );
 }
 
+function StoreBlock() {
+  const user = useApp((s) => s.user)!;
+  const storeName = useApp((s) => s.data?.settings.store.name);
+  const shiftOpen = useApp((s) => !!s.activeShift);
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white/15 ring-1 ring-white/25">
+        <Store className="size-5" />
+      </span>
+      <div className="hidden min-w-0 leading-tight xl:block">
+        <p className="truncate text-[15px] font-extrabold tracking-tight">{storeName}</p>
+        <p className="flex items-center gap-1.5 text-xs text-white/80">
+          {userLabel(user)} <span className="text-white/40">|</span>
+          <span className={cx('italic', !shiftOpen && 'text-amber-200')}>{shiftOpen ? 'Shift Open' : 'Shift Close'}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** Ringkasan penjualan shift berjalan (dihitung di tablet, tetap jalan offline). */
+function ShiftChip() {
+  const shift = useApp((s) => s.activeShift);
+  const version = useOrdersVersion();
+  const [stats, setStats] = useState({ count: 0, total: 0 });
+  useEffect(() => {
+    if (!shift) return;
+    void listOrders({ shiftId: shift.id }).then((list) => {
+      const paid = list.filter((o) => o.status === 'paid');
+      setStats({ count: paid.length, total: paid.reduce((s, o) => s + o.total, 0) });
+    });
+  }, [shift, version]);
+  if (!shift) return null;
+  return (
+    <div className="hidden items-center gap-2 rounded-xl bg-white/12 px-3 py-1.5 leading-tight lg:flex" title="Penjualan shift ini">
+      <div>
+        <p className="text-[10px] font-semibold tracking-wider text-white/70 uppercase">Shift ini</p>
+        <p key={stats.total} className="animate-fade-in text-sm font-bold tabular">
+          {stats.count} trx · {formatNumber(stats.total)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Clock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="hidden text-right leading-tight md:block">
+      <p className="text-[11px] text-white/75">{now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}</p>
+      <p className="text-[15px] font-bold tabular">{now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+    </div>
+  );
+}
+
 function SyncPill() {
   const online = useApp((s) => s.online);
   const sync = useApp((s) => s.sync);
-  const label = !online ? 'Offline' : sync.pending ? `${sync.pending} antre` : 'Online';
+  const label = !online ? 'Offline' : sync.failed ? `${sync.failed} gagal` : sync.pending ? `${sync.pending} antre` : 'Online';
   return (
     <NavLink
       to="/sinkron"
       title="Status sinkronisasi"
       className={cx(
-        'flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold',
-        !online ? 'bg-amber-500 text-stone-950' : sync.failed ? 'bg-red-600' : 'hover:bg-white/10',
+        'press flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold',
+        !online ? 'bg-warning text-on-warning' : sync.failed ? 'bg-danger text-white' : 'bg-white text-success',
       )}
     >
-      {!online ? <CloudOff className="size-5" /> : sync.syncing ? <RefreshCw className="size-5 animate-spin" /> : sync.pending ? <CloudUpload className="size-5" /> : <Wifi className="size-5" />}
-      <span className="hidden lg:inline">{sync.failed ? `${sync.failed} gagal` : label}</span>
+      {!online ? (
+        <CloudOff className="size-4" />
+      ) : sync.syncing ? (
+        <RefreshCw className="size-4 animate-spin" />
+      ) : (
+        <StatusDot tone={sync.failed ? 'red' : sync.pending ? 'amber' : 'green'} pulse={!sync.failed} />
+      )}
+      {label}
     </NavLink>
   );
 }
 
 function PrinterPill() {
   const status = usePrintStatus();
-  const config = usePrinterConfig();
-  const driver = DRIVERS.find((d) => d.id === config.driver);
   const error = status.state === 'error';
   return (
     <NavLink
       to="/printer"
-      title={`Printer: ${driver?.label}`}
-      className={cx('flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold', error ? 'bg-red-600' : 'hover:bg-white/10')}
+      title="Printer"
+      aria-label="Pengaturan printer"
+      className={cx('press relative grid size-11 place-items-center rounded-xl', error ? 'bg-danger' : 'bg-white/12 hover:bg-white/20')}
     >
-      <Printer className="size-5" />
-      <span className="hidden lg:inline">{error ? 'Gagal cetak' : status.state === 'printing' ? 'Mencetak…' : 'Printer'}</span>
+      <Printer className={cx('size-5', status.state === 'printing' && 'animate-pulse')} />
+      {error && <span className="absolute -top-1 -right-1 size-3 rounded-full border-2 border-white bg-danger" />}
     </NavLink>
   );
 }

@@ -21,6 +21,7 @@ const orderSchema = z.object({
   cashierName: z.string().max(60),
   createdAt: iso,
   customerName: z.string().max(60),
+  orderType: z.enum(['dine_in', 'take_away']).default('dine_in'),
   items: z
     .array(
       z.object({
@@ -90,8 +91,8 @@ ordersRouter.put('/orders/:id', needDevice, need('pos.sell'), async (req, res) =
       `insert into orders (
          id, number, device_id, shift_id, cashier_id, cashier_name, created_at, business_date, customer_name,
          discount, subtotal, discount_amount, service_pct, service_amount, tax_pct, tax_label, tax_amount,
-         rounding_amount, total, payment_method, payment_amount, tendered, change, payment_reference
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+         rounding_amount, total, payment_method, payment_amount, tendered, change, payment_reference, order_type
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
        on conflict (id) do nothing`,
       [
         order.id,
@@ -118,6 +119,7 @@ ordersRouter.put('/orders/:id', needDevice, need('pos.sell'), async (req, res) =
         order.payment.tendered,
         order.payment.change,
         order.payment.reference,
+        order.orderType,
       ],
     );
     if (!rowCount) return 'exists' as const;
@@ -230,7 +232,7 @@ ordersRouter.get('/orders/:id', need('admin'), async (req, res) => {
 
 const orderSelect = `
   select id, number, device_id as "deviceId", shift_id as "shiftId", cashier_id as "cashierId", cashier_name as "cashierName",
-    created_at as "createdAt", customer_name as "customerName", discount, subtotal, discount_amount as "discountAmount",
+    created_at as "createdAt", customer_name as "customerName", order_type as "orderType", discount, subtotal, discount_amount as "discountAmount",
     service_pct as "servicePct", service_amount as "serviceAmount", tax_pct as "taxPct", tax_label as "taxLabel",
     tax_amount as "taxAmount", rounding_amount as "roundingAmount", total,
     json_build_object('method', payment_method, 'amount', payment_amount, 'tendered', tendered, 'change', change,

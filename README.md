@@ -2,8 +2,8 @@
 
 POS cafe berbasis web (PWA) untuk tablet kasir Android, dengan **cetak struk satu sentuhan tanpa dialog Ctrl+P**.
 
-- **Tablet kasir**: jualan, struk, riwayat, void, dan tutup kasir. Tetap jalan walau internet putus.
-- **HP owner**: laporan penjualan, stok, menu, resep/HPP, pengguna, dan pengaturan.
+- **Tablet kasir** (alur ala ESB): Dine In / Take Away, kategori Favorit otomatis, varian & add-on, Promo/diskon, **Simpan / Tersimpan** (tahan pesanan), **Cetak Struk** tagihan sebelum bayar, Bayar & Cetak satu sentuhan, riwayat, void, dan tutup kasir. Tetap jalan walau internet putus.
+- **HP owner**: dashboard (KPI vs periode sebelumnya, 5 menu terlaris, analisa otomatis, komposisi), Rangkuman Penjualan, Penjualan Menu, Pembayaran, Batal & Void, Laba Kotor (dari HPP resep), peta jam ramai, ekspor CSV, stok, menu, resep/HPP, pengguna, dan pengaturan.
 - **HP barista/kitchen**: stock opname malam, catat barang masuk, dan catat barang terbuang.
 
 ## Kenapa web (PWA), bukan aplikasi Android?
@@ -35,7 +35,6 @@ Jalur cetak dipilih di menu **Printer** di tablet (tidak di-hardcode):
 packages/shared   Logika murni bersama: hitung total, struk ESC/POS (32 kolom), hash PIN, tipe data
 apps/server       Express + PostgreSQL: auth, sinkronisasi transaksi, stok, opname, laporan
 apps/web          React + Vite PWA: layar kasir offline-first, admin owner, halaman stok
-_mockup-lama      Kode mockup sebelumnya (arsip referensi)
 ```
 
 Keputusan penting:

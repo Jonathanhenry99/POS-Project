@@ -39,7 +39,7 @@ export function DiscountSheet({ subtotal, onClose }: { subtotal: number; onClose
         footer={
           <>
             {cart.discount && (
-              <Button variant="outline" onClick={() => apply(null)} className="text-red-600">
+              <Button variant="outline" onClick={() => apply(null)} className="text-danger">
                 Hapus diskon
               </Button>
             )}
@@ -61,14 +61,14 @@ export function DiscountSheet({ subtotal, onClose }: { subtotal: number; onClose
               { value: 'amount', label: 'Nominal (Rp)' },
             ]}
           />
-          <div className="rounded-2xl bg-stone-100 px-4 py-3 text-right text-3xl font-bold tabular">
+          <div className="rounded-2xl bg-surface-2 px-4 py-3 text-right text-3xl font-bold tabular">
             {type === 'percent' ? `${value}%` : formatRupiah(value)}
-            <span className="block text-sm font-normal text-stone-500">dari subtotal {formatNumber(subtotal)}</span>
+            <span className="block text-sm font-normal text-fg-muted">dari subtotal {formatNumber(subtotal)}</span>
           </div>
           {type === 'percent' && (
             <div className="grid grid-cols-6 gap-2">
               {QUICK_PCT.map((p) => (
-                <button key={p} onClick={() => setRaw(String(p))} className={cx('h-11 rounded-xl font-semibold', value === p ? 'bg-brand-900 text-white' : 'bg-stone-100')}>
+                <button key={p} onClick={() => setRaw(String(p))} className={cx('h-11 rounded-xl font-semibold', value === p ? 'bg-primary text-white' : 'bg-surface-2')}>
                   {p}%
                 </button>
               ))}
@@ -79,14 +79,14 @@ export function DiscountSheet({ subtotal, onClose }: { subtotal: number; onClose
             <p className="mb-2 text-sm font-semibold">Alasan</p>
             <div className="mb-2 flex flex-wrap gap-2">
               {REASONS.map((r) => (
-                <button key={r} onClick={() => setReason(r)} className={cx('h-10 rounded-lg px-3 text-sm font-medium', reason === r ? 'bg-brand-900 text-white' : 'bg-stone-100')}>
+                <button key={r} onClick={() => setReason(r)} className={cx('h-10 rounded-lg px-3 text-sm font-medium', reason === r ? 'bg-primary text-white' : 'bg-surface-2')}>
                   {r}
                 </button>
               ))}
             </div>
             <input value={reason} onChange={(e) => setReason(e.target.value.slice(0, 100))} placeholder="Alasan lain" className={inputClass} />
           </div>
-          {needsOwner && <p className="text-sm text-amber-700">Diskon di atas {maxPct}% perlu persetujuan owner.</p>}
+          {needsOwner && <p className="text-sm text-warning">Diskon di atas {maxPct}% perlu persetujuan owner.</p>}
         </div>
       </Modal>
       {askOwner && (

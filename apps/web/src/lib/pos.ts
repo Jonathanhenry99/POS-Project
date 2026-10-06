@@ -7,6 +7,7 @@ import {
   type Discount,
   type OrderItem,
   type OrderItemOption,
+  type OrderType,
   type PaymentMethod,
   type PricingSettings,
   type PublicUser,
@@ -15,7 +16,13 @@ import {
 import { uuid } from './id';
 import { db, kvGet, kvSet, type LocalOrder, type OutboxItem } from './idb';
 import { appStore } from './state';
+import { createStore, useStore } from './store';
 import { flushOutbox, updateCounts } from './sync';
+
+/** Naik setiap ada transaksi baru/void, agar ringkasan di layar ikut diperbarui. */
+export const ordersVersion = createStore({ v: 0 });
+const bumpOrders = () => ordersVersion.set((s) => ({ v: s.v + 1 }));
+export const useOrdersVersion = () => useStore(ordersVersion, (s) => s.v);
 
 export interface CartLine {
   key: string;
@@ -61,6 +68,7 @@ export interface CheckoutInput {
   lines: CartLine[];
   discount: Discount | null;
   customerName: string;
+  orderType: OrderType;
   method: PaymentMethod;
   /** Uang diterima (tunai). */
   tendered: number;
@@ -94,6 +102,7 @@ export async function checkout(input: CheckoutInput): Promise<LocalOrder> {
     cashierName: user.name,
     createdAt: now,
     customerName: input.customerName.trim(),
+    orderType: input.orderType,
     items,
     discount: input.discount && totals.discountAmount > 0 ? input.discount : null,
     servicePct: pricing.serviceEnabled ? pricing.servicePct : 0,
@@ -125,6 +134,7 @@ export async function checkout(input: CheckoutInput): Promise<LocalOrder> {
     ),
   ]);
   await tx.done;
+  bumpOrders();
   await updateCounts();
   void flushOutbox();
   return order;
@@ -168,6 +178,7 @@ export async function voidOrder(order: LocalOrder, reason: string, approvedBy: P
   );
   await tx.objectStore('orders').put(voided);
   await tx.done;
+  bumpOrders();
   await updateCounts();
   void flushOutbox();
   return voided;

@@ -53,6 +53,7 @@ function order(overrides: Partial<Order> = {}): Order {
     cashierName: 'Rina',
     createdAt: '2026-10-06T07:05:00.000Z',
     customerName: 'Budi',
+    orderType: 'dine_in',
     items,
     discount,
     servicePct: 5,
@@ -142,6 +143,20 @@ describe('saleReceipt', () => {
     const voided = toPlainText(saleReceipt(order({ status: 'void', voidReason: 'Salah input' }), store, DEFAULT_LAYOUT), 32);
     expect(voided).toContain('DIBATALKAN');
     expect(voided).toContain('Alasan batal: Salah input');
+  });
+
+  it('menampilkan tipe pesanan', () => {
+    expect(toPlainText(saleReceipt(order(), store, DEFAULT_LAYOUT), 32)).toContain('DINE IN');
+    expect(toPlainText(saleReceipt(order({ orderType: 'take_away' }), store, DEFAULT_LAYOUT), 32)).toContain('TAKE AWAY');
+  });
+
+  it('tagihan sebelum bayar tanpa nomor dan tanpa info pembayaran', () => {
+    const text = toPlainText(saleReceipt(order(), store, DEFAULT_LAYOUT, { bill: true }), 32);
+    expect(text).toContain('TAGIHAN - BELUM DIBAYAR');
+    expect(text).toContain(row('TOTAL', 'Rp 97.335'));
+    expect(text).not.toContain('A261006-007');
+    expect(text).not.toContain('Kembali');
+    text.split('\n').forEach((l) => expect(l.length).toBeLessThanOrEqual(32));
   });
 
   it('pembayaran non-tunai menampilkan metode dan referensi', () => {

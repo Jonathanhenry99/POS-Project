@@ -38,14 +38,14 @@ export function SyncPage() {
         <h1 className="text-2xl font-bold">Sinkronisasi</h1>
         <Card>
           <div className="flex flex-wrap items-center gap-4">
-            {online ? <Wifi className="size-8 text-emerald-600" /> : <CloudOff className="size-8 text-amber-600" />}
+            {online ? <Wifi className="size-8 text-success" /> : <CloudOff className="size-8 text-warning" />}
             <div className="flex-1">
               <p className="font-bold">{online ? 'Terhubung ke server' : 'Offline — transaksi tetap tersimpan di tablet'}</p>
-              <p className="text-sm text-stone-600">
+              <p className="text-sm text-fg-muted">
                 {sync.pending} menunggu dikirim · {sync.failed} gagal
                 {sync.lastSyncAt && ` · terakhir terkirim ${formatDateTime(sync.lastSyncAt, tz)}`}
               </p>
-              {sync.lastError && <p className="text-sm text-red-700">{sync.lastError}</p>}
+              {sync.lastError && <p className="text-sm text-danger">{sync.lastError}</p>}
             </div>
             <Button icon={<RefreshCw className="size-5" />} loading={busy || sync.syncing} onClick={syncNow}>
               Sinkron sekarang
@@ -66,15 +66,15 @@ export function SyncPage() {
           {!items.length ? (
             <Empty title="Semua data sudah terkirim" />
           ) : (
-            <ul className="divide-y divide-stone-100">
+            <ul className="divide-y divide-line">
               {items.map((i) => (
                 <li key={i.seq} className="flex items-start justify-between gap-3 py-2">
                   <div>
                     <p className="font-semibold">{i.label}</p>
-                    <p className="text-xs text-stone-500">
+                    <p className="text-xs text-fg-muted">
                       {formatDateTime(i.createdAt, tz)} · {i.attempts}x dicoba
                     </p>
-                    {i.lastError && <p className="text-sm text-red-700">{i.lastError}</p>}
+                    {i.lastError && <p className="text-sm text-danger">{i.lastError}</p>}
                   </div>
                   <Badge tone={i.status === 'failed' ? 'red' : 'amber'}>{i.status === 'failed' ? 'Gagal' : 'Menunggu'}</Badge>
                 </li>
@@ -85,17 +85,17 @@ export function SyncPage() {
 
         <Card title="Perangkat ini">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-            <dt className="text-stone-500">Nama</dt>
+            <dt className="text-fg-muted">Nama</dt>
             <dd>{device?.name}</dd>
-            <dt className="text-stone-500">Kode struk</dt>
+            <dt className="text-fg-muted">Kode struk</dt>
             <dd>{device?.code}</dd>
-            <dt className="text-stone-500">Data menu</dt>
+            <dt className="text-fg-muted">Data menu</dt>
             <dd>{data ? formatDateTime(data.fetchedAt, tz) : '-'}</dd>
           </dl>
           {user?.role === 'owner' && (
             <Button
               variant="outline"
-              className="mt-4 text-red-600"
+              className="mt-4 text-danger"
               icon={<Trash2 className="size-5" />}
               onClick={async () => {
                 const ok = await confirmDialog({

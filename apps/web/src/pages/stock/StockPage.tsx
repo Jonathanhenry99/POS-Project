@@ -30,7 +30,7 @@ export function StockPage() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-10 flex h-14 items-center gap-2 bg-brand-900 px-3 text-white">
+      <header className="sticky top-0 z-10 flex h-16 items-center gap-2 bg-grad-header px-3 text-white">
         {(canSell || can(user.role, 'admin')) && (
           <Link to={canSell ? '/kasir' : '/admin'} className="grid size-11 place-items-center rounded-xl hover:bg-white/10" aria-label="Kembali">
             <ArrowLeft className="size-5" />
@@ -143,18 +143,18 @@ function Opname() {
     const value = diffs.reduce((s, i) => s + i.diffValue, 0);
     return (
       <Card title="Hasil opname">
-        <p className="mb-3 text-stone-600">
+        <p className="mb-3 text-fg-muted">
           {result.items.length} bahan dihitung · {diffs.length} ada selisih
           {isOwner && ` · nilai selisih ${formatRupiah(value)}`}
         </p>
         {diffs.length === 0 ? (
-          <p className="font-semibold text-emerald-700">Semua cocok dengan sistem. Mantap!</p>
+          <p className="font-semibold text-success">Semua cocok dengan sistem. Mantap!</p>
         ) : (
-          <ul className="divide-y divide-stone-100">
+          <ul className="divide-y divide-line">
             {diffs.map((i) => (
               <li key={i.ingredientId} className="flex justify-between py-2">
                 <span>{i.name}</span>
-                <span className={cx('font-semibold tabular', i.diff < 0 ? 'text-red-700' : 'text-emerald-700')}>
+                <span className={cx('font-semibold tabular', i.diff < 0 ? 'text-danger' : 'text-success')}>
                   {i.diff > 0 ? '+' : ''}
                   {formatNumber(i.diff)} {i.unit}
                 </span>
@@ -181,11 +181,11 @@ function Opname() {
       {sheet && (
         <>
           {sheet.doneToday && (
-            <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+            <p className="rounded-xl bg-success/10 p-3 text-sm text-success">
               Opname {STATION_LABEL[station]} hari ini sudah dilakukan oleh {sheet.doneToday.userName}. Mengisi lagi akan membuat opname baru.
             </p>
           )}
-          <p className="text-sm text-stone-600">
+          <p className="text-sm text-fg-muted">
             Hitung stok fisik setiap bahan lalu isi jumlahnya. {!isOwner && 'Stok sistem disembunyikan supaya hitungan jujur.'}
           </p>
           {!sheet.items.length ? (
@@ -193,11 +193,11 @@ function Opname() {
           ) : (
             <ul className="flex flex-col gap-2">
               {sheet.items.map((i) => (
-                <li key={i.id} className="flex items-center gap-3 rounded-2xl bg-white p-3">
+                <li key={i.id} className="flex items-center gap-3 rounded-2xl bg-surface p-3">
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold">{i.name}</p>
                     {isOwner && (
-                      <p className="text-xs text-stone-500">
+                      <p className="text-xs text-fg-muted">
                         Sistem: {formatNumber(i.stock)} {i.unit}
                       </p>
                     )}
@@ -211,7 +211,7 @@ function Opname() {
                       aria-label={`Jumlah ${i.name}`}
                       className={cx(inputClass, 'w-28 text-right text-lg tabular')}
                     />
-                    <span className="w-12 text-sm text-stone-500">{i.unit}</span>
+                    <span className="w-12 text-sm text-fg-muted">{i.unit}</span>
                   </div>
                 </li>
               ))}
@@ -289,9 +289,9 @@ function RecordMovement() {
           <ul className="flex flex-col gap-2">
             {filtered.map((i) => (
               <li key={i.id}>
-                <button onClick={() => setSelected(i)} className="flex w-full items-center justify-between rounded-2xl bg-white p-3 text-left">
+                <button onClick={() => setSelected(i)} className="flex w-full items-center justify-between rounded-2xl bg-surface p-3 text-left">
                   <span className="font-semibold">{i.name}</span>
-                  <span className="flex items-center gap-2 text-sm text-stone-500">
+                  <span className="flex items-center gap-2 text-sm text-fg-muted">
                     {i.status !== 'aman' && <Badge tone={i.status === 'habis' ? 'red' : 'amber'}>{i.status}</Badge>}
                     {STATION_LABEL[i.station]}
                   </span>

@@ -63,22 +63,22 @@ export function OptionSheet({
       onClose={onClose}
       title={
         <span>
-          {product.name} <span className="font-semibold text-stone-500">· {formatNumber(unitPrice)}</span>
+          {product.name} <span className="font-semibold text-fg-muted">· {formatNumber(unitPrice)}</span>
         </span>
       }
       footer={
         <>
           {onRemove && (
-            <Button variant="outline" className="text-red-600" icon={<Trash2 className="size-5" />} onClick={onRemove}>
+            <Button variant="outline" className="text-danger" icon={<Trash2 className="size-5" />} onClick={onRemove}>
               Hapus
             </Button>
           )}
           <div className="flex items-center gap-2">
-            <button aria-label="Kurangi" onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid size-12 place-items-center rounded-xl bg-stone-100 active:bg-stone-200">
+            <button aria-label="Kurangi" onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid size-12 place-items-center rounded-xl bg-surface-2 active:bg-surface-3">
               <Minus className="size-5" />
             </button>
             <span className="w-10 text-center text-xl font-bold tabular">{qty}</span>
-            <button aria-label="Tambah" onClick={() => setQty((q) => Math.min(999, q + 1))} className="grid size-12 place-items-center rounded-xl bg-stone-100 active:bg-stone-200">
+            <button aria-label="Tambah" onClick={() => setQty((q) => Math.min(999, q + 1))} className="grid size-12 place-items-center rounded-xl bg-surface-2 active:bg-surface-3">
               <Plus className="size-5" />
             </button>
           </div>
@@ -93,7 +93,7 @@ export function OptionSheet({
           <div key={g.id}>
             <p className="mb-2 font-semibold">
               {g.name}{' '}
-              <span className="text-sm font-normal text-stone-500">{g.multi ? '(boleh lebih dari satu)' : g.required ? '(wajib pilih)' : '(opsional)'}</span>
+              <span className="text-sm font-normal text-fg-muted">{g.multi ? '(boleh lebih dari satu)' : g.required ? '(wajib pilih)' : '(opsional)'}</span>
             </p>
             <div className="flex flex-wrap gap-2">
               {g.options.map((o) => {
@@ -104,7 +104,7 @@ export function OptionSheet({
                     onClick={() => toggle(g, o.id)}
                     className={cx(
                       'flex h-12 min-w-24 flex-col items-center justify-center rounded-xl border-2 px-4 leading-tight font-semibold',
-                      on ? 'border-brand-700 bg-brand-50 text-brand-900' : 'border-stone-200 bg-white text-stone-700',
+                      on ? 'border-primary bg-primary/8 text-primary' : 'border-line bg-surface text-fg',
                     )}
                   >
                     {o.name}
@@ -122,7 +122,7 @@ export function OptionSheet({
               <button
                 key={n}
                 onClick={() => setNote((cur) => (cur.toLowerCase().includes(n.toLowerCase()) ? cur : cur ? `${cur}, ${n}` : n))}
-                className="h-10 rounded-lg bg-stone-100 px-3 text-sm font-medium active:bg-stone-200"
+                className="h-10 rounded-lg bg-surface-2 px-3 text-sm font-medium active:bg-surface-3"
               >
                 {n}
               </button>

@@ -37,28 +37,28 @@ export function ShiftsPage() {
             >
               {s.summary ? (
                 <dl className="tabular grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                  <dt className="text-stone-500">Transaksi</dt>
+                  <dt className="text-fg-muted">Transaksi</dt>
                   <dd className="text-right">{s.summary.orderCount}</dd>
-                  <dt className="text-stone-500">Penjualan bersih</dt>
+                  <dt className="text-fg-muted">Total penjualan</dt>
                   <dd className="text-right font-semibold">{formatNumber(s.summary.netSales)}</dd>
                   {PAYMENT_METHODS.map((m) => (
                     <div key={m} className="contents">
-                      <dt className="text-stone-500">{PAYMENT_LABEL[m]}</dt>
+                      <dt className="text-fg-muted">{PAYMENT_LABEL[m]}</dt>
                       <dd className="text-right">{formatNumber(s.summary!.byMethod[m])}</dd>
                     </div>
                   ))}
-                  <dt className="text-stone-500">Modal awal</dt>
+                  <dt className="text-fg-muted">Modal awal</dt>
                   <dd className="text-right">{formatNumber(s.openingCash)}</dd>
-                  <dt className="text-stone-500">Kas seharusnya</dt>
+                  <dt className="text-fg-muted">Kas seharusnya</dt>
                   <dd className="text-right">{formatNumber(s.summary.expectedCash)}</dd>
-                  <dt className="text-stone-500">Kas dihitung</dt>
-                  <dd className={cx('text-right font-semibold', diff ? 'text-red-700' : 'text-emerald-700')}>{formatNumber(s.countedCash ?? 0)}</dd>
+                  <dt className="text-fg-muted">Kas dihitung</dt>
+                  <dd className={cx('text-right font-semibold', diff ? 'text-danger' : 'text-success')}>{formatNumber(s.countedCash ?? 0)}</dd>
                 </dl>
               ) : (
-                <p className="text-sm text-stone-500">Rekap muncul setelah kasir ditutup.</p>
+                <p className="text-sm text-fg-muted">Rekap muncul setelah kasir ditutup.</p>
               )}
               {s.cashMovements.length > 0 && (
-                <ul className="mt-3 border-t border-stone-100 pt-2 text-sm">
+                <ul className="mt-3 border-t border-line pt-2 text-sm">
                   {s.cashMovements.map((m) => (
                     <li key={m.id} className="flex justify-between">
                       <span>
@@ -69,7 +69,7 @@ export function ShiftsPage() {
                   ))}
                 </ul>
               )}
-              {s.closingNote && <p className="mt-2 text-sm text-stone-600">Catatan: {s.closingNote}</p>}
+              {s.closingNote && <p className="mt-2 text-sm text-fg-muted">Catatan: {s.closingNote}</p>}
             </Card>
           );
         })}

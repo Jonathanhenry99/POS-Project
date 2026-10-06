@@ -1,6 +1,6 @@
 import { Banknote, CreditCard, Printer, QrCode } from 'lucide-react';
 import { useState } from 'react';
-import { cashSuggestions, formatNumber, formatRupiah, PAYMENT_LABEL, type PaymentMethod } from '@mourden/shared';
+import { cashSuggestions, formatNumber, formatRupiah, ORDER_TYPE_LABEL, PAYMENT_LABEL, type PaymentMethod } from '@mourden/shared';
 import { Button, ErrorNote, Modal, NumPad, applyNumKey, cx, inputClass } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import type { LocalOrder } from '../../lib/idb';
@@ -8,10 +8,10 @@ import { checkout } from '../../lib/pos';
 import { printOrder, usePrinterConfig } from '../../printing/service';
 import { clearCart, useCart } from './cart';
 
-const METHODS: { id: PaymentMethod; icon: typeof Banknote }[] = [
-  { id: 'cash', icon: Banknote },
-  { id: 'qris', icon: QrCode },
-  { id: 'card', icon: CreditCard },
+const METHODS: { id: PaymentMethod; icon: typeof Banknote; hint: string }[] = [
+  { id: 'cash', icon: Banknote, hint: 'Hitung kembalian' },
+  { id: 'qris', icon: QrCode, hint: 'Scan QR merchant' },
+  { id: 'card', icon: CreditCard, hint: 'Mesin EDC' },
 ];
 
 export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClose: () => void; onPaid: (order: LocalOrder) => void }) {
@@ -26,6 +26,7 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
   const tendered = parseInt(raw || '0', 10);
   const change = tendered - total;
   const valid = method !== 'cash' || tendered >= total;
+  const items = cart.lines.reduce((s, l) => s + l.qty, 0);
 
   /**
    * Satu sentuhan: simpan transaksi di tablet, lalu langsung kirim struk ke printer.
@@ -40,6 +41,7 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
         lines: cart.lines,
         discount: cart.discount,
         customerName: cart.customerName,
+        orderType: cart.orderType,
         method,
         tendered: method === 'cash' ? tendered : total,
         reference,
@@ -57,37 +59,47 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
     <Modal open size="xl" onClose={onClose} dismissable={!busy} title="Pembayaran">
       <div className="grid gap-5 md:grid-cols-[1fr_1.1fr]">
         <div className="flex flex-col gap-4">
-          <div className="rounded-2xl bg-brand-900 p-4 text-white">
-            <p className="text-sm text-brand-200">Total bayar</p>
-            <p className="text-4xl font-extrabold tabular">{formatRupiah(total)}</p>
+          <div className="bg-grad-header relative overflow-hidden rounded-3xl p-5 text-white">
+            <div className="bg-grid absolute inset-0 opacity-50" />
+            <div className="relative">
+              <p className="text-sm text-white/80">
+                Total bayar · {items} item · {ORDER_TYPE_LABEL[cart.orderType]}
+                {cart.customerName && ` · ${cart.customerName}`}
+              </p>
+              <p className="mt-1 text-[40px] leading-none font-extrabold tracking-tight tabular">{formatRupiah(total)}</p>
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {METHODS.map(({ id, icon: Icon }) => (
+            {METHODS.map(({ id, icon: Icon, hint }) => (
               <button
                 key={id}
                 onClick={() => setMethod(id)}
                 className={cx(
-                  'flex h-20 flex-col items-center justify-center gap-1 rounded-2xl border-2 font-semibold',
-                  method === id ? 'border-brand-700 bg-brand-50 text-brand-900' : 'border-stone-200 bg-white text-stone-600',
+                  'press flex h-24 flex-col items-center justify-center gap-1 rounded-2xl border-2',
+                  method === id ? 'border-primary bg-primary/8 text-primary shadow-[0_10px_24px_-14px_var(--primary)]' : 'border-line bg-surface text-fg-muted hover:border-line-strong',
                 )}
               >
                 <Icon className="size-7" />
-                {PAYMENT_LABEL[id]}
+                <span className="font-bold">{PAYMENT_LABEL[id]}</span>
+                <span className="text-[11px] font-medium opacity-70">{hint}</span>
               </button>
             ))}
           </div>
 
           {method === 'cash' ? (
-            <div className="rounded-2xl border border-stone-200 p-4">
-              <p className="text-sm text-stone-500">Uang diterima</p>
-              <p className="text-3xl font-bold tabular">{formatRupiah(tendered)}</p>
-              <p className={cx('mt-2 text-lg font-semibold tabular', change >= 0 ? 'text-emerald-700' : 'text-stone-400')}>
-                Kembalian: {change >= 0 ? formatRupiah(change) : '-'}
-              </p>
+            <div className="rounded-3xl border border-line bg-surface-2 p-4">
+              <p className="text-sm text-fg-muted">Uang diterima</p>
+              <p className="text-3xl font-extrabold tabular">{formatRupiah(tendered)}</p>
+              <div className={cx('mt-3 flex items-center justify-between rounded-2xl px-4 py-3 transition-colors', change >= 0 && tendered > 0 ? 'bg-success/12' : 'bg-surface-3')}>
+                <span className="font-semibold text-fg-muted">Kembalian</span>
+                <span key={change} className={cx('animate-fade-in text-2xl font-extrabold tabular', change >= 0 && tendered > 0 ? 'text-success' : 'text-fg-subtle')}>
+                  {change >= 0 && tendered > 0 ? formatRupiah(change) : '—'}
+                </span>
+              </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <p className="font-semibold text-amber-900">
+            <div className="animate-fade-in flex flex-col gap-3 rounded-3xl border border-warning/40 bg-warning/8 p-4">
+              <p className="font-semibold text-fg">
                 Pastikan pembayaran {PAYMENT_LABEL[method]} sudah <u>berhasil</u> di {method === 'qris' ? 'HP/akun merchant' : 'mesin EDC'} sebelum menekan tombol.
               </p>
               <input
@@ -108,7 +120,10 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
                   <button
                     key={n}
                     onClick={() => setRaw(String(n))}
-                    className={cx('h-12 rounded-xl text-sm font-bold tabular', tendered === n ? 'bg-brand-900 text-white' : 'bg-brand-50 text-brand-900')}
+                    className={cx(
+                      'press h-12 rounded-2xl border text-sm font-bold tabular',
+                      tendered === n ? 'border-transparent bg-grad-accent text-white' : 'border-accent/30 bg-accent/8 text-accent hover:bg-accent/12',
+                    )}
                   >
                     {i === 0 ? 'Uang pas' : formatNumber(n)}
                   </button>

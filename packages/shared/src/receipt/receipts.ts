@@ -1,6 +1,6 @@
 // Penyusun struk: data transaksi -> daftar baris. Murni (tanpa efek samping) agar mudah dites.
 import { formatDateTime, formatNumber, formatRupiah } from '../format';
-import { PAYMENT_LABEL } from '../permissions';
+import { ORDER_TYPE_LABEL, PAYMENT_LABEL } from '../permissions';
 import type { Order, Shift, StoreSettings } from '../types';
 import type { Align, ReceiptOp } from './escpos';
 import { rule, twoCol, wrap, wrapIndented } from './layout';
@@ -69,19 +69,21 @@ export function saleReceipt(
   order: Order,
   store: StoreSettings,
   layout: ReceiptLayout,
-  opts: { reprint?: boolean } = {},
+  opts: { reprint?: boolean; bill?: boolean } = {},
 ): ReceiptOp[] {
   const w = layout.width;
   const doc = new Doc(w);
   header(doc, store);
 
-  if (order.status === 'void') doc.text('*** DIBATALKAN ***', { align: 'center', bold: true });
+  if (opts.bill) doc.text('TAGIHAN - BELUM DIBAYAR', { align: 'center', bold: true });
+  else if (order.status === 'void') doc.text('*** DIBATALKAN ***', { align: 'center', bold: true });
   else if (opts.reprint) doc.text('*** CETAK ULANG ***', { align: 'center', bold: true });
 
-  info(doc, 'No', order.number);
+  if (!opts.bill) info(doc, 'No', order.number);
   info(doc, 'Waktu', formatDateTime(order.createdAt, store.timezone));
   info(doc, 'Kasir', order.cashierName);
   if (order.customerName) info(doc, 'Nama', order.customerName);
+  if (order.orderType) doc.text(ORDER_TYPE_LABEL[order.orderType].toUpperCase(), { align: 'center', bold: true });
   doc.rule();
 
   for (const item of order.items) {
@@ -104,6 +106,11 @@ export function saleReceipt(
   doc.cols('TOTAL', formatRupiah(order.total), { bold: true, tall: true });
 
   const p = order.payment;
+  if (opts.bill) {
+    doc.rule();
+    doc.wrapped('Silakan lakukan pembayaran di kasir.', { align: 'center' });
+    return doc.finish(layout);
+  }
   if (p.method === 'cash') {
     doc.cols(PAYMENT_LABEL.cash, formatRupiah(p.tendered));
     doc.cols('Kembali', formatRupiah(p.change));
@@ -163,7 +170,7 @@ export function shiftReceipt(shift: Shift, store: StoreSettings, layout: Receipt
     if (s.discountTotal) doc.cols('Diskon', formatNumber(-s.discountTotal));
     if (s.serviceTotal) doc.cols('Service', formatNumber(s.serviceTotal));
     if (s.taxTotal) doc.cols('Pajak', formatNumber(s.taxTotal));
-    doc.cols('Penjualan bersih', formatNumber(s.netSales), { bold: true });
+    doc.cols('Total penjualan', formatNumber(s.netSales), { bold: true });
     doc.rule();
     doc.text('Per metode bayar', { bold: true });
     doc.cols(`  ${PAYMENT_LABEL.cash}`, formatNumber(s.byMethod.cash));

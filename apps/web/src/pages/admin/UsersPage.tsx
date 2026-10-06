@@ -27,15 +27,15 @@ export function UsersPage() {
       </PageHeader>
       <ErrorNote>{error}</ErrorNote>
       {loading && !data && <Spinner className="mx-auto my-10" />}
-      <ul className="divide-y divide-stone-100 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+      <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
         {data?.map((u) => (
           <li key={u.id}>
-            <button onClick={() => setEditing(u)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-stone-50">
+            <button onClick={() => setEditing(u)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-2">
               <div>
                 <p className="font-semibold">
                   {u.name} {!u.active && <Badge>Nonaktif</Badge>}
                 </p>
-                <p className="text-sm text-stone-500">@{u.username}</p>
+                <p className="text-sm text-fg-muted">@{u.username}</p>
               </div>
               <Badge tone={u.role === 'owner' ? 'blue' : 'stone'}>{ROLE_LABEL[u.role]}</Badge>
             </button>
@@ -93,14 +93,14 @@ function UserForm({ user, onClose, onSaved }: { user: PublicUser | null; onClose
           </Field>
         )}
         <div>
-          <p className="mb-2 text-sm font-semibold text-stone-700">Peran</p>
+          <p className="mb-2 text-sm font-semibold text-fg">Peran</p>
           <Segmented value={role} onChange={setRole} options={(['kasir', 'barista', 'kitchen', 'owner'] as Role[]).map((r) => ({ value: r, label: ROLE_LABEL[r] }))} />
-          <p className="mt-1 text-xs text-stone-500">{ROLE_HINT[role]}</p>
+          <p className="mt-1 text-xs text-fg-muted">{ROLE_HINT[role]}</p>
         </div>
         <Field label={user ? 'PIN baru (kosongkan bila tidak diganti)' : 'PIN (4-6 angka)'}>
           {(id) => (
             <div className="relative">
-              <KeyRound className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-stone-400" />
+              <KeyRound className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-fg-subtle" />
               <TextInput id={id} className="pl-10" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
             </div>
           )}

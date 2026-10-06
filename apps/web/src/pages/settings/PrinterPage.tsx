@@ -52,10 +52,10 @@ export function PrinterPage() {
                       onClick={() => savePrinterConfig({ driver: d.id })}
                       className={cx(
                         'flex items-start gap-3 rounded-xl border-2 p-3 text-left',
-                        config.driver === d.id ? 'border-brand-700 bg-brand-50' : 'border-stone-200 bg-white',
+                        config.driver === d.id ? 'border-primary bg-primary/8' : 'border-line bg-surface',
                       )}
                     >
-                      <span className={cx('mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border-2', config.driver === d.id ? 'border-brand-700 bg-brand-700 text-white' : 'border-stone-300')}>
+                      <span className={cx('mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border-2', config.driver === d.id ? 'border-primary bg-primary text-white' : 'border-line-strong')}>
                         {config.driver === d.id && <CheckCircle2 className="size-4" />}
                       </span>
                       <span className="flex-1">
@@ -69,7 +69,7 @@ export function PrinterPage() {
                           )}
                           {d.id === 'browser' && <Badge tone="red">Darurat</Badge>}
                         </span>
-                        <span className="block text-sm text-stone-600">{d.description}</span>
+                        <span className="block text-sm text-fg-muted">{d.description}</span>
                       </span>
                     </button>
                   ))}
@@ -115,7 +115,7 @@ export function PrinterPage() {
 
             <div className="flex flex-col gap-4">
               <Card title="Tes printer">
-                <p className="mb-3 text-sm text-stone-600">Cetak struk contoh untuk memastikan koneksi dan lebar kertas sudah benar.</p>
+                <p className="mb-3 text-sm text-fg-muted">Cetak struk contoh untuk memastikan koneksi dan lebar kertas sudah benar.</p>
                 <Button size="lg" className="w-full" icon={<Printer className="size-5" />} loading={status.state === 'printing'} onClick={() => void printTest()}>
                   Tes printer
                 </Button>
@@ -124,7 +124,7 @@ export function PrinterPage() {
                 </div>
               </Card>
               <Card title="Pratinjau struk tes">
-                <pre className="overflow-x-auto rounded-xl bg-stone-50 p-3 font-mono text-[12px] leading-snug">{preview}</pre>
+                <pre className="overflow-x-auto rounded-xl bg-surface-2 p-3 font-mono text-[12px] leading-snug">{preview}</pre>
               </Card>
             </div>
           </div>
@@ -152,33 +152,33 @@ function DriverSetup() {
 
   if (config.driver === 'rawbt') {
     return !isAndroid() ? (
-      <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">RawBT hanya berjalan di Android. Di perangkat ini, tes printer akan gagal.</p>
+      <p className="mt-3 rounded-xl bg-warning/10 p-3 text-sm text-warning">RawBT hanya berjalan di Android. Di perangkat ini, tes printer akan gagal.</p>
     ) : (
-      <p className="mt-3 text-sm text-stone-600">Pastikan aplikasi RawBT sudah terpasang dan printer dipilih di RawBT. Lihat tab “Panduan setup”.</p>
+      <p className="mt-3 text-sm text-fg-muted">Pastikan aplikasi RawBT sudah terpasang dan printer dipilih di RawBT. Lihat tab “Panduan setup”.</p>
     );
   }
   if (config.driver === 'webserial') {
     return (
       <div className="mt-3 flex flex-col gap-2">
-        {!webSerialSupported() && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Browser ini belum mendukung Web Serial. Perbarui Chrome ke versi 137 atau lebih baru.</p>}
+        {!webSerialSupported() && <p className="rounded-xl bg-warning/10 p-3 text-sm text-warning">Browser ini belum mendukung Web Serial. Perbarui Chrome ke versi 137 atau lebih baru.</p>}
         <Button variant="outline" icon={<Bluetooth className="size-5" />} loading={busy} disabled={!webSerialSupported()} onClick={() => pick(pickSerialPrinter)}>
           Pilih printer Bluetooth
         </Button>
-        <p className="text-xs text-stone-500">Printer harus sudah di-pair di Pengaturan Bluetooth Android.</p>
+        <p className="text-xs text-fg-muted">Printer harus sudah di-pair di Pengaturan Bluetooth Android.</p>
       </div>
     );
   }
   if (config.driver === 'webusb') {
     return (
       <div className="mt-3 flex flex-col gap-2">
-        {!webUsbSupported() && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Browser ini tidak mendukung WebUSB.</p>}
+        {!webUsbSupported() && <p className="rounded-xl bg-warning/10 p-3 text-sm text-warning">Browser ini tidak mendukung WebUSB.</p>}
         <Button variant="outline" icon={<Usb className="size-5" />} loading={busy} disabled={!webUsbSupported()} onClick={() => pick(pickUsbPrinter)}>
           Pilih printer USB
         </Button>
       </div>
     );
   }
-  return <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">Mode darurat: setiap cetak akan memunculkan dialog cetak. Kembalikan ke RawBT secepatnya.</p>;
+  return <p className="mt-3 rounded-xl bg-danger/10 p-3 text-sm text-danger">Mode darurat: setiap cetak akan memunculkan dialog cetak. Kembalikan ke RawBT secepatnya.</p>;
 }
 
 const STEPS: { title: string; items: string[] }[] = [
@@ -252,7 +252,7 @@ function SetupGuide() {
       <div className="flex flex-col gap-4">
         {STEPS.map((s) => (
           <Card key={s.title} title={s.title}>
-            <ol className="list-disc space-y-1.5 pl-5 text-stone-700">
+            <ol className="list-disc space-y-1.5 pl-5 text-fg">
               {s.items.map((i) => (
                 <li key={i}>{i}</li>
               ))}
@@ -270,16 +270,16 @@ function SetupGuide() {
         <ul className="flex flex-col gap-1">
           {CHECKLIST.map((c, i) => (
             <li key={c}>
-              <button onClick={() => toggle(i)} className="flex w-full items-start gap-3 rounded-xl p-2 text-left hover:bg-stone-50">
-                <span className={cx('mt-0.5 grid size-6 shrink-0 place-items-center rounded-md border-2', done.has(i) ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-stone-300')}>
+              <button onClick={() => toggle(i)} className="flex w-full items-start gap-3 rounded-xl p-2 text-left hover:bg-surface-2">
+                <span className={cx('mt-0.5 grid size-6 shrink-0 place-items-center rounded-md border-2', done.has(i) ? 'border-success bg-success text-white' : 'border-line-strong')}>
                   {done.has(i) && <CheckCircle2 className="size-4" />}
                 </span>
-                <span className={cx(done.has(i) && 'text-stone-400 line-through')}>{c}</span>
+                <span className={cx(done.has(i) && 'text-fg-subtle line-through')}>{c}</span>
               </button>
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-sm text-stone-500">
+        <p className="mt-3 text-sm text-fg-muted">
           {done.size}/{CHECKLIST.length} selesai. Jangan anggap cetak “sudah jalan” sebelum semua butir dicentang di tablet & printer asli.
         </p>
       </Card>

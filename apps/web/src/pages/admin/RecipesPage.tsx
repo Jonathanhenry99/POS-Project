@@ -34,9 +34,9 @@ export function RecipesPage() {
       <ErrorNote>{error}</ErrorNote>
       {loading && !data && <Spinner className="mx-auto my-10" />}
       {data && (
-        <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white">
+        <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
           <table className="w-full min-w-[560px] text-sm">
-            <thead className="bg-stone-50 text-left text-stone-500">
+            <thead className="bg-surface-2 text-left text-fg-muted">
               <tr>
                 <th className="px-3 py-2">Menu</th>
                 <th className="px-3 py-2 text-right">Harga</th>
@@ -45,19 +45,19 @@ export function RecipesPage() {
                 <th className="px-3 py-2" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100">
+            <tbody className="divide-y divide-line">
               {data.map((r) => (
-                <tr key={r.productId} onClick={() => setEditing(r)} className="cursor-pointer hover:bg-stone-50">
+                <tr key={r.productId} onClick={() => setEditing(r)} className="cursor-pointer hover:bg-surface-2">
                   <td className="px-3 py-3 font-semibold">
                     {r.name} {!r.lineCount && <Badge tone="amber">Belum ada resep</Badge>}
                   </td>
                   <td className="px-3 py-3 text-right tabular">{formatNumber(r.price)}</td>
                   <td className="px-3 py-3 text-right tabular">{formatNumber(r.cost)}</td>
-                  <td className={cx('px-3 py-3 text-right font-semibold tabular', r.marginPct < 50 ? 'text-red-700' : r.marginPct < 65 ? 'text-amber-700' : 'text-emerald-700')}>
+                  <td className={cx('px-3 py-3 text-right font-semibold tabular', r.marginPct < 50 ? 'text-danger' : r.marginPct < 65 ? 'text-warning' : 'text-success')}>
                     {r.lineCount ? `${r.marginPct}%` : '-'}
                   </td>
                   <td className="px-3 py-3 text-right">
-                    <Pencil className="ml-auto size-4 text-stone-400" />
+                    <Pencil className="ml-auto size-4 text-fg-subtle" />
                   </td>
                 </tr>
               ))}
@@ -123,12 +123,12 @@ function RecipeEditor({
   const section = (title: string, optionId: string | null, hint?: string) => {
     const idxs = (lines ?? []).map((l, i) => [l, i] as const).filter(([l]) => l.optionId === optionId);
     return (
-      <div key={optionId ?? 'base'} className="rounded-xl border border-stone-200 p-3">
+      <div key={optionId ?? 'base'} className="rounded-xl border border-line p-3">
         <div className="mb-2 flex items-center justify-between">
           <p className="font-semibold">{title}</p>
-          <span className="text-sm text-stone-500">HPP {formatRupiah(cost(optionId))}</span>
+          <span className="text-sm text-fg-muted">HPP {formatRupiah(cost(optionId))}</span>
         </div>
-        {hint && <p className="mb-2 text-xs text-stone-500">{hint}</p>}
+        {hint && <p className="mb-2 text-xs text-fg-muted">{hint}</p>}
         <div className="flex flex-col gap-2">
           {idxs.map(([l, i]) => {
             const ing = ingredients.find((x) => x.id === l.ingredientId);
@@ -148,8 +148,8 @@ function RecipeEditor({
                   className={cx(inputClass, 'w-24 text-right')}
                   aria-label="Takaran"
                 />
-                <span className="w-12 text-sm text-stone-500">{ing?.unit}</span>
-                <button aria-label="Hapus bahan" onClick={() => setLines((ls) => ls!.filter((_, j) => j !== i))} className="grid size-11 shrink-0 place-items-center rounded-xl text-stone-500 hover:bg-red-50 hover:text-red-600">
+                <span className="w-12 text-sm text-fg-muted">{ing?.unit}</span>
+                <button aria-label="Hapus bahan" onClick={() => setLines((ls) => ls!.filter((_, j) => j !== i))} className="grid size-11 shrink-0 place-items-center rounded-xl text-fg-muted hover:bg-danger/10 hover:text-danger">
                   <Trash2 className="size-5" />
                 </button>
               </div>
@@ -175,7 +175,7 @@ function RecipeEditor({
             <p>
               Harga {formatRupiah(summary.price)} · HPP dasar <b>{formatRupiah(baseCost)}</b>
             </p>
-            <p className="text-stone-500">Margin {summary.price ? Math.round(((summary.price - baseCost) / summary.price) * 100) : 0}%</p>
+            <p className="text-fg-muted">Margin {summary.price ? Math.round(((summary.price - baseCost) / summary.price) * 100) : 0}%</p>
           </div>
           <Button size="lg" loading={busy} disabled={!lines} onClick={submit}>
             Simpan resep

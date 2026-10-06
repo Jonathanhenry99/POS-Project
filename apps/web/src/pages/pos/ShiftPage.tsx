@@ -29,7 +29,7 @@ export function ShiftPage() {
     return (
       <div className="mx-auto flex max-w-xl flex-col gap-4 p-4">
         <Card title="Tidak ada shift aktif">
-          <p className="mb-3 text-stone-600">Buka shift dari layar Kasir untuk mulai berjualan.</p>
+          <p className="mb-3 text-fg-muted">Buka shift dari layar Kasir untuk mulai berjualan.</p>
           <Button onClick={() => navigate('/kasir')}>Ke layar kasir</Button>
         </Card>
         {lastClosed && <ClosedShiftCard shift={lastClosed} tz={tz} />}
@@ -40,7 +40,7 @@ export function ShiftPage() {
   return (
     <div className="mx-auto grid max-w-5xl gap-4 overflow-y-auto p-4 md:grid-cols-2">
       <Card title="Shift berjalan">
-        <p className="text-stone-600">
+        <p className="text-fg-muted">
           Dibuka {formatDateTime(shift.openedAt, tz)} oleh <b>{shift.openedByName}</b>
         </p>
         {summary && <SummaryTable summary={summary} openingCash={shift.openingCash} />}
@@ -55,14 +55,14 @@ export function ShiftPage() {
           }
         >
           {!shift.cashMovements.length ? (
-            <p className="text-sm text-stone-500">Contoh: beli es batu, setor uang ke owner, tambah uang kembalian.</p>
+            <p className="text-sm text-fg-muted">Contoh: beli es batu, setor uang ke owner, tambah uang kembalian.</p>
           ) : (
-            <ul className="divide-y divide-stone-100">
+            <ul className="divide-y divide-line">
               {shift.cashMovements.map((m) => (
                 <li key={m.id} className="flex items-center gap-2 py-2">
-                  {m.type === 'in' ? <ArrowDownCircle className="size-5 text-emerald-600" /> : <ArrowUpCircle className="size-5 text-red-600" />}
+                  {m.type === 'in' ? <ArrowDownCircle className="size-5 text-success" /> : <ArrowUpCircle className="size-5 text-danger" />}
                   <span className="flex-1">{m.note || (m.type === 'in' ? 'Kas masuk' : 'Kas keluar')}</span>
-                  <span className={cx('font-semibold tabular', m.type === 'in' ? 'text-emerald-700' : 'text-red-700')}>
+                  <span className={cx('font-semibold tabular', m.type === 'in' ? 'text-success' : 'text-danger')}>
                     {m.type === 'in' ? '+' : '-'}
                     {formatNumber(m.amount)}
                   </span>
@@ -97,10 +97,10 @@ function SummaryTable({ summary: s, openingCash }: { summary: ShiftSummary; open
           {s.voidCount ? ` (+${s.voidCount} void)` : ''}
         </span>
       </div>
-      {row('Penjualan bersih', s.netSales, true)}
-      <div className="my-2 border-t border-stone-100" />
+      {row('Total penjualan', s.netSales, true)}
+      <div className="my-2 border-t border-line" />
       {PAYMENT_METHODS.map((m) => row(PAYMENT_LABEL[m], s.byMethod[m]))}
-      <div className="my-2 border-t border-stone-100" />
+      <div className="my-2 border-t border-line" />
       {row('Modal awal', openingCash)}
       {row('Penjualan tunai', s.byMethod.cash)}
       {s.cashIn > 0 && row('Kas masuk', s.cashIn)}
@@ -220,15 +220,15 @@ function CloseShiftSheet({ summary, onClose, onClosed }: { summary: ShiftSummary
       }
     >
       <div className="flex flex-col gap-4">
-        <div className="rounded-xl bg-stone-100 p-3">
-          <p className="text-sm text-stone-600">Uang di laci seharusnya</p>
+        <div className="rounded-xl bg-surface-2 p-3">
+          <p className="text-sm text-fg-muted">Uang di laci seharusnya</p>
           <p className="text-2xl font-bold tabular">{formatRupiah(summary.expectedCash)}</p>
         </div>
         <Field label="Uang tunai yang dihitung di laci">
           {(id) => <MoneyInput id={id} value={counted ?? 0} onChange={(n) => setCounted(n)} autoFocus placeholder="Hitung lalu ketik" />}
         </Field>
         {diff !== null && (
-          <p className={cx('text-lg font-semibold', diff === 0 ? 'text-emerald-700' : 'text-red-700')}>
+          <p className={cx('text-lg font-semibold', diff === 0 ? 'text-success' : 'text-danger')}>
             {diff === 0 ? 'Pas, tidak ada selisih.' : `Selisih ${diff > 0 ? 'lebih' : 'kurang'} ${formatRupiah(Math.abs(diff))}`}
           </p>
         )}
@@ -249,7 +249,7 @@ function ClosedShiftCard({ shift, tz }: { shift: Shift; tz: string }) {
         </Button>
       }
     >
-      <p className="text-sm text-stone-600">
+      <p className="text-sm text-fg-muted">
         {formatDateTime(shift.openedAt, tz)} – {shift.closedAt && formatDateTime(shift.closedAt, tz)} · {shift.closedByName}
       </p>
       {shift.summary && <SummaryTable summary={shift.summary} openingCash={shift.openingCash} />}

@@ -39,8 +39,8 @@ export function HistoryPage() {
 
   return (
     <div className="grid h-full grid-cols-[minmax(320px,40%)_1fr]">
-      <div className="flex min-h-0 flex-col border-r border-stone-200 bg-white">
-        <div className="flex flex-col gap-2 border-b border-stone-100 p-3">
+      <div className="flex min-h-0 flex-col border-r border-line bg-surface">
+        <div className="flex flex-col gap-2 border-b border-line p-3">
           <Segmented
             value={scope}
             onChange={setScope}
@@ -50,11 +50,11 @@ export function HistoryPage() {
             ]}
           />
           <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-stone-400" />
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-fg-subtle" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari nomor / nama" className={cx(inputClass, 'h-11 pl-10')} />
           </div>
         </div>
-        <ul className="min-h-0 flex-1 divide-y divide-stone-100 overflow-y-auto">
+        <ul className="min-h-0 flex-1 divide-y divide-line overflow-y-auto">
           {filtered.map((o) => (
             <li key={o.id}>
               <button
@@ -62,7 +62,7 @@ export function HistoryPage() {
                   setSelectedId(o.id);
                   printStatusStore.set({ status: { state: 'idle' } });
                 }}
-                className={cx('flex w-full items-center gap-3 px-3 py-3 text-left', selected?.id === o.id ? 'bg-brand-50' : 'hover:bg-stone-50')}
+                className={cx('flex w-full items-center gap-3 px-3 py-3 text-left', selected?.id === o.id ? 'bg-primary/8' : 'hover:bg-surface-2')}
               >
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 font-semibold">
@@ -70,22 +70,22 @@ export function HistoryPage() {
                     {o.status === 'void' && <Badge tone="red">VOID</Badge>}
                     {o.sync !== 'synced' && (
                       <span title={o.sync === 'failed' ? `Gagal sinkron: ${o.syncError}` : 'Belum terkirim ke server'}>
-                        <CloudOff className={cx('size-4', o.sync === 'failed' ? 'text-red-600' : 'text-amber-600')} />
+                        <CloudOff className={cx('size-4', o.sync === 'failed' ? 'text-danger' : 'text-warning')} />
                       </span>
                     )}
                   </p>
-                  <p className="truncate text-sm text-stone-500">
+                  <p className="truncate text-sm text-fg-muted">
                     {scope === 'all' ? new Date(o.createdAt).toLocaleDateString('id-ID') + ' ' : ''}
                     {formatTime(o.createdAt, tz)} · {PAYMENT_LABEL[o.payment.method]}
                     {o.customerName && ` · ${o.customerName}`}
                   </p>
                 </div>
-                <span className={cx('font-semibold tabular', o.status === 'void' && 'text-stone-400 line-through')}>{formatNumber(o.total)}</span>
+                <span className={cx('font-semibold tabular', o.status === 'void' && 'text-fg-subtle line-through')}>{formatNumber(o.total)}</span>
               </button>
             </li>
           ))}
         </ul>
-        {!filtered.length && <Empty icon={<Receipt className="size-10 text-stone-300" />} title="Belum ada transaksi" />}
+        {!filtered.length && <Empty icon={<Receipt className="size-10 text-fg-subtle" />} title="Belum ada transaksi" />}
       </div>
       <div className="min-h-0 overflow-y-auto p-4">{selected ? <OrderDetail key={selected.id} order={selected} onChanged={load} /> : null}</div>
     </div>
@@ -114,7 +114,7 @@ function OrderDetail({ order, onChanged }: { order: LocalOrder; onChanged: () =>
           Cetak ulang
         </Button>
         {canVoid && (
-          <Button size="lg" variant="outline" className="text-red-600" icon={<Ban className="size-5" />} onClick={() => setVoiding(true)}>
+          <Button size="lg" variant="outline" className="text-danger" icon={<Ban className="size-5" />} onClick={() => setVoiding(true)}>
             Batalkan (void)
           </Button>
         )}
@@ -122,11 +122,11 @@ function OrderDetail({ order, onChanged }: { order: LocalOrder; onChanged: () =>
       <PrintStatusCard />
       {order.sync === 'failed' && <ErrorNote>Gagal sinkron ke server: {order.syncError}</ErrorNote>}
       {order.status === 'void' && (
-        <div className="rounded-xl bg-red-50 p-3 text-sm text-red-800">
+        <div className="rounded-xl bg-danger/10 p-3 text-sm text-danger">
           Dibatalkan oleh {order.voidedByName}. Alasan: {order.voidReason}
         </div>
       )}
-      <pre className="overflow-x-auto rounded-2xl border border-stone-200 bg-white p-4 font-mono text-[13px] leading-snug text-stone-800 shadow-sm">{preview}</pre>
+      <pre className="overflow-x-auto rounded-2xl border border-line bg-surface p-4 font-mono text-[13px] leading-snug text-fg shadow-sm">{preview}</pre>
       {voiding && (
         <VoidSheet
           order={order}
@@ -180,14 +180,14 @@ function VoidSheet({ order, onClose, onDone }: { order: LocalOrder; onClose: () 
         }
       >
         <div className="flex flex-col gap-3">
-          <p className="text-stone-700">
+          <p className="text-fg">
             Total <b>{formatRupiah(order.total)}</b> ({PAYMENT_LABEL[order.payment.method]}).
             {order.payment.method === 'cash' && ' Kembalikan uang tunai ke pelanggan.'} Stok bahan akan dikembalikan.
           </p>
           <p className="text-sm font-semibold">Alasan pembatalan</p>
           <div className="flex flex-wrap gap-2">
             {VOID_REASONS.map((r) => (
-              <button key={r} onClick={() => setReason(r)} className={cx('h-11 rounded-xl px-4 text-sm font-semibold', reason === r ? 'bg-red-600 text-white' : 'bg-stone-100')}>
+              <button key={r} onClick={() => setReason(r)} className={cx('h-11 rounded-xl px-4 text-sm font-semibold', reason === r ? 'bg-danger text-white' : 'bg-surface-2')}>
                 {r}
               </button>
             ))}

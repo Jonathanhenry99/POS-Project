@@ -29,9 +29,9 @@ export function Toaster() {
           role="status"
           className={cx(
             'pointer-events-auto flex max-w-md items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold shadow-lg',
-            t.tone === 'success' && 'bg-emerald-700 text-white',
-            t.tone === 'error' && 'bg-red-700 text-white',
-            t.tone === 'info' && 'bg-stone-800 text-white',
+            t.tone === 'success' && 'bg-success text-white',
+            t.tone === 'error' && 'bg-danger text-white',
+            t.tone === 'info' && 'bg-fg text-white',
           )}
         >
           {t.tone === 'success' ? <CheckCircle2 className="size-5 shrink-0" /> : t.tone === 'error' ? <AlertTriangle className="size-5 shrink-0" /> : <Info className="size-5 shrink-0" />}
@@ -86,7 +86,7 @@ export function ConfirmHost() {
         </>
       }
     >
-      <p className="text-stone-700">{req.message}</p>
+      <p className="text-fg">{req.message}</p>
     </Modal>
   );
 }

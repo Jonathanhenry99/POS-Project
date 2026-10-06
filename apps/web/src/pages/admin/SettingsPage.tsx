@@ -148,21 +148,21 @@ function Devices() {
   return (
     <Card title="Perangkat kasir">
       <ErrorNote>{error}</ErrorNote>
-      <ul className="divide-y divide-stone-100">
+      <ul className="divide-y divide-line">
         {data?.map((d) => (
           <li key={d.id} className="flex items-center gap-3 py-2">
-            <Tablet className="size-5 text-stone-500" />
+            <Tablet className="size-5 text-fg-muted" />
             <div className="flex-1">
-              <p className={cx('font-semibold', d.revokedAt && 'text-stone-400 line-through')}>
+              <p className={cx('font-semibold', d.revokedAt && 'text-fg-subtle line-through')}>
                 {d.name} <Badge>Kode {d.code}</Badge>
               </p>
-              <p className="text-xs text-stone-500">{d.lastSeenAt ? `Terakhir aktif ${formatDateTime(d.lastSeenAt, tz)}` : 'Belum pernah sinkron'}</p>
+              <p className="text-xs text-fg-muted">{d.lastSeenAt ? `Terakhir aktif ${formatDateTime(d.lastSeenAt, tz)}` : 'Belum pernah sinkron'}</p>
             </div>
             {!d.revokedAt && (
               <Button
                 size="sm"
                 variant="outline"
-                className="text-red-600"
+                className="text-danger"
                 onClick={async () => {
                   const ok = await confirmDialog({
                     title: `Cabut ${d.name}?`,
@@ -185,7 +185,7 @@ function Devices() {
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-xs text-stone-500">Untuk menambah tablet: buka aplikasi di tablet baru → “Jadikan perangkat ini tablet kasir”.</p>
+      <p className="mt-2 text-xs text-fg-muted">Untuk menambah tablet: buka aplikasi di tablet baru → “Jadikan perangkat ini tablet kasir”.</p>
     </Card>
   );
 }

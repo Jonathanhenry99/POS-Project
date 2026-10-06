@@ -10,7 +10,7 @@ export function OwnerApproval({ reason, onApproved, onClose }: { reason: string;
   const [busy, setBusy] = useState(false);
   return (
     <Modal open size="sm" onClose={onClose} title="Persetujuan owner">
-      <div className="mb-4 flex items-start gap-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+      <div className="mb-4 flex items-start gap-3 rounded-xl bg-warning/10 p-3 text-sm text-warning">
         <ShieldCheck className="size-5 shrink-0" />
         <span>{reason}</span>
       </div>

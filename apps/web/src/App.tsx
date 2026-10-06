@@ -48,7 +48,7 @@ function Home() {
     <div className="grid h-full place-items-center p-6 text-center">
       <div>
         <p className="text-lg font-bold">Akun kasir hanya bisa dipakai di tablet kasir.</p>
-        <p className="mt-1 text-stone-600">Login di tablet yang sudah diaktifkan owner.</p>
+        <p className="mt-1 text-fg-muted">Login di tablet yang sudah diaktifkan owner.</p>
       </div>
     </div>
   );
