@@ -1,5 +1,5 @@
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import { useState, type ComponentProps } from 'react';
+import { useState, type ComponentProps, type PointerEvent } from 'react';
 import { cx } from '../ui';
 
 /** Adaptasi sidebar referensi untuk React Router dan layar sentuh, tanpa dependensi animasi. */
@@ -11,11 +11,28 @@ export function useSidebarPreference(key: string, defaultCollapsed = false) {
     } catch { /* Pilihan tetap tersedia selama sesi jika storage dibatasi. */ }
     return defaultCollapsed;
   });
+  // Mouse/trackpad: perilaku seperti referensi (hover buka, keluar tutup).
+  // Status hover bersifat sementara; pilihan tombol untuk sentuhan tetap tersimpan.
+  const [hoverCollapsed, setHoverCollapsed] = useState<boolean | null>(() =>
+    typeof window !== 'undefined' && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches ? true : null,
+  );
   const setCollapsed = (value: boolean) => {
     setState(value);
+    setHoverCollapsed((current) => current === null ? null : value);
     try { localStorage.setItem(key, String(value)); } catch { /* abaikan */ }
   };
-  return [collapsed, setCollapsed] as const;
+  const hoverEvents = {
+    onPointerEnter: (event: PointerEvent<HTMLElement>) => {
+      if (event.pointerType === 'mouse') setHoverCollapsed(false);
+    },
+    onPointerLeave: (event: PointerEvent<HTMLElement>) => {
+      if (event.pointerType === 'mouse') setHoverCollapsed(true);
+    },
+    onPointerDown: (event: PointerEvent<HTMLElement>) => {
+      if (event.pointerType === 'touch' || event.pointerType === 'pen') setHoverCollapsed(null);
+    },
+  };
+  return [hoverCollapsed ?? collapsed, setCollapsed, hoverEvents] as const;
 }
 
 export function Sidebar({ collapsed = false, className, ...props }: ComponentProps<'aside'> & { collapsed?: boolean }) {

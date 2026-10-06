@@ -170,7 +170,7 @@ export default function AdminRoutes() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [drawer, setDrawer] = useState(false);
-  const [collapsed, setCollapsed] = useSidebarPreference('mourden.admin.sidebar.collapsed');
+  const [collapsed, setCollapsed, hoverEvents] = useSidebarPreference('mourden.admin.sidebar.collapsed');
   const title = TITLES.find(([p]) => pathname.startsWith(p))?.[1] ?? 'Dashboard';
   const doLogout = () => {
     logout();
@@ -179,7 +179,7 @@ export default function AdminRoutes() {
 
   return (
     <div className="admin-workspace flex h-full">
-      <Sidebar aria-label="Menu admin" collapsed={collapsed} className={cx('hidden lg:flex', collapsed ? 'w-[72px]' : 'w-64')}>
+      <Sidebar {...hoverEvents} aria-label="Menu admin" collapsed={collapsed} className={cx('hidden lg:flex', collapsed ? 'w-[72px]' : 'w-64')}>
         <div className="sidebar-brand h-20">
           <Brand collapsed={collapsed} />
         </div>
