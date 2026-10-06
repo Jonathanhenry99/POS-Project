@@ -8,6 +8,7 @@ import { logout } from '../lib/session';
 import { appStore, useApp } from '../lib/state';
 import { usePrintStatus } from '../printing/service';
 import { TabletSidebar } from '../components/TabletSidebar';
+import { AppModeButton } from '../components/AppModeButton';
 
 const OWNER_IDLE_LOCK_MS = 10 * 60_000;
 
@@ -42,6 +43,7 @@ export function TabletShell() {
         <div className="relative flex h-14 items-center gap-2 px-3">
           <StoreBlock />
           <div className="ml-auto flex items-center gap-2">
+            <AppModeButton />
             <ShiftChip />
             <Clock />
             <SyncPill />
