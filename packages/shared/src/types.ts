@@ -36,6 +36,8 @@ export interface PolicySettings {
   voidRequiresOwnerPin: boolean;
   /** Batas diskon (persen dari subtotal) yang boleh diberikan kasir tanpa PIN owner. 100 = bebas. */
   maxCashierDiscountPct: number;
+  /** Jumlah tablet kasir aktif maksimal. Kasir hanya bisa berjualan dari tablet yang diaktifkan owner. */
+  maxDevices: number;
 }
 
 export interface AppSettings {

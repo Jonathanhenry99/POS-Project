@@ -30,6 +30,11 @@ async function checkCredentials(username: string, pin: string, ip: string): Prom
 authRouter.post('/auth/login', async (req, res) => {
   const body = parse(loginBody, req.body);
   const user = await checkCredentials(body.username, body.pin, req.ip ?? '');
+  // Kasir tidak login lewat jalur ini: ia hanya berjualan dari tablet kasir yang diaktifkan owner
+  // (PIN kasir dicek di tablet itu, dan server hanya menerima transaksi dari token perangkat aktif).
+  if (!can(user.role, 'admin') && !can(user.role, 'stock.opname')) {
+    throw forbidden('Akun kasir hanya bisa dipakai di tablet kasir yang sudah diaktifkan owner.');
+  }
   await audit(pool, user.id, 'login', 'user', user.id);
   res.json({ token: signSession(user.id), user });
 });
@@ -48,7 +53,18 @@ authRouter.post('/devices/pair', async (req, res) => {
   const user = await checkCredentials(body.username, body.pin, req.ip ?? '');
   if (!can(user.role, 'admin')) throw forbidden('Hanya owner yang bisa mengaktifkan perangkat');
   const { token, hash } = newDeviceToken();
+  const { maxDevices } = (await getSettings(pool)).policy;
   const device = await tx(async (c) => {
+    // Batasi jumlah tablet kasir aktif (default 1) agar kasir hanya bisa berjualan dari tablet yang ditentukan.
+    await c.query('select pg_advisory_xact_lock(724502)');
+    const { rows: active } = await c.query<{ name: string }>('select name from devices where revoked_at is null order by created_at');
+    if (active.length >= maxDevices) {
+      throw new HttpError(
+        409,
+        `Sudah ada ${active.length} tablet kasir aktif (${active.map((d) => d.name).join(', ')}). ` +
+          'Cabut dulu di Admin → Pengaturan → Perangkat kasir, atau naikkan batas jumlah tablet di Pengaturan.',
+      );
+    }
     // Kode perangkat A, B, C, ... dipakai sebagai awalan nomor struk agar tidak bentrok antar-perangkat.
     const { rows: used } = await c.query<{ code: string }>('select code from devices');
     const taken = new Set(used.map((r) => r.code));

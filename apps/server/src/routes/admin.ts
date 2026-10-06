@@ -112,7 +112,7 @@ const settingsBody = z.object({
       roundingUnit: z.number().int().min(0).max(1000),
     })
     .partial(),
-  policy: z.object({ voidRequiresOwnerPin: z.boolean(), maxCashierDiscountPct: z.number().min(0).max(100) }).partial(),
+  policy: z.object({ voidRequiresOwnerPin: z.boolean(), maxCashierDiscountPct: z.number().min(0).max(100), maxDevices: z.number().int().min(1).max(20) }).partial(),
   pos: z.object({
     tables: z.array(z.string().trim().min(1).max(40)).max(100).refine((v) => new Set(v.map((s) => s.toLowerCase())).size === v.length, 'Nama meja harus unik'),
     notes: z.array(z.object({ text: z.string().trim().min(1).max(200), categoryId: z.uuid().nullable() })).max(100),

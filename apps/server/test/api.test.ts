@@ -112,6 +112,21 @@ describe('autentikasi', () => {
     deviceToken = res.body.token;
   });
 
+  it('kasir tidak bisa login lewat jalur HP (hanya dari tablet kasir)', async () => {
+    const res = await request(app).post('/api/auth/login').send({ username: 'kasir', pin: '1234' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain('tablet kasir');
+    expect(res.body.token).toBeUndefined();
+  });
+
+  it('hanya satu tablet kasir aktif secara default; perangkat lain ditolak sampai batas dinaikkan', async () => {
+    const blocked = await request(app).post('/api/devices/pair').send({ username: 'owner', pin: '123456', name: 'HP lain' });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error).toContain('Tablet Kasir');
+    // Tes berikutnya memakai beberapa terminal: naikkan batas.
+    await request(app).put('/api/settings').set(asOwner()).send({ policy: { maxDevices: 5 } }).expect(200);
+  });
+
   it('bootstrap tablet berisi menu, pengaturan, dan hash PIN untuk login offline', async () => {
     const res = await request(app).get('/api/sync/bootstrap').set(asDevice());
     expect(res.status).toBe(200);

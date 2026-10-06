@@ -130,6 +130,19 @@ export function SettingsPage() {
               <Field label="Batas diskon kasir tanpa PIN owner (%)" hint="100 = bebas.">
                 {(id) => <TextInput id={id} inputMode="numeric" value={String(form.policy.maxCashierDiscountPct)} onChange={(e) => set('policy', 'maxCashierDiscountPct', Math.min(100, num(e.target.value)))} />}
               </Field>
+              <Field
+                label="Jumlah tablet kasir aktif maksimal"
+                hint="Kasir hanya bisa berjualan dari tablet yang diaktifkan owner. Dengan nilai 1, perangkat lain tidak bisa diaktifkan sebelum tablet lama dicabut di bagian Perangkat kasir."
+              >
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    inputMode="numeric"
+                    value={String(form.policy.maxDevices)}
+                    onChange={(e) => set('policy', 'maxDevices', Math.max(1, Math.min(20, num(e.target.value) || 1)))}
+                  />
+                )}
+              </Field>
             </div>
           </Card>
 

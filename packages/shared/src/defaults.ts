@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   policy: {
     voidRequiresOwnerPin: false,
     maxCashierDiscountPct: 100,
+    maxDevices: 1,
   },
   pos: { tables: [], notes: [], cancellationReasons: [], productStations: {} },
 };
