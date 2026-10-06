@@ -12,17 +12,17 @@ const loginBody = z.object({ username: z.string().trim().min(1).max(50), pin: z.
 
 async function checkCredentials(username: string, pin: string, ip: string): Promise<PublicUser> {
   const key = `${username.toLowerCase()}|${ip}`;
-  checkLock(key);
+  await checkLock(key);
   const { rows } = await pool.query<PublicUser & { pin_hash: string }>(
     `select ${userColumns}, pin_hash from users where lower(username) = lower($1) and active`,
     [username],
   );
   const user = rows[0];
   if (!user || !(await verifyPin(pin, user.pin_hash))) {
-    recordFail(key);
+    await recordFail(key);
     throw new HttpError(401, 'Username atau PIN salah');
   }
-  clearFails(key);
+  await clearFails(key);
   const { pin_hash: _, ...pub } = user;
   return pub;
 }

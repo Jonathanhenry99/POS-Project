@@ -14,9 +14,13 @@
     "build": "npm run build -w @mourden/web",
     "start": "npm start -w @mourden/server",
     "test": "npm test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build:vercel": "npm run build && node scripts/build-vercel.mjs"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

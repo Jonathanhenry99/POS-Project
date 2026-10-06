@@ -108,8 +108,12 @@ export async function seed(
   if (u[0].n === 0 && opts.initialOwner) {
     const o = opts.initialOwner;
     if (!isStrongOwnerPin(o.pin)) throw new Error('INITIAL_OWNER_PIN harus 6 angka dan tidak mudah ditebak (bukan 123456, 111111, dsb).');
-    await db.query("insert into users (name, username, role, pin_hash) values ($1, $2, 'owner', $3)", [o.name, o.username, await hashPin(o.pin)]);
-    log(`Akun owner pertama dibuat: username "${o.username}". PIN sesuai INITIAL_OWNER_PIN (tidak ditampilkan).`);
+    // Beberapa instance serverless bisa menyala bersamaan: yang kalah balapan cukup diam.
+    const { rowCount } = await db.query(
+      "insert into users (name, username, role, pin_hash) values ($1, $2, 'owner', $3) on conflict (username) do nothing",
+      [o.name, o.username, await hashPin(o.pin)],
+    );
+    if (rowCount) log(`Akun owner pertama dibuat: username "${o.username}". PIN sesuai INITIAL_OWNER_PIN (tidak ditampilkan).`);
   } else if (u[0].n === 0) {
     for (const a of DEFAULT_ACCOUNTS) {
       await db.query('insert into users (name, username, role, pin_hash) values ($1, $2, $3, $4)', [a.name, a.username, a.role, await hashPin(a.pin)]);

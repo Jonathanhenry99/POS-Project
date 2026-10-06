@@ -10,7 +10,7 @@ pg.types.setTypeParser(20, (v) => parseInt(v, 10));
 
 export type Db = pg.Pool | pg.PoolClient;
 
-export let pool = new pg.Pool({ connectionString: config.databaseUrl, max: 10 });
+export let pool = new pg.Pool({ connectionString: config.databaseUrl, max: config.poolMax, idleTimeoutMillis: process.env.VERCEL ? 5_000 : 30_000 });
 
 /** Dipakai tes untuk mengarahkan ke database lain. */
 export function setPool(p: pg.Pool) {

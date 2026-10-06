@@ -75,11 +75,16 @@ npm run typecheck
 
 Panduan lengkap langkah demi langkah, dari deploy sampai hari pertama berjualan: **[docs/go-live.md](docs/go-live.md)**.
 
-Ringkasnya, tablet harus membuka aplikasi lewat **HTTPS** (syarat PWA, login offline, service worker). Repo ini punya `Dockerfile`, jadi bisa di-deploy ke Railway, Render, Fly.io, atau VPS mana pun, ditambah satu database PostgreSQL (pilih region Singapura):
+Ringkasnya, tablet harus membuka aplikasi lewat **HTTPS** (syarat PWA, login offline, service worker). Dua jalur yang sudah disiapkan, keduanya memakai satu database PostgreSQL (region Singapura):
+
+- **Vercel + Neon** (gratis untuk uji coba non-komersial): `vercel.json` + `npm run build:vercel` menghasilkan web statis dan satu fungsi API di `/api` (region `sin1`).
+- **Dockerfile** (Railway, Render, Fly.io, VPS) untuk jualan sungguhan.
+
+Environment variables:
 
 | Environment variable | Isi |
 |---|---|
-| `NODE_ENV` | `production` |
+| `NODE_ENV` | `production` (otomatis di Vercel) |
 | `DATABASE_URL` | URL PostgreSQL dari hosting |
 | `JWT_SECRET` | minimal 32 karakter acak (`openssl rand -hex 32`) |
 | `INITIAL_OWNER_PIN` | PIN owner pertama, 6 angka rahasia yang tidak mudah ditebak |

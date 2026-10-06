@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 
-const isProd = process.env.NODE_ENV === 'production';
+// Di Vercel selalu dianggap production, agar tidak pernah jatuh ke default development (PIN bawaan).
+const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
 
 function required(name: string, devDefault: string): string {
   const v = process.env[name];
@@ -16,6 +17,8 @@ export const config = {
   jwtSecret: required('JWT_SECRET', 'dev-secret-ganti-di-production'),
   /** Batas aman panjang rahasia sesi di production. */
   minJwtSecretLength: 32,
+  /** Jumlah koneksi database per instance. Serverless (Vercel) memakai sedikit koneksi agar tidak habis. */
+  poolMax: parseInt(process.env.PG_POOL_MAX ?? (process.env.VERCEL ? '3' : '10'), 10),
   /** Origin web yang diizinkan (dipisah koma). Kosong = hanya same-origin. */
   corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   /** Folder hasil build web untuk disajikan oleh server yang sama (production). */

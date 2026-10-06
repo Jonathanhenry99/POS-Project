@@ -106,30 +106,32 @@ export function needUser(req: Request, _res: Response, next: NextFunction) {
   next();
 }
 
-// ---------- Pembatasan percobaan PIN (di memori; cukup untuk satu instance server) ----------
+// ---------- Pembatasan percobaan PIN (disimpan di database: berlaku di semua instance) ----------
 
-const attempts = new Map<string, { fails: number; lockedUntil: number }>();
 const MAX_FAILS = 5;
-const LOCK_MS = 5 * 60_000;
+const LOCK_MINUTES = 5;
 
-export function checkLock(key: string) {
-  const a = attempts.get(key);
-  if (a && a.lockedUntil > Date.now()) {
-    const minutes = Math.ceil((a.lockedUntil - Date.now()) / 60_000);
+export async function checkLock(key: string) {
+  const { rows } = await pool.query<{ locked_until: Date | null }>('select locked_until from login_attempts where key = $1', [key]);
+  const until = rows[0]?.locked_until;
+  if (until && until.getTime() > Date.now()) {
+    const minutes = Math.ceil((until.getTime() - Date.now()) / 60_000);
     throw new HttpError(429, `Terlalu banyak percobaan. Coba lagi dalam ${minutes} menit.`);
   }
 }
 
-export function recordFail(key: string) {
-  const a = attempts.get(key) ?? { fails: 0, lockedUntil: 0 };
-  a.fails++;
-  if (a.fails >= MAX_FAILS) {
-    a.fails = 0;
-    a.lockedUntil = Date.now() + LOCK_MS;
-  }
-  attempts.set(key, a);
+export async function recordFail(key: string) {
+  // Atomik: naikkan hitungan; pada kegagalan ke-5 kunci selama 5 menit lalu mulai hitung dari 0.
+  await pool.query(
+    `insert into login_attempts (key, fails) values ($1, 1)
+     on conflict (key) do update set
+       fails = case when login_attempts.fails + 1 >= $2 then 0 else login_attempts.fails + 1 end,
+       locked_until = case when login_attempts.fails + 1 >= $2 then now() + make_interval(mins => $3) else login_attempts.locked_until end,
+       updated_at = now()`,
+    [key, MAX_FAILS, LOCK_MINUTES],
+  );
 }
 
-export function clearFails(key: string) {
-  attempts.delete(key);
+export async function clearFails(key: string) {
+  await pool.query('delete from login_attempts where key = $1', [key]);
 }

@@ -10,32 +10,51 @@ Perkiraan waktu: tahap 1–3 satu hari kerja, tahap 4 satu sampai dua hari uji c
 
 Tablet wajib membuka POS lewat alamat `https://`. Tanpa HTTPS, login PIN offline, mode aplikasi (PWA), dan service worker tidak berjalan.
 
-Rekomendasi: **Railway**. Satu proyek berisi layanan aplikasi (dari `Dockerfile` di repo) dan database PostgreSQL. Biaya kira-kira mulai sekitar US$5/bulan; cek harga terbaru di situsnya. Alternatif yang setara: Render, Fly.io, atau VPS lokal Indonesia (IDCloudHost/Biznet) dengan Docker.
+### Pilihan A (gratis, untuk uji coba): Vercel + Neon
 
-Langkah di Railway (nama menu bisa sedikit berbeda dari tulisan ini):
+Cocok untuk Tahap 1–4 (setup, input data, uji coba paralel dengan ESB). **Paket gratis Vercel (Hobby) hanya untuk pemakaian non-komersial**; sebelum POS dipakai berjualan sungguhan, naikkan ke Vercel Pro atau pindah ke Pilihan B. Kode sama, tidak perlu diubah.
 
-1. Daftar di railway.com memakai akun GitHub `Jonathanhenry99`.
-2. **New Project → Deploy from GitHub repo →** pilih `POS-Project`. Railway mendeteksi `Dockerfile` otomatis.
-3. Di proyek yang sama: **New → Database → PostgreSQL**.
-4. Buka layanan aplikasi → **Variables**, isi:
+Di Vercel, aplikasi berjalan sebagai situs statis + satu fungsi API (`/api`) di region Singapura. Semua sudah diatur oleh `vercel.json` dan `scripts/build-vercel.mjs` di repo.
+
+1. Daftar di **vercel.com** memakai akun GitHub `Jonathanhenry99` (paket Hobby).
+2. **Add New → Project →** impor repo `POS-Project`. Biarkan pengaturan build apa adanya (sudah dibaca dari `vercel.json`). Jangan klik Deploy dulu bila Anda bisa mengisi Environment Variables di layar ini; bila tidak, deploy pertama boleh gagal, lanjutkan langkah berikut.
+3. Di proyek Vercel: **Storage → Create Database → Neon (Postgres)**, pilih region **Singapore (aws-ap-southeast-1)**, lalu hubungkan ke proyek ini. Vercel otomatis menambahkan `DATABASE_URL`.
+4. **Settings → Environment Variables**, tambahkan (untuk environment *Production*):
 
    | Nama | Isi |
    |---|---|
-   | `NODE_ENV` | `production` |
-   | `DATABASE_URL` | referensi ke database Postgres di proyek (Railway menyediakan pilihan "Add reference", biasanya `${{Postgres.DATABASE_URL}}`) |
    | `JWT_SECRET` | 64 karakter acak. Buat di Terminal Mac: `openssl rand -hex 32` |
    | `INITIAL_OWNER_PIN` | PIN owner, **6 angka rahasia**. Bukan 123456/111111/tanggal lahir |
    | `INITIAL_OWNER_NAME` | nama Anda, misalnya `Jonathan` |
    | `INITIAL_OWNER_USERNAME` | username login HP owner, misalnya `jonathan` |
 
-5. **Settings**: pilih region terdekat (Singapura), isi **Healthcheck path** `/api/health`, lalu **Networking → Generate Domain** untuk mendapatkan alamat `https://….up.railway.app`.
-6. Tunggu deploy selesai. Buka `https://alamat-anda/api/health`. Harus tampil `{"ok":true,...}`.
+   `DATABASE_URL` sudah terisi dari Neon. `NODE_ENV` tidak perlu diisi.
+5. **Deployments → Redeploy** (atau push commit baru). Tunggu status *Ready*.
+6. Buka `https://<nama-proyek>.vercel.app/api/health`. Harus tampil `{"ok":true,...}`. Permintaan pertama sedikit lebih lama karena database disiapkan otomatis (tabel + akun owner).
+7. Bila region fungsi bukan Singapura (Settings → Functions → Function Region), pilih **Singapore (sin1)** agar cepat ke database Neon.
 
-Bila deploy gagal, buka tab **Logs**. Pesan dari aplikasi berbahasa Indonesia. Dua yang paling umum: `JWT_SECRET terlalu pendek` dan `Isi INITIAL_OWNER_PIN`.
+Bila ada masalah, buka **Deployments → (deploy terbaru) → Logs / Runtime Logs**. Pesan aplikasi berbahasa Indonesia, misalnya `JWT_SECRET terlalu pendek`, `Isi INITIAL_OWNER_PIN`, atau `Database tidak bisa dihubungi`.
+
+Batas paket gratis yang perlu diketahui: Neon Free 0,5 GB data (cukup untuk uji coba dan beberapa bulan transaksi satu cafe); database Neon "tidur" saat lama tidak dipakai dan bangun dalam hitungan detik. Tablet tetap jualan offline selama itu; data terkirim otomatis.
+
+### Pilihan B (berbayar murah, untuk jualan sungguhan): Railway
+
+Satu proyek berisi aplikasi (dari `Dockerfile` di repo) dan database PostgreSQL. Biaya kira-kira mulai sekitar US$5/bulan; cek harga terbaru. Alternatif setara: Render, Fly.io, atau VPS lokal Indonesia dengan Docker. Bila pindah dari Pilihan A, database Neon bisa tetap dipakai (cukup isi `DATABASE_URL` yang sama), jadi data tidak hilang.
+
+Langkah di Railway (nama menu bisa sedikit berbeda dari tulisan ini):
+
+1. Daftar di railway.com memakai akun GitHub `Jonathanhenry99`.
+2. **New Project → Deploy from GitHub repo →** pilih `POS-Project`. Railway mendeteksi `Dockerfile` otomatis.
+3. Di proyek yang sama: **New → Database → PostgreSQL** (atau pakai `DATABASE_URL` Neon dari Pilihan A).
+4. Buka layanan aplikasi → **Variables**, isi `NODE_ENV=production`, `DATABASE_URL` (referensi ke database, biasanya `${{Postgres.DATABASE_URL}}`), serta `JWT_SECRET`, `INITIAL_OWNER_PIN`, `INITIAL_OWNER_NAME`, `INITIAL_OWNER_USERNAME` seperti tabel di Pilihan A.
+5. **Settings**: region Singapura, **Healthcheck path** `/api/health`, lalu **Networking → Generate Domain**.
+6. Buka `https://alamat-anda/api/health` → `{"ok":true,...}`. Bila gagal, lihat tab **Logs**.
 
 **Selesai bila:** alamat https terbuka di HP, dan login dengan username + PIN owner berhasil.
 
-> Jaga kerahasiaan `JWT_SECRET` dan `INITIAL_OWNER_PIN`. Jangan ditulis di GitHub. Repo ini publik; bila tidak ingin kodenya dilihat orang lain, ubah ke private di GitHub (Railway tetap bisa men-deploy repo private).
+> Jaga kerahasiaan `JWT_SECRET` dan `INITIAL_OWNER_PIN`. Jangan ditulis di GitHub. Repo ini publik; bila tidak ingin kodenya dilihat orang lain, ubah ke private di GitHub (Vercel dan Railway tetap bisa men-deploy repo private).
+>
+> Setelah akun owner dibuat, `INITIAL_OWNER_PIN` tidak dipakai lagi. Ganti PIN owner dari aplikasi bila PIN awal pernah dibagikan.
 
 ---
 
