@@ -1,13 +1,14 @@
 import { Bluetooth, BookOpen, CheckCircle2, FlaskConical, Printer, Usb } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { can, testReceipt, toPlainText } from '@mourden/shared';
+import { can, testReceipt } from '@mourden/shared';
 import { PrintStatusCard } from '../../components/PrintStatusCard';
+import { ReceiptPreview } from '../../components/ReceiptPreview';
 import { confirmDialog, toast } from '../../components/feedback';
 import { Badge, Button, Card, Segmented, TextInput, Toggle, cx } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import { useApp } from '../../lib/state';
 import { isAndroid } from '../../printing/rawbt';
-import { createPrinterProfile, DRIVERS, openCashDrawer, printTest, savePrinterConfig, selectPrinterProfile, usePrintStatus, usePrinterConfig, usePrinterProfiles } from '../../printing/service';
+import { createPrinterProfile, DRIVERS, openCashDrawer, printTest, savePrinterConfig, selectPrinterProfile, usePrintStatus, usePrinterConfig, usePrinterProfiles, useReceiptStyle } from '../../printing/service';
 import { pickSerialPrinter, webSerialSupported } from '../../printing/webserial';
 import { pickUsbPrinter, webUsbSupported } from '../../printing/webusb';
 import { StationRoutingCard } from './StationRoutingCard';
@@ -22,9 +23,10 @@ export function PrinterPage() {
   const store = useApp((s) => s.data?.settings.store);
   const [tab, setTab] = useState<'atur' | 'panduan'>('atur');
 
+  const style = useReceiptStyle();
   const preview = useMemo(
-    () => (store ? toPlainText(testReceipt(store, config, DRIVERS.find((d) => d.id === config.driver)!.label, new Date().toISOString()), config.width) : ''),
-    [store, config],
+    () => (store && style ? testReceipt(store, config, DRIVERS.find((d) => d.id === config.driver)!.label, new Date().toISOString(), style) : null),
+    [store, config, style],
   );
 
   return (
@@ -149,7 +151,7 @@ export function PrinterPage() {
                 </div>
               </Card>
               <Card title="Pratinjau struk tes">
-                <pre className="overflow-x-auto rounded-xl bg-surface-2 p-3 font-mono text-[12px] leading-snug">{preview}</pre>
+                <div className="overflow-x-auto rounded-xl bg-surface-2 p-3">{preview && <ReceiptPreview ops={preview} width={config.width} />}</div>
               </Card>
             </div>
           </div>
@@ -257,6 +259,7 @@ const CHECKLIST = [
   'Printer dimatikan → muncul pesan, transaksi tetap tersimpan di Riwayat',
   'Layar tablet mati lalu dinyalakan → cetak masih berjalan',
   'Internet dimatikan → transaksi & cetak tetap jalan, lalu tersinkron saat online',
+  'Logo di struk tercetak utuh & di tengah (bila berantakan: ubah ukuran/ketebalan, atau matikan logo di Pengaturan)',
 ];
 
 function SetupGuide() {

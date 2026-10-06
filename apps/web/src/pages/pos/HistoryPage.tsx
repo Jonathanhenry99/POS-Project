@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { businessDate, formatNumber, formatRupiah, formatTime, PAYMENT_LABEL, PAYMENT_METHODS, type PaymentMethod } from '@mourden/shared';
 import { OwnerApproval } from '../../components/OwnerApproval';
 import { PrintStatusCard } from '../../components/PrintStatusCard';
+import { ReceiptPreview } from '../../components/ReceiptPreview';
 import { toast } from '../../components/feedback';
 import { Badge, Button, Empty, ErrorNote, Modal, Segmented, cx, inputClass } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
@@ -10,7 +11,7 @@ import type { LocalOrder } from '../../lib/idb';
 import { listOrders, voidOrder } from '../../lib/pos';
 import { useApp } from '../../lib/state';
 import { fetchOrderArchive, type ArchiveCursor } from '../../lib/order-archive';
-import { previewOrder, printOrder, printStatusStore, usePrintStatus } from '../../printing/service';
+import { previewOrderOps, printOrder, printStatusStore, usePrintStatus, usePrinterConfig, useReceiptStyle } from '../../printing/service';
 
 const VOID_REASONS = ['Salah input', 'Pelanggan batal', 'Menu habis', 'Komplain'];
 
@@ -148,13 +149,16 @@ function OrderDetail({ order, onChanged }: { order: LocalOrder; onChanged: () =>
   const shift = useApp((s) => s.activeShift);
   const status = usePrintStatus();
   const [voiding, setVoiding] = useState(false);
+  const style = useReceiptStyle();
+  const width = usePrinterConfig().width;
   const preview = useMemo(() => {
+    if (!style) return null;
     try {
-      return previewOrder(order);
+      return previewOrderOps(order, style);
     } catch {
-      return '';
+      return null;
     }
-  }, [order]);
+  }, [order, style]);
   // Kasir hanya boleh membatalkan transaksi di shift yang sedang berjalan; owner bebas.
   const canVoid = order.status === 'paid' && (user.role === 'owner' || order.shiftId === shift?.id);
 
@@ -177,7 +181,7 @@ function OrderDetail({ order, onChanged }: { order: LocalOrder; onChanged: () =>
           Dibatalkan oleh {order.voidedByName}. Alasan: {order.voidReason}
         </div>
       )}
-      <pre className="overflow-x-auto rounded-2xl border border-line bg-surface p-4 font-mono text-[13px] leading-snug text-fg shadow-sm">{preview}</pre>
+      <div className="overflow-x-auto rounded-2xl bg-surface-2 p-4">{preview && <ReceiptPreview ops={preview} width={width} />}</div>
       {voiding && (
         <VoidSheet
           order={order}

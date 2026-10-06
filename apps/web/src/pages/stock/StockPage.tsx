@@ -21,6 +21,7 @@ import { Badge, Button, Empty, ErrorNote, Field, Modal, MoneyInput, Skeleton, Te
 import { api, errorMessage } from '../../lib/api';
 import { uuid } from '../../lib/id';
 import { logout } from '../../lib/session';
+import { BrandLogo } from '../../components/BrandLogo';
 import { useApp } from '../../lib/state';
 import { TabletSidebar } from '../../components/TabletSidebar';
 
@@ -70,6 +71,7 @@ export function StockPage() {
                 <ArrowLeft className="size-5" />
               </Link>
             )}
+            {appMode !== 'tablet' && <BrandLogo className="h-10 w-12" />}
             <div className="min-w-0 flex-1 leading-tight">
               <p className="text-[17px] font-extrabold tracking-tight">Stok</p>
               <p className="truncate text-xs text-white/75">

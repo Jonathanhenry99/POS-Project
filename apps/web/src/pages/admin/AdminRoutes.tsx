@@ -10,7 +10,6 @@ import {
   Menu,
   Receipt,
   Settings,
-  Store,
   Users,
   X,
 } from 'lucide-react';
@@ -19,6 +18,7 @@ import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from
 import { userLabel } from '@mourden/shared';
 import { cx } from '../../components/ui';
 import { logout } from '../../lib/session';
+import { BrandLogo } from '../../components/BrandLogo';
 import { useApp } from '../../lib/state';
 import { DashboardPage } from './DashboardPage';
 import { InventoryPage } from './InventoryPage';
@@ -145,9 +145,7 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
 function Brand() {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="bg-grad-primary grid size-10 place-items-center rounded-2xl text-white shadow-[0_8px_20px_-8px_var(--primary)]">
-        <Coffee className="size-5" />
-      </span>
+      <BrandLogo className="h-11 w-14 rounded-2xl" />
       <div className="leading-tight">
         <p className="text-[17px] font-extrabold tracking-tight">
           Mourden <span className="text-primary">POS</span>
@@ -215,9 +213,7 @@ export default function AdminRoutes() {
                 </Link>
               )}
               <div className="flex items-center gap-2.5 rounded-2xl bg-white/12 py-1.5 pr-3 pl-1.5">
-                <span className="grid size-9 place-items-center rounded-xl bg-white text-primary">
-                  <Store className="size-5" />
-                </span>
+                <BrandLogo className="h-9 w-11" />
                 <div className="hidden leading-tight sm:block">
                   <p className="text-sm font-bold">{settings.data?.store.name ?? 'Mourden'}</p>
                   <p className="text-xs text-white/75">

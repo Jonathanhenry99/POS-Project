@@ -1,8 +1,10 @@
 // Penyusun struk: data transaksi -> daftar baris. Murni (tanpa efek samping) agar mudah dites.
+import { DEFAULT_RECEIPT_SETTINGS } from '../defaults';
 import { formatDateTime, formatNumber, formatRupiah } from '../format';
 import { ORDER_TYPE_LABEL, PAYMENT_LABEL } from '../permissions';
-import type { BusinessDay, Order, OrderItem, Shift, StoreSettings } from '../types';
+import type { BusinessDay, Order, OrderItem, ReceiptSettings, Shift, StoreSettings } from '../types';
 import type { Align, ReceiptOp } from './escpos';
+import type { ReceiptImage } from './image';
 import { rule, twoCol, wrap, wrapIndented } from './layout';
 
 export interface ReceiptLayout {
@@ -17,6 +19,12 @@ export interface ReceiptLayout {
 }
 
 export const DEFAULT_LAYOUT: ReceiptLayout = { width: 32, feedLines: 4, cut: false, openDrawer: false };
+
+/** Bentuk struk dari pengaturan toko + logo yang sudah dijadikan bitmap (opsional). */
+export interface ReceiptStyle {
+  format?: ReceiptSettings;
+  logo?: ReceiptImage | null;
+}
 
 export function checkerReceipt(
   meta: { station: string; customerName: string; tableName: string; pax: number; orderType: string; at: string },
@@ -68,11 +76,21 @@ class Doc {
   }
 }
 
-function header(doc: Doc, store: StoreSettings) {
-  doc.wrapped(store.name || 'TOKO', { align: 'center', bold: true, tall: true });
+function header(doc: Doc, store: StoreSettings, style: ReceiptStyle = {}) {
+  const format = style.format ?? DEFAULT_RECEIPT_SETTINGS;
+  const logo = format.showLogo ? style.logo : null;
+  if (logo) doc.ops.push({ kind: 'image', image: logo });
+  // Nama toko tetap dicetak bila logo tidak tersedia, supaya struk tidak pernah tanpa identitas.
+  if (format.showStoreName || !logo) doc.wrapped(store.name || 'TOKO', { align: 'center', bold: true, tall: true });
   if (store.address) doc.wrapped(store.address, { align: 'center' });
   if (store.phone) doc.wrapped(store.phone, { align: 'center' });
+  for (const line of paragraphs(format.headerNote)) doc.wrapped(line, { align: 'center' });
   doc.rule();
+}
+
+/** Teks multi-baris dari pengaturan (baris kosong diabaikan). */
+function paragraphs(text: string): string[] {
+  return text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 }
 
 /** Label kiri dengan titik dua sejajar: "Kasir : Rina" */
@@ -90,11 +108,12 @@ export function saleReceipt(
   order: Order,
   store: StoreSettings,
   layout: ReceiptLayout,
-  opts: { reprint?: boolean; bill?: boolean } = {},
+  opts: { reprint?: boolean; bill?: boolean } & ReceiptStyle = {},
 ): ReceiptOp[] {
   const w = layout.width;
+  const f = opts.format ?? DEFAULT_RECEIPT_SETTINGS;
   const doc = new Doc(w);
-  header(doc, store);
+  header(doc, store, opts);
 
   if (opts.bill) doc.text('TAGIHAN - BELUM DIBAYAR', { align: 'center', bold: true });
   else if (order.status === 'void') doc.text('*** DIBATALKAN ***', { align: 'center', bold: true });
@@ -102,22 +121,23 @@ export function saleReceipt(
 
   if (!opts.bill) info(doc, 'No', order.number);
   info(doc, 'Waktu', formatDateTime(order.createdAt, store.timezone));
-  info(doc, 'Kasir', order.cashierName);
-  if (order.customerName) info(doc, 'Nama', order.customerName);
-  if (order.tableName) info(doc, 'Meja', order.tableName);
-  if (order.pax) info(doc, 'Pax', String(order.pax));
-  if (order.orderType) doc.text(ORDER_TYPE_LABEL[order.orderType].toUpperCase(), { align: 'center', bold: true });
+  if (f.showCashier) info(doc, 'Kasir', order.cashierName);
+  if (f.showCustomer && order.customerName) info(doc, 'Nama', order.customerName);
+  if (f.showCustomer && order.tableName) info(doc, 'Meja', order.tableName);
+  if (f.showCustomer && order.pax) info(doc, 'Pax', String(order.pax));
+  if (f.showOrderType && order.orderType) doc.text(ORDER_TYPE_LABEL[order.orderType].toUpperCase(), { align: 'center', bold: true });
   doc.rule();
 
   for (const item of order.items) {
     doc.wrapped(item.name, { bold: true });
-    if (item.options.length) doc.lines(wrapIndented(item.options.map((o) => o.name).join(', '), w, 2));
-    if (item.note) doc.lines(wrapIndented(`Ctt: ${item.note}`, w, 2));
+    if (f.showItemOptions && item.options.length) doc.lines(wrapIndented(item.options.map((o) => o.name).join(', '), w, 2));
+    if (f.showItemNotes && item.note) doc.lines(wrapIndented(`Ctt: ${item.note}`, w, 2));
     doc.cols(`  ${item.qty} x ${formatNumber(item.unitPrice)}`, formatNumber(item.lineTotal));
   }
   doc.rule();
 
-  doc.cols('Subtotal', formatNumber(order.subtotal));
+  const count = order.items.reduce((n, i) => n + i.qty, 0);
+  doc.cols(f.showItemCount ? `Subtotal (${count} item)` : 'Subtotal', formatNumber(order.subtotal));
   if (order.discountAmount > 0 && order.discount) {
     const label = order.discount.type === 'percent' ? `Diskon ${pct(order.discount.value)}` : 'Diskon';
     doc.cols(label, formatNumber(-order.discountAmount));
@@ -148,14 +168,14 @@ export function saleReceipt(
   }
 
   doc.rule();
-  if (store.footer) doc.wrapped(store.footer, { align: 'center' });
+  for (const line of paragraphs(store.footer)) doc.wrapped(line, { align: 'center' });
   return doc.finish(layout, p.method === 'cash' && !opts.reprint && order.status === 'paid');
 }
 
-export function testReceipt(store: StoreSettings, layout: ReceiptLayout, driverLabel: string, nowIso: string): ReceiptOp[] {
+export function testReceipt(store: StoreSettings, layout: ReceiptLayout, driverLabel: string, nowIso: string, style: ReceiptStyle = {}): ReceiptOp[] {
   const w = layout.width;
   const doc = new Doc(w);
-  header(doc, store);
+  header(doc, store, style);
   doc.text('TES PRINTER', { align: 'center', bold: true, tall: true });
   info(doc, 'Waktu', formatDateTime(nowIso, store.timezone));
   info(doc, 'Jalur', driverLabel);
@@ -262,6 +282,6 @@ export function businessDayReceipt(day: BusinessDay, store: StoreSettings, layou
   }
   if (day.closingNote) { doc.rule(); doc.wrapped(`Catatan: ${day.closingNote}`); }
   doc.rule();
-  doc.wrapped('Rekap terminal ini, berdasarkan snapshot tutup tiap shift.');
+  doc.wrapped('Rekap tablet ini, dari angka yang dikunci saat tiap shift ditutup.');
   return doc.finish(layout);
 }

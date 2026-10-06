@@ -7,4 +7,5 @@ export * from './pin';
 export * from './defaults';
 export * from './receipt/escpos';
 export * from './receipt/layout';
+export * from './receipt/image';
 export * from './receipt/receipts';

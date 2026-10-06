@@ -40,12 +40,41 @@ export interface PolicySettings {
   maxDevices: number;
 }
 
+export interface BrandSettings {
+  /** Logo hasil unggahan owner (data URL PNG/JPEG/WebP). Kosong = logo bawaan aplikasi. */
+  logo: string;
+}
+
+export type LogoSize = 'small' | 'medium' | 'large';
+export type LogoDarkness = 'light' | 'normal' | 'dark';
+
+/** Bentuk struk penjualan. Lebar kertas, feed dan cutter tetap diatur per printer di tablet. */
+export interface ReceiptSettings {
+  showLogo: boolean;
+  logoSize: LogoSize;
+  /** Ketebalan logo hitam-putih: makin gelap, makin banyak titik yang tercetak hitam. */
+  logoDarkness: LogoDarkness;
+  showStoreName: boolean;
+  /** Teks tambahan di bawah identitas toko, mis. Instagram atau password Wi-Fi. */
+  headerNote: string;
+  showCashier: boolean;
+  /** Nama pelanggan, meja dan jumlah tamu. */
+  showCustomer: boolean;
+  showOrderType: boolean;
+  showItemOptions: boolean;
+  showItemNotes: boolean;
+  showItemCount: boolean;
+}
+
 export interface AppSettings {
   store: StoreSettings;
   pricing: PricingSettings;
   policy: PolicySettings;
   /** Master kasir opsional; data lama tetap memakai alur existing. */
   pos?: PosSettings;
+  /** Opsional agar data bootstrap lama di tablet tetap terbaca; mergeSettings selalu mengisinya. */
+  brand?: BrandSettings;
+  receipt?: ReceiptSettings;
 }
 
 export interface PosSettings {

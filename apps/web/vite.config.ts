@@ -10,7 +10,7 @@ export default defineConfig({
     VitePWA({
       // 'prompt': aplikasi tidak memuat ulang sendiri di tengah transaksi; kasir menekan "Perbarui".
       registerType: 'prompt',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.png', 'apple-touch-icon.png', 'brand/logo.png'],
       manifest: {
         name: 'Mourden POS',
         short_name: 'Mourden POS',

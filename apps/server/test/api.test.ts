@@ -456,6 +456,25 @@ describe('master kasir dan arsip transaksi terminal', () => {
     await request(app).put('/api/settings').set(asOwner()).send({ pos: { tables: ['A', 'a'] } }).expect(400);
   });
 
+  it('logo & bentuk struk: disimpan owner, ikut bootstrap tablet, tampil di /brand tanpa login, tidak disalin ke audit', async () => {
+    const logo = 'data:image/png;base64,iVBORw0KGgo=';
+    const receipt = { showLogo: true, logoSize: 'large', showCashier: false, headerNote: 'Wi-Fi: mourden' };
+    await request(app).put('/api/settings').set(asDevice('kasir')).send({ brand: { logo } }).expect(403);
+    await request(app).put('/api/settings').set(asOwner()).send({ brand: { logo: 'data:text/html;base64,PGgxPg==' } }).expect(400);
+    const saved = await request(app).put('/api/settings').set(asOwner()).send({ brand: { logo }, receipt, pricing: { serviceEnabled: false } }).expect(200);
+    expect(saved.body.receipt).toMatchObject({ ...receipt, showStoreName: true, logoDarkness: 'normal' });
+    expect(saved.body.pricing.serviceEnabled).toBe(false);
+    const bootstrap = await request(app).get('/api/sync/bootstrap').set(asDevice());
+    expect(bootstrap.body.settings.brand.logo).toBe(logo);
+    expect(bootstrap.body.settings.receipt.logoSize).toBe('large');
+    const brand = await request(app).get('/api/brand').expect(200);
+    expect(brand.body).toEqual({ name: saved.body.store.name, logo });
+    const { rows } = await pool.query(`select data from audit_log where entity = 'settings' order by at desc, id desc limit 1`);
+    expect(JSON.stringify(rows[0].data)).not.toContain('iVBOR');
+    await request(app).put('/api/settings').set(asOwner()).send({ brand: { logo: '' }, pricing: { serviceEnabled: true } }).expect(200);
+    expect((await request(app).get('/api/brand')).body.logo).toBe('');
+  });
+
   it('arsip memakai cursor waktu/ID tanpa duplikat, menyimpan meja/pax dan memisahkan terminal/role', async () => {
     for (let i = 0; i < 101; i++) {
       const order = makeOrder('Americano', ['Hot'], 1, { createdAt: '2020-01-02T05:00:00.000Z', customerName: 'ArchiveFixture', tableName: 'Meja 2', pax: 3 });

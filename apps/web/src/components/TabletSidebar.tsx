@@ -1,4 +1,5 @@
-import { Boxes, CalendarDays, History, LayoutDashboard, PanelLeftClose, PanelLeftOpen, Printer, Receipt, RefreshCw, Store, Utensils, Wallet, type LucideIcon } from 'lucide-react';
+import { Boxes, CalendarDays, History, LayoutDashboard, PanelLeftClose, PanelLeftOpen, Printer, Receipt, RefreshCw, Utensils, Wallet, type LucideIcon } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 import { useState } from 'react';
 import { NavLink } from 'react-router';
 import { can, type Permission } from '@mourden/shared';
@@ -40,7 +41,7 @@ export function TabletSidebar() {
   });
   return <aside aria-label="Navigasi utama" className={cx('flex h-full shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-150 motion-reduce:transition-none', collapsed ? 'w-[72px]' : 'w-56')}>
     <div className={cx('flex h-14 shrink-0 items-center gap-3 border-b border-line px-3', collapsed && 'justify-center')}>
-      <Store className="size-6 shrink-0 text-primary" />
+      <BrandLogo className="h-10 w-12" />
       {!collapsed && <div className="min-w-0"><p className="truncate font-extrabold">{storeName}</p><p className="text-xs text-fg-muted">Menu kasir</p></div>}
     </div>
     <nav id="tablet-navigation" className="min-h-0 flex-1 overflow-y-auto px-2 py-3">

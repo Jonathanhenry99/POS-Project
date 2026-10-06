@@ -1,6 +1,7 @@
 // Login, aktivasi perangkat, dan inisialisasi aplikasi.
 import { can, verifyPin, type PublicUser } from '@mourden/shared';
 import { api, setUnauthorizedHandler } from './api';
+import { initBrand } from './brand';
 import { kvDelete, kvGet, kvSet, type BootstrapData, type DeviceInfo } from './idb';
 import { loadActiveShift } from './pos';
 import { appStore } from './state';
@@ -32,6 +33,7 @@ export async function initApp() {
     writeLocal(SESSION_KEY, null);
     appStore.set({ user: null, token: null });
   });
+  initBrand();
 
   const device = await kvGet<DeviceInfo>('device');
   if (device) {

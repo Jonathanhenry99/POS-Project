@@ -1,10 +1,12 @@
 // Representasi struk yang netral printer, lalu dirender ke byte ESC/POS atau teks polos.
 import { toAscii } from '../format';
+import { rasterCommands, type ReceiptImage } from './image';
 
 export type Align = 'left' | 'center' | 'right';
 
 export type ReceiptOp =
   | { kind: 'text'; text: string; align?: Align; bold?: boolean; tall?: boolean }
+  | { kind: 'image'; image: ReceiptImage }
   | { kind: 'feed'; lines: number }
   | { kind: 'cut' }
   | { kind: 'drawer' };
@@ -20,6 +22,8 @@ export const CMD = {
   /** GS ! n: bit 0-3 tinggi, bit 4-7 lebar. Hanya tinggi ganda agar lebar baris tetap. */
   size: (tall: boolean) => [GS, 0x21, tall ? 0x01 : 0x00],
   feed: (n: number) => [ESC, 0x64, Math.max(0, Math.min(255, n))],
+  /** ESC J n: maju kertas n titik (jarak kecil di bawah logo). */
+  feedDots: (n: number) => [ESC, 0x4a, Math.max(0, Math.min(255, n))],
   /** GS V 66 0: maju kertas lalu potong sebagian (printer dengan cutter). */
   cut: [GS, 0x56, 0x42, 0x00],
   /** ESC p 0 25 250: pulsa untuk membuka laci uang (jika printer punya port laci). */
@@ -51,6 +55,12 @@ export function toEscPos(ops: ReceiptOp[]): Uint8Array {
         out.push(LF);
         break;
       }
+      case 'image':
+        // Rata tengah berlaku juga untuk raster di printer ESC/POS umumnya; reset() mengembalikan ke kiri.
+        out.push(...CMD.align((align = 'center')));
+        for (const b of rasterCommands(op.image)) out.push(b);
+        out.push(...CMD.feedDots(12));
+        break;
       case 'feed':
         out.push(...CMD.feed(op.lines));
         break;
@@ -76,6 +86,9 @@ export function toPlainText(ops: ReceiptOp[], width: number): string {
       if (op.align === 'center') lines.push(' '.repeat(Math.floor(pad / 2)) + t);
       else if (op.align === 'right') lines.push(' '.repeat(pad) + t);
       else lines.push(t);
+    } else if (op.kind === 'image') {
+      const label = '[ LOGO ]';
+      lines.push(' '.repeat(Math.max(0, Math.floor((width - label.length) / 2))) + label);
     } else if (op.kind === 'feed') {
       for (let i = 0; i < op.lines; i++) lines.push('');
     }

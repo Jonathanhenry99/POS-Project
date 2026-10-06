@@ -1,4 +1,5 @@
-import { ArrowLeft, CloudOff, Coffee, Printer, ShieldCheck, Tablet } from 'lucide-react';
+import { ArrowLeft, CloudOff, Printer, ShieldCheck, Tablet } from 'lucide-react';
+import { BrandLogo } from '../components/BrandLogo';
 import { useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router';
 import { ROLE_LABEL, type CachedUser } from '@mourden/shared';
@@ -32,9 +33,7 @@ function Hero({ children }: { children?: ReactNode }) {
       <div className="pointer-events-none absolute -right-24 -bottom-24 size-80 rounded-full bg-[#ff7a1a]/25 blur-3xl" />
       <div className="pointer-events-none absolute -top-20 -left-10 size-72 rounded-full bg-white/10 blur-3xl" />
       <div className="relative flex items-center gap-3">
-        <span className="grid size-14 place-items-center rounded-2xl bg-white text-primary shadow-lg">
-          <Coffee className="size-8" />
-        </span>
+        <BrandLogo className="h-16 w-20 rounded-2xl p-1.5 shadow-lg" />
         <div>
           <p className="text-2xl font-extrabold tracking-tight">{name || 'Mourden'}</p>
           <p className="text-sm text-white/75">Point of Sale</p>
@@ -191,9 +190,7 @@ function OnlineLogin() {
       <div className="flex min-h-full items-center justify-center overflow-y-auto p-4">
         <div className="animate-rise w-full max-w-sm rounded-3xl border border-line bg-surface p-6 shadow-card">
           <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <span className="bg-grad-primary grid size-12 place-items-center rounded-2xl text-white">
-              <Coffee className="size-7" />
-            </span>
+            <BrandLogo className="h-12 w-16 rounded-2xl" />
             <p className="text-xl font-extrabold tracking-tight">Mourden POS</p>
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight">Masuk</h1>

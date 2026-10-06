@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_RECEIPT_SETTINGS } from '../defaults';
 import { formatNumber, formatRupiah, toAscii } from '../format';
 import { computeTotals, priceLine } from '../pricing';
 import type { Order, OrderItem, Shift, StoreSettings } from '../types';
@@ -278,5 +279,51 @@ describe('testReceipt & shiftReceipt', () => {
     expect(text).toContain(row('Selisih (kurang)', '-5.000'));
     expect(text).toContain(row('  - Beli es batu', '-15.000'));
     text.split('\n').forEach((l) => expect(l.length).toBeLessThanOrEqual(32));
+  });
+});
+
+describe('bentuk struk & logo', () => {
+  const logo = { width: 16, height: 2, data: btoa(String.fromCharCode(255, 255, 255, 255)) };
+  const base = DEFAULT_RECEIPT_SETTINGS;
+  const text = (ops: ReturnType<typeof saleReceipt>) => toPlainText(ops, 32);
+
+  it('logo dicetak paling atas, rata tengah, sebagai raster GS v 0', () => {
+    const ops = saleReceipt(order(), store, DEFAULT_LAYOUT, { format: base, logo });
+    expect(ops[0]).toEqual({ kind: 'image', image: logo });
+    const bytes = [...toEscPos(ops)];
+    const at = bytes.findIndex((b, i) => b === 0x1d && bytes[i + 1] === 0x76 && bytes[i + 2] === 0x30);
+    expect(at).toBeGreaterThan(0);
+    expect(bytes.slice(at - 3, at)).toEqual([...CMD.align('center')]);
+    expect(bytes.slice(at, at + 8)).toEqual([0x1d, 0x76, 0x30, 0x00, 2, 0, 2, 0]);
+    expect(bytes.slice(at + 12, at + 15)).toEqual([...CMD.feedDots(12)]);
+  });
+
+  it('logo bisa dimatikan; nama toko tetap muncul bila logo tidak ada', () => {
+    expect(saleReceipt(order(), store, DEFAULT_LAYOUT, { format: { ...base, showLogo: false }, logo }).some((o) => o.kind === 'image')).toBe(false);
+    const noName = { ...base, showStoreName: false };
+    expect(text(saleReceipt(order(), store, DEFAULT_LAYOUT, { format: noName, logo }))).not.toContain('MOURDEN');
+    expect(text(saleReceipt(order(), store, DEFAULT_LAYOUT, { format: noName, logo: null }))).toContain('MOURDEN');
+  });
+
+  it('mengikuti pilihan isi struk', () => {
+    const t = text(saleReceipt(order({ tableName: 'Meja 3' }), { ...store, footer: 'Terima kasih!\nIG @mourden.coffee' }, DEFAULT_LAYOUT, {
+      format: { ...base, showCashier: false, showCustomer: false, showOrderType: false, showItemOptions: false, showItemNotes: false, showItemCount: true, headerNote: 'Wi-Fi: mourden123' },
+    }));
+    expect(t).not.toContain('Kasir');
+    expect(t).not.toContain('Budi');
+    expect(t).not.toContain('Meja 3');
+    expect(t).not.toContain('DINE IN');
+    expect(t).not.toContain('Extra Shot');
+    expect(t).not.toContain('less sugar');
+    expect(t).toContain('Subtotal (3 item)');
+    expect(t).toContain('Wi-Fi: mourden123');
+    const lines = t.split('\n');
+    expect(lines.some((l) => l.trim() === 'Terima kasih!')).toBe(true);
+    expect(lines.some((l) => l.trim() === 'IG @mourden.coffee')).toBe(true);
+    for (const l of lines) expect(l.length).toBeLessThanOrEqual(32);
+  });
+
+  it('tanpa pengaturan, isi struk sama seperti sebelumnya', () => {
+    expect(saleReceipt(order(), store, DEFAULT_LAYOUT)).toEqual(saleReceipt(order(), store, DEFAULT_LAYOUT, { format: base }));
   });
 });

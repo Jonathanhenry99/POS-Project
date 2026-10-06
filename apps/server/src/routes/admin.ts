@@ -119,6 +119,23 @@ const settingsBody = z.object({
     cancellationReasons: z.array(z.object({ text: z.string().trim().min(3).max(200), kind: z.enum(['menu', 'order', 'void']) })).max(100),
     productStations: z.record(z.uuid(), z.enum(['bar', 'kitchen', 'umum'])),
   }).partial(),
+  brand: z.object({
+    // Logo diperkecil di perangkat owner sebelum dikirim; batas ini menjaga data bootstrap tablet tetap ringan.
+    logo: z.union([z.literal(''), z.string().max(400_000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, 'Format logo harus PNG, JPG atau WebP')]),
+  }).partial(),
+  receipt: z.object({
+    showLogo: z.boolean(),
+    logoSize: z.enum(['small', 'medium', 'large']),
+    logoDarkness: z.enum(['light', 'normal', 'dark']),
+    showStoreName: z.boolean(),
+    headerNote: z.string().max(200),
+    showCashier: z.boolean(),
+    showCustomer: z.boolean(),
+    showOrderType: z.boolean(),
+    showItemOptions: z.boolean(),
+    showItemNotes: z.boolean(),
+    showItemCount: z.boolean(),
+  }).partial(),
 }).partial();
 
 adminRouter.put('/settings', need('admin'), async (req, res) => {
@@ -129,16 +146,20 @@ adminRouter.put('/settings', need('admin'), async (req, res) => {
     pricing: { ...current.pricing, ...body.pricing },
     policy: { ...current.policy, ...body.policy },
     pos: { ...current.pos!, ...body.pos },
+    brand: { ...current.brand!, ...body.brand },
+    receipt: { ...current.receipt!, ...body.receipt },
   });
   await tx(async (c) => {
-    for (const key of ['store', 'pricing', 'policy', 'pos'] as const) {
+    for (const key of ['store', 'pricing', 'policy', 'pos', 'brand', 'receipt'] as const) {
       await c.query(
         `insert into settings (key, value) values ($1, $2)
          on conflict (key) do update set value = excluded.value, updated_at = now()`,
         [key, JSON.stringify(next[key])],
       );
     }
-    await audit(c, req.auth.user!.id, 'update', 'settings', null, body);
+    // Gambar logo tidak disalin ke log audit; cukup dicatat bahwa logo berubah.
+    const logged = body.brand?.logo === undefined ? body : { ...body, brand: { logo: body.brand.logo ? '(logo baru)' : '(logo bawaan)' } };
+    await audit(c, req.auth.user!.id, 'update', 'settings', null, logged);
   });
   res.json(next);
 });

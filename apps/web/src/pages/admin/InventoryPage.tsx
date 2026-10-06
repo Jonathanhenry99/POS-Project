@@ -281,7 +281,7 @@ function Movements() {
   return (
     <>
       <DateRangeBar value={range} onChange={setRange} />
-      <select value={type} onChange={(e) => setType(e.target.value)} className={cx(inputClass, 'mb-3 h-11 w-56')}>
+      <select value={type} onChange={(e) => setType(e.target.value)} className={cx(inputClass, 'mb-3 h-11 max-w-56')}>
         <option value="">Semua jenis</option>
         {Object.entries(TYPE_LABEL).map(([k, v]) => (
           <option key={k} value={k}>

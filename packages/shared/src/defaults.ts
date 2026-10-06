@@ -1,4 +1,18 @@
-import type { AppSettings } from './types';
+import type { AppSettings, ReceiptSettings } from './types';
+
+export const DEFAULT_RECEIPT_SETTINGS: ReceiptSettings = {
+  showLogo: true,
+  logoSize: 'medium',
+  logoDarkness: 'normal',
+  showStoreName: true,
+  headerNote: '',
+  showCashier: true,
+  showCustomer: true,
+  showOrderType: true,
+  showItemOptions: true,
+  showItemNotes: true,
+  showItemCount: false,
+};
 
 /** Pengaturan awal. Semua bisa diubah owner di menu Pengaturan. */
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -24,6 +38,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     maxDevices: 1,
   },
   pos: { tables: [], notes: [], cancellationReasons: [], productStations: {} },
+  brand: { logo: '' },
+  receipt: DEFAULT_RECEIPT_SETTINGS,
 };
 
 /** Menggabungkan pengaturan tersimpan dengan default, supaya kunci baru selalu terisi. */
@@ -33,5 +49,7 @@ export function mergeSettings(partial: Partial<{ [K in keyof AppSettings]: Parti
     pricing: { ...DEFAULT_SETTINGS.pricing, ...partial?.pricing },
     policy: { ...DEFAULT_SETTINGS.policy, ...partial?.policy },
     pos: { ...DEFAULT_SETTINGS.pos!, ...partial?.pos },
+    brand: { ...DEFAULT_SETTINGS.brand!, ...partial?.brand },
+    receipt: { ...DEFAULT_RECEIPT_SETTINGS, ...partial?.receipt },
   };
 }

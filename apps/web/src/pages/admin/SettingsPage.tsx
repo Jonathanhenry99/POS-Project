@@ -1,13 +1,15 @@
 import { Save, Tablet } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { formatDateTime, type AppSettings } from '@mourden/shared';
+import { computeTotals, formatDateTime, formatNumber, type AppSettings, type PricingSettings } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
 import { Badge, Button, Card, ErrorNote, Field, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
+import { setBrandLogo } from '../../lib/brand';
 import { refreshBootstrap } from '../../lib/sync';
 import { PageHeader } from './AdminRoutes';
 import { storeTimezone, useApi } from './hooks';
 import { PosMasterCard } from './PosMasterCard';
+import { ReceiptSettingsCard } from './ReceiptSettingsCard';
 
 const TIMEZONES = [
   { value: 'Asia/Jakarta', label: 'WIB (Asia/Jakarta)' },
@@ -39,7 +41,8 @@ export function SettingsPage() {
     setBusy(true);
     setSaveError('');
     try {
-      await api('/settings', { method: 'PUT', body: form });
+      const saved = await api<AppSettings>('/settings', { method: 'PUT', body: form });
+      setBrandLogo(saved.brand?.logo ?? '');
       toast('Pengaturan disimpan');
       void refreshBootstrap();
     } catch (e) {
@@ -67,7 +70,6 @@ export function SettingsPage() {
               <Field label="Nama toko">{(id) => <TextInput id={id} value={form.store.name} onChange={(e) => set('store', 'name', e.target.value)} />}</Field>
               <Field label="Alamat">{(id) => <TextInput id={id} value={form.store.address} onChange={(e) => set('store', 'address', e.target.value)} />}</Field>
               <Field label="Telepon / Instagram">{(id) => <TextInput id={id} value={form.store.phone} onChange={(e) => set('store', 'phone', e.target.value)} />}</Field>
-              <Field label="Teks penutup struk">{(id) => <TextInput id={id} value={form.store.footer} onChange={(e) => set('store', 'footer', e.target.value)} />}</Field>
               <Field label="Zona waktu">
                 {(id) => (
                   <select id={id} value={form.store.timezone} onChange={(e) => set('store', 'timezone', e.target.value)} className={inputClass}>
@@ -82,13 +84,13 @@ export function SettingsPage() {
             </div>
           </Card>
 
-          <Card title="Service, pajak & pembulatan">
+          <Card title="Service charge, pajak (PB1) & pembulatan">
             <div className="flex flex-col gap-4">
-              <Toggle checked={form.pricing.serviceEnabled} onChange={(v) => set('pricing', 'serviceEnabled', v)} label="Service charge" description="Dihitung dari subtotal setelah diskon." />
+              <Toggle checked={form.pricing.serviceEnabled} onChange={(v) => set('pricing', 'serviceEnabled', v)} label="Pakai service charge" description="Dihitung dari subtotal setelah diskon. Matikan bila tidak dipakai." />
               {form.pricing.serviceEnabled && (
                 <Field label="Persen service">{(id) => <TextInput id={id} inputMode="decimal" value={String(form.pricing.servicePct)} onChange={(e) => set('pricing', 'servicePct', num(e.target.value))} />}</Field>
               )}
-              <Toggle checked={form.pricing.taxEnabled} onChange={(v) => set('pricing', 'taxEnabled', v)} label="Pajak (PB1)" description="Dihitung dari (subtotal setelah diskon + service)." />
+              <Toggle checked={form.pricing.taxEnabled} onChange={(v) => set('pricing', 'taxEnabled', v)} label="Pakai pajak (PB1)" description="Dihitung dari subtotal setelah diskon + service. Matikan bila tidak dipakai." />
               {form.pricing.taxEnabled && (
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Nama pajak">{(id) => <TextInput id={id} value={form.pricing.taxLabel} onChange={(e) => set('pricing', 'taxLabel', e.target.value)} />}</Field>
@@ -116,8 +118,11 @@ export function SettingsPage() {
                   </div>
                 )}
               </div>
+              <PricingExample pricing={form.pricing} />
             </div>
           </Card>
+
+          <ReceiptSettingsCard form={form} onChange={setForm} />
 
           <Card title="Kebijakan kasir">
             <div className="flex flex-col gap-4">
@@ -153,6 +158,31 @@ export function SettingsPage() {
           <PosMasterCard value={form.pos} onChange={(pos) => setForm((f) => f ? { ...f, pos } : f)} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Contoh hitungan untuk pesanan Rp 100.000, supaya efek service/PB1 langsung terlihat. */
+function PricingExample({ pricing }: { pricing: PricingSettings }) {
+  const t = computeTotals([{ lineTotal: 100_000 }], null, pricing);
+  const rows: [string, number][] = [['Pesanan', t.subtotal]];
+  if (t.serviceAmount) rows.push([`Service ${pricing.servicePct}%`, t.serviceAmount]);
+  if (t.taxAmount) rows.push([`${pricing.taxLabel} ${pricing.taxPct}%`, t.taxAmount]);
+  if (t.roundingAmount) rows.push(['Pembulatan', t.roundingAmount]);
+  return (
+    <div className="rounded-2xl bg-surface-2 p-3 text-sm">
+      <p className="mb-1.5 font-semibold text-fg-muted">Contoh hitungan</p>
+      {rows.map(([label, value]) => (
+        <p key={label} className="flex justify-between tabular">
+          <span>{label}</span>
+          <span>{formatNumber(value)}</span>
+        </p>
+      ))}
+      <p className="mt-1 flex justify-between border-t border-line pt-1 font-bold tabular">
+        <span>Dibayar pelanggan</span>
+        <span>Rp {formatNumber(t.total)}</span>
+      </p>
+      {!t.serviceAmount && !t.taxAmount && <p className="mt-1 text-xs text-fg-muted">Tanpa service & pajak: pelanggan membayar sesuai harga menu, dan baris service/pajak tidak muncul di struk.</p>}
     </div>
   );
 }

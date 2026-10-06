@@ -115,6 +115,7 @@ Checklist ini juga tersedia sebagai daftar centang di aplikasi (Pengaturan print
 - [ ] Layar tablet mati lalu dinyalakan → cetak masih berjalan
 - [ ] Internet dimatikan → jualan & cetak tetap jalan, ikon "Offline", data terkirim setelah online
 - [ ] Rekap tutup kasir tercetak
+- [ ] Logo di struk tercetak utuh, rata tengah, tidak terpotong; jarak ke teks di bawahnya rapi. Bila berantakan: coba ukuran Kecil / ketebalan lain, atau matikan "Cetak logo di struk"
 - [ ] (Opsional) jalur Bluetooth langsung / USB OTG
 
 Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. Karena itu aplikasi menampilkan "Struk dikirim ke printer". Status printer yang sebenarnya terlihat di aplikasi RawBT.
@@ -124,4 +125,4 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - Alert stok berbasis AI: prediksi kebutuhan dari pola penjualan dan opname. Data pergerakan stok sudah tersedia.
 - Printer dapur/bar via bridge LAN (TCP 9100), nomor antrian/meja.
 - Bungkus jadi APK (Capacitor + plugin Bluetooth) bila ingin tanpa RawBT.
-- Logo bitmap di struk, split payment, laporan mingguan/bulanan lanjutan.
+- Split payment, laporan mingguan/bulanan lanjutan.

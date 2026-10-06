@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, Ban, CheckCircle2, Clock3, Eye, Loader2, Printer, RefreshCw, RotateCcw, X } from 'lucide-react';
-import { formatDateTime, toPlainText } from '@mourden/shared';
+import { formatDateTime } from '@mourden/shared';
+import { ReceiptPreview } from '../../components/ReceiptPreview';
 import { Button, Empty, ErrorNote, cx } from '../../components/ui';
 import { confirmDialog, toast } from '../../components/feedback';
 import { errorMessage } from '../../lib/api';
@@ -33,7 +34,10 @@ export function PrintQueuePage() {
       if (copy) {
         const profile = printerProfilesStore.get().list.find((p) => p.id === job.profileId);
         if (!profile) throw new Error('Profil printer tidak ditemukan');
-        const next = makePrintJob(`Salinan · ${job.label}`, [{ kind: 'text', text: '*** SALINAN ***', bold: true, align: 'center' }, ...job.ops.filter((op) => op.kind !== 'drawer')], { ...profile, config: { ...job.config, bridgeToken: profile.config.bridgeToken } });
+        // Label salinan diletakkan setelah logo (bila ada) agar logo tetap paling atas.
+        const ops = job.ops.filter((op) => op.kind !== 'drawer');
+        const at = ops[0]?.kind === 'image' ? 1 : 0;
+        const next = makePrintJob(`Salinan · ${job.label}`, [...ops.slice(0, at), { kind: 'text', text: '*** SALINAN ***', bold: true, align: 'center' }, ...ops.slice(at)], { ...profile, config: { ...job.config, bridgeToken: profile.config.bridgeToken } });
         await storePrintJobs([next]); id = next.id;
       }
       await sendPrintJob(id, risk);
@@ -128,7 +132,7 @@ export function PrintQueuePage() {
                     </div>
                   </div>
                   {(job.state === 'failed' || job.state === 'uncertain') && <p className="mt-2 text-sm text-fg-muted">{job.message || st.hint}</p>}
-                  {preview === job.id && <pre className="mt-3 overflow-x-auto rounded-xl bg-surface-2 p-3 font-mono text-[12px] leading-snug">{toPlainText(job.ops, job.config.width)}</pre>}
+                  {preview === job.id && <div className="mt-3 overflow-x-auto rounded-xl bg-surface-2 p-3"><ReceiptPreview ops={job.ops} width={job.config.width} /></div>}
                 </li>
               );
             })}

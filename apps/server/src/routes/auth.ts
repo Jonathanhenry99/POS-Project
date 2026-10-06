@@ -27,6 +27,13 @@ async function checkCredentials(username: string, pin: string, ip: string): Prom
   return pub;
 }
 
+/** Nama & logo toko untuk layar login (publik: hanya identitas yang memang tercetak di struk). */
+authRouter.get('/brand', async (_req, res) => {
+  const settings = await getSettings(pool);
+  res.set('Cache-Control', 'no-cache');
+  res.json({ name: settings.store.name, logo: settings.brand?.logo ?? '' });
+});
+
 authRouter.post('/auth/login', async (req, res) => {
   const body = parse(loginBody, req.body);
   const user = await checkCredentials(body.username, body.pin, req.ip ?? '');

@@ -3,6 +3,7 @@ import {
   saleReceipt,
   businessDayReceipt,
   can,
+  DEFAULT_RECEIPT_SETTINGS,
   shiftReceipt,
   testReceipt,
   toEscPos,
@@ -10,11 +11,14 @@ import {
   type Order,
   type BusinessDay,
   type ReceiptOp,
+  type ReceiptStyle,
   type Shift,
   type StoreSettings,
   type Station,
 } from '@mourden/shared';
-import { appStore } from '../lib/state';
+import { useEffect, useState } from 'react';
+import { DEFAULT_LOGO, receiptLogoFor } from '../lib/brand';
+import { appStore, useApp } from '../lib/state';
 import { uuid } from '../lib/id';
 import { db } from '../lib/idb';
 import { enqueue } from '../lib/sync';
@@ -148,6 +152,39 @@ function storeSettings(): StoreSettings {
   return data.settings.store;
 }
 
+/** Bentuk struk + bitmap logo dari pengaturan toko. Logo yang gagal dimuat tidak menggagalkan cetak. */
+export async function receiptStyle(widthChars = printerConfigStore.get().width): Promise<ReceiptStyle> {
+  const settings = appStore.get().data?.settings;
+  const format = settings?.receipt ?? DEFAULT_RECEIPT_SETTINGS;
+  const logo = await receiptLogoFor(settings?.brand?.logo || DEFAULT_LOGO, format, widthChars);
+  return { format, logo };
+}
+
+/** Bentuk struk untuk pratinjau; null selama logo masih disiapkan. */
+export function useReceiptStyle(): ReceiptStyle | null {
+  const settings = useApp((s) => s.data?.settings);
+  const width = useStore(printerConfigStore, (s) => s.width);
+  const [style, setStyle] = useState<ReceiptStyle | null>(null);
+  useEffect(() => {
+    let live = true;
+    void receiptStyle(width).then((s) => live && setStyle(s));
+    return () => {
+      live = false;
+    };
+  }, [settings, width]);
+  return style;
+}
+
+// Siapkan bitmap logo lebih awal (saat data toko dimuat/berubah) agar tombol cetak tidak menunggu.
+let warmedSettings: unknown = null;
+appStore.subscribe(() => {
+  const settings = appStore.get().data?.settings;
+  if (settings && settings !== warmedSettings) {
+    warmedSettings = settings;
+    void receiptStyle();
+  }
+});
+
 /** Mencetak satu dokumen. Tidak pernah melempar error: hasilnya ada di status. */
 async function runImmediate(label: string, build: () => ReceiptOp[]): Promise<boolean> {
   if (sending) { toast('Tunggu pengiriman cetak selesai', 'info'); return false; }
@@ -223,18 +260,20 @@ export async function printOrder(order: Order, opts: { reprint?: boolean } = {})
   const store = storeSettings();
   const label = `${opts.reprint ? 'Cetak ulang' : 'Struk'} ${order.number}`;
   const copies = opts.reprint ? 1 : Math.max(1, Math.min(3, config.copies));
+  const style = await receiptStyle(config.width);
   // Semua salinan dikirim dalam satu kali kirim (RawBT hanya bisa dipanggil sekali per sentuhan).
   return run(label, () => {
     const ops: ReceiptOp[] = [];
-    for (let i = 0; i < copies; i++) ops.push(...saleReceipt(order, store, config, { reprint: opts.reprint || i > 0 }));
+    for (let i = 0; i < copies; i++) ops.push(...saleReceipt(order, store, config, { ...style, reprint: opts.reprint || i > 0 }));
     return ops;
   });
 }
 
-export function printTest() {
+export async function printTest() {
   const config = printerConfigStore.get();
   const info = DRIVERS.find((d) => d.id === config.driver)!;
-  return run('Tes printer', () => testReceipt(storeSettings(), config, info.label, new Date().toISOString()));
+  const style = await receiptStyle(config.width);
+  return run('Tes printer', () => testReceipt(storeSettings(), config, info.label, new Date().toISOString(), style));
 }
 
 export function printShift(shift: Shift) {
@@ -266,14 +305,14 @@ export async function openCashDrawer() {
 }
 
 /** Cetak tagihan sementara (sebelum bayar) dari isi keranjang. */
-export function printBill(draft: Order) {
+export async function printBill(draft: Order) {
   const config = printerConfigStore.get();
   const store = storeSettings();
-  return run('Tagihan', () => saleReceipt(draft, store, config, { bill: true }));
+  const style = await receiptStyle(config.width);
+  return run('Tagihan', () => saleReceipt(draft, store, config, { ...style, bill: true }));
 }
 
-/** Teks pratinjau struk untuk layar. */
-export function previewOrder(order: Order): string {
-  const config = printerConfigStore.get();
-  return toPlainText(saleReceipt(order, storeSettings(), config), config.width);
+/** Pratinjau struk untuk layar (bentuk & logo sama dengan hasil cetak). */
+export function previewOrderOps(order: Order, style: ReceiptStyle): ReceiptOp[] {
+  return saleReceipt(order, storeSettings(), printerConfigStore.get(), style);
 }

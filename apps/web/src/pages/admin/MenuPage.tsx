@@ -51,7 +51,7 @@ function Products({ catalog, reload }: { catalog: Catalog; reload: () => void })
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <select value={cat} onChange={(e) => setCat(e.target.value)} className={cx(inputClass, 'h-11 w-56')}>
+        <select value={cat} onChange={(e) => setCat(e.target.value)} className={cx(inputClass, 'h-11 max-w-56')}>
           <option value="all">Semua kategori</option>
           {catalog.categories.map((c) => (
             <option key={c.id} value={c.id}>

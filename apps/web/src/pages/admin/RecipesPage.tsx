@@ -133,8 +133,9 @@ function RecipeEditor({
           {idxs.map(([l, i]) => {
             const ing = ingredients.find((x) => x.id === l.ingredientId);
             return (
-              <div key={i} className="flex items-center gap-2">
-                <select value={l.ingredientId} onChange={(e) => update(i, { ingredientId: e.target.value })} className={cx(inputClass, 'min-w-0 flex-1')}>
+              <div key={i} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                {/* HP: nama bahan satu baris penuh, takaran di bawahnya. */}
+                <select value={l.ingredientId} onChange={(e) => update(i, { ingredientId: e.target.value })} className={cx(inputClass, 'min-w-0 basis-full sm:flex-1')}>
                   {ingredients.map((x) => (
                     <option key={x.id} value={x.id}>
                       {x.name}
@@ -145,11 +146,11 @@ function RecipeEditor({
                   inputMode="decimal"
                   value={String(l.qty)}
                   onChange={(e) => update(i, { qty: parseFloat(e.target.value.replace(',', '.')) || 0 })}
-                  className={cx(inputClass, 'w-24 text-right')}
+                  className={cx(inputClass, 'max-w-24 shrink-0 text-right')}
                   aria-label="Takaran"
                 />
                 <span className="w-12 text-sm text-fg-muted">{ing?.unit}</span>
-                <button aria-label="Hapus bahan" onClick={() => setLines((ls) => ls!.filter((_, j) => j !== i))} className="grid size-11 shrink-0 place-items-center rounded-xl text-fg-muted hover:bg-danger/10 hover:text-danger">
+                <button aria-label="Hapus bahan" onClick={() => setLines((ls) => ls!.filter((_, j) => j !== i))} className="ml-auto grid size-11 shrink-0 place-items-center rounded-xl text-fg-muted hover:bg-danger/10 hover:text-danger">
                   <Trash2 className="size-5" />
                 </button>
               </div>
