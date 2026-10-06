@@ -1,0 +1,22 @@
+{
+  "name": "mourden-pos",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "db:dev": "npm run db:dev -w @mourden/server",
+    "db:migrate": "npm run db:migrate -w @mourden/server",
+    "db:seed": "npm run db:seed -w @mourden/server",
+    "build": "npm run build -w @mourden/web",
+    "start": "npm start -w @mourden/server",
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
