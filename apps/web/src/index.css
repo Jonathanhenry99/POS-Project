@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Roboto Mono', monospace;
+
+  --color-brand-50: #faf6f2;
+  --color-brand-100: #f3e9df;
+  --color-brand-200: #e6d2bf;
+  --color-brand-300: #d4b397;
+  --color-brand-400: #bf8f6c;
+  --color-brand-500: #a9724f;
+  --color-brand-600: #8d5a3d;
+  --color-brand-700: #6f4630;
+  --color-brand-800: #4a2f21;
+  --color-brand-900: #2b1d16;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  /* Matikan pull-to-refresh dan efek tarik di Android. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-stone-100 text-stone-900 antialiased;
+  overscroll-behavior: none;
+}
+
+* {
+  /* Cegah zoom karena ketukan ganda. */
+  touch-action: manipulation;
+}
+
+button,
+[role='button'] {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
