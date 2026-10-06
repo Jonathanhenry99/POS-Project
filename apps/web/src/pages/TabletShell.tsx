@@ -38,8 +38,7 @@ export function TabletShell() {
     <div className="flex h-full">
       <TabletSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-      <header className="bg-grad-header relative shrink-0 text-white">
-        <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
+      <header className="pos-header relative shrink-0 text-white">
         <div className="relative flex h-14 items-center gap-2 px-3">
           <StoreBlock />
           <div className="ml-auto flex items-center gap-2">
@@ -79,8 +78,8 @@ function StoreBlock() {
       <div className="min-w-0 leading-tight">
         <p className="truncate text-[15px] font-extrabold tracking-tight">{storeName}</p>
         <p className="flex items-center gap-1.5 text-xs text-white/80">
-          {userLabel(user)} <span className="text-white/40">|</span>
-          <span className={cx('italic', !shiftOpen && 'text-amber-200')}>{shiftOpen ? 'Shift Open' : 'Shift Close'}</span>
+          <span className="truncate">{userLabel(user)}</span> <span className="text-white/40">·</span>
+          <span className={cx('shrink-0', shiftOpen ? 'text-teal-200' : 'text-amber-200')}>{shiftOpen ? 'Shift aktif' : 'Shift tutup'}</span>
         </p>
       </div>
     </div>

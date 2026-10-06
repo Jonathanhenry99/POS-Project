@@ -1,8 +1,8 @@
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Coffee, Layers3, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { formatNumber, type Catalog, type Category, type OptionGroup, type Product } from '@mourden/shared';
 import { toast } from '../../components/feedback';
-import { Badge, Button, ErrorNote, Field, Modal, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
+import { Badge, Button, Empty, ErrorNote, Field, Modal, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { refreshBootstrap } from '../../lib/sync';
 import { PageHeader } from './AdminRoutes';
@@ -20,8 +20,23 @@ export function MenuPage() {
   const [tab, setTab] = useState<'produk' | 'kategori' | 'opsi'>('produk');
   return (
     <div className="p-4">
-      <PageHeader title="Menu" subtitle="Produk, kategori, varian & add-on" />
-      <div className="mb-4 max-w-md">
+      <PageHeader title="Pengaturan menu" subtitle="Kelola produk, kategori, dan pilihan tambahan untuk kasir." />
+      {data && (
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {[
+            { label: 'Produk', count: data.products.length, hint: `${data.products.filter((p) => p.active).length} produk aktif`, icon: Coffee },
+            { label: 'Kategori', count: data.categories.length, hint: 'Pengelompokan menu', icon: Layers3 },
+            { label: 'Varian & add-on', count: data.optionGroups.length, hint: 'Pilihan tambahan produk', icon: SlidersHorizontal },
+          ].map(({ label, count, hint, icon: Icon }) => (
+            <div key={label} className="catalog-summary flex items-center gap-4 rounded-2xl border border-line px-5 py-4 shadow-card">
+              <span className="grid size-11 shrink-0 place-items-center rounded-xl border border-primary/10 bg-primary/5 text-primary"><Icon className="size-5" /></span>
+              <div className="min-w-0 flex-1"><p className="text-xs font-semibold text-fg-muted">{label}</p><p className="mt-1 text-xs text-fg-subtle">{hint}</p></div>
+              <span className="text-3xl font-bold tracking-tight tabular">{count}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mb-5 max-w-lg">
         <Segmented
           value={tab}
           onChange={setTab}
@@ -46,12 +61,17 @@ export function MenuPage() {
 function Products({ catalog, reload }: { catalog: Catalog; reload: () => void }) {
   const [editing, setEditing] = useState<Product | 'new' | null>(null);
   const [cat, setCat] = useState('all');
-  const list = catalog.products.filter((p) => cat === 'all' || p.categoryId === cat);
+  const [search, setSearch] = useState('');
+  const list = catalog.products.filter((p) => (cat === 'all' || p.categoryId === cat) && `${p.name} ${p.sku ?? ''}`.toLocaleLowerCase('id-ID').includes(search.trim().toLocaleLowerCase('id-ID')));
   const catName = (id: string) => catalog.categories.find((c) => c.id === id)?.name ?? '-';
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <select value={cat} onChange={(e) => setCat(e.target.value)} className={cx(inputClass, 'h-11 max-w-56')}>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-48 flex-1">
+          <Search aria-hidden="true" className="pointer-events-none absolute top-3.5 left-3.5 size-5 text-fg-subtle" />
+          <TextInput aria-label="Cari produk" placeholder="Cari nama produk atau SKU..." value={search} onChange={(e) => setSearch(e.target.value)} className="bg-surface pl-11" />
+        </div>
+        <select aria-label="Filter kategori produk" value={cat} onChange={(e) => setCat(e.target.value)} className={cx(inputClass, 'max-w-56 bg-surface')}>
           <option value="all">Semua kategori</option>
           {catalog.categories.map((c) => (
             <option key={c.id} value={c.id}>
@@ -63,28 +83,34 @@ function Products({ catalog, reload }: { catalog: Catalog; reload: () => void })
           Tambah produk
         </Button>
       </div>
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+        <div className="flex items-center justify-between gap-3 border-b border-line bg-surface-2/70 px-5 py-3 text-xs font-semibold text-fg-muted">
+          <span>Daftar produk <span className="ml-2 rounded-md border border-line bg-surface px-2 py-0.5 tabular">{list.length}</span></span>
+          <span>Harga jual</span>
+        </div>
         <ul className="divide-y divide-line">
           {list.map((p) => (
             <li key={p.id}>
-              <button onClick={() => setEditing(p)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2">
+              <button onClick={() => setEditing(p)} className="catalog-row flex w-full items-center gap-4 px-5 py-4 text-left hover:bg-surface-2">
+                <span aria-hidden="true" className="catalog-product-mark hidden size-12 shrink-0 place-items-center rounded-xl text-sm font-bold sm:grid">{p.name.split(/\s+/).slice(0, 2).map((word) => word[0]).join('').toUpperCase()}</span>
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2 font-semibold">
                     {p.name}
                     {!p.active && <Badge>Nonaktif</Badge>}
                     {p.soldOut && <Badge tone="red">Habis</Badge>}
                   </p>
-                  <p className="text-sm text-fg-muted">
+                  <p className="mt-1 text-xs leading-relaxed text-fg-muted">
                     {catName(p.categoryId)}
                     {p.optionGroupIds.length > 0 && ` · ${p.optionGroupIds.map((g) => catalog.optionGroups.find((x) => x.id === g)?.name).filter(Boolean).join(', ')}`}
                   </p>
                 </div>
-                <span className="font-semibold tabular">{formatNumber(p.price)}</span>
-                <Pencil className="size-4 text-fg-subtle" />
+                <span className="shrink-0 text-sm font-bold tabular"><span className="mr-1 text-xs font-medium text-fg-subtle">Rp</span>{formatNumber(p.price)}</span>
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-line text-fg-subtle"><Pencil className="size-4" /></span>
               </button>
             </li>
           ))}
         </ul>
+        {!list.length && <Empty icon={<Search className="size-6" />} title="Tidak ada produk"><p className="text-sm">Coba kata kunci atau kategori lain, atau tambahkan produk baru.</p></Empty>}
       </div>
       {editing && <ProductForm catalog={catalog} product={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={reload} />}
     </>

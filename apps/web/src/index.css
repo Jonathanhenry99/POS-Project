@@ -1,4 +1,7 @@
 @import 'tailwindcss';
+@import './workspace-theme.css';
+
+/* Workspace styling is scoped separately so the cashier body stays unchanged. */
 
 /*
  * Sistem desain Mourden POS.

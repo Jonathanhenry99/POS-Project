@@ -13,7 +13,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { userLabel } from '@mourden/shared';
 import { cx } from '../../components/ui';
@@ -100,21 +100,24 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
     Object.fromEntries(NAV.filter((g) => g.items).map((g) => [g.label, g.items!.some((i) => pathname.startsWith(i.to))])),
   );
   const link = ({ isActive }: { isActive: boolean }) =>
-    cx('press flex h-11 items-center gap-3 rounded-xl px-3 text-[15px] font-semibold', isActive ? 'bg-primary/10 text-primary' : 'text-fg hover:bg-surface-2');
+    cx('press flex h-12 items-center gap-3 rounded-xl px-3 text-sm font-semibold', isActive ? 'bg-primary/10 text-primary' : 'text-fg-muted hover:bg-surface-2 hover:text-fg');
   return (
-    <nav className="flex flex-col gap-1">
-      {NAV.map((g) =>
-        g.to ? (
+    <nav aria-label="Navigasi back office" className="flex flex-col gap-1">
+      {NAV.map((g, index) => (
+        <Fragment key={g.label}>
+          {(index === 0 || index === 3 || index === 5) && <p className="admin-nav-section">{index === 0 ? 'Ringkasan bisnis' : index === 3 ? 'Operasional' : 'Manajemen'}</p>}
+        {g.to ? (
           <NavLink key={g.label} to={g.to} end={g.to === '/admin'} className={link} onClick={onNavigate}>
             <g.icon className="size-5" /> {g.label}
           </NavLink>
         ) : (
           <div key={g.label}>
             <button
+              aria-expanded={!!open[g.label]}
               onClick={() => setOpen((o) => ({ ...o, [g.label]: !o[g.label] }))}
               className={cx(
-                'press flex h-11 w-full items-center gap-3 rounded-xl px-3 text-[15px] font-semibold',
-                g.items!.some((i) => pathname.startsWith(i.to)) ? 'text-primary' : 'text-fg hover:bg-surface-2',
+                'press flex h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold',
+                g.items!.some((i) => pathname.startsWith(i.to)) ? 'text-primary' : 'text-fg-muted hover:bg-surface-2 hover:text-fg',
               )}
             >
               <g.icon className="size-5" /> {g.label}
@@ -128,7 +131,7 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
                     to={i.to}
                     end={i.end}
                     onClick={onNavigate}
-                    className={({ isActive }) => cx('flex h-10 items-center rounded-xl px-3 text-sm font-medium', isActive ? 'bg-primary/10 font-semibold text-primary' : 'text-fg-muted hover:bg-surface-2 hover:text-fg')}
+                    className={({ isActive }) => cx('flex min-h-12 items-center rounded-xl px-3 text-xs font-medium', isActive ? 'bg-primary/10 font-semibold text-primary' : 'text-fg-muted hover:bg-surface-2 hover:text-fg')}
                   >
                     {i.label}
                   </NavLink>
@@ -136,8 +139,9 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
               </div>
             )}
           </div>
-        ),
-      )}
+        )}
+        </Fragment>
+      ))}
     </nav>
   );
 }
@@ -150,7 +154,7 @@ function Brand() {
         <p className="text-[17px] font-extrabold tracking-tight">
           Mourden <span className="text-primary">POS</span>
         </p>
-        <p className="text-xs text-fg-subtle">Back office</p>
+        <p className="brand-caption text-xs text-fg-subtle">Back office</p>
       </div>
     </div>
   );
@@ -172,8 +176,8 @@ export default function AdminRoutes() {
 
   return (
     <div className="flex h-full">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-line bg-surface lg:flex">
-        <div className="px-5 py-5">
+      <aside className="admin-sidebar hidden w-64 shrink-0 flex-col border-r border-line lg:flex">
+        <div className="border-b border-line px-5 py-6">
           <Brand />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3">
@@ -192,15 +196,14 @@ export default function AdminRoutes() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="bg-grad-header relative shrink-0 text-white">
-          <div className="bg-grid pointer-events-none absolute inset-0 opacity-50" />
-          <div className="relative flex h-16 items-center gap-3 px-4">
-            <button aria-label="Menu" onClick={() => setDrawer(true)} className="press grid size-11 place-items-center rounded-xl bg-white/12 lg:hidden">
+        <header className="admin-topbar relative shrink-0">
+          <div className="relative flex h-20 items-center gap-3 px-4 lg:px-6">
+            <button aria-label="Menu" onClick={() => setDrawer(true)} className="press grid size-12 place-items-center rounded-xl border border-line bg-surface lg:hidden">
               <Menu className="size-5" />
             </button>
             <p className="flex min-w-0 items-center gap-1 truncate text-[15px] font-semibold">
               {title.split(' › ').map((part, i, arr) => (
-                <span key={part} className={cx('flex items-center gap-1', i < arr.length - 1 && 'text-white/70')}>
+                <span key={part} className={cx('flex items-center gap-1', i < arr.length - 1 && 'text-fg-muted')}>
                   {part}
                   {i < arr.length - 1 && <ChevronRight className="size-4" />}
                 </span>
@@ -208,15 +211,16 @@ export default function AdminRoutes() {
             </p>
             <div className="ml-auto flex items-center gap-2">
               {mode === 'tablet' && (
-                <Link to="/kasir" className="press hidden h-10 items-center gap-2 rounded-xl bg-white/15 px-3 text-sm font-semibold md:flex lg:hidden">
+                <Link to="/kasir" className="press hidden h-12 items-center gap-2 rounded-xl bg-primary/10 px-3 text-sm font-semibold text-primary md:flex lg:hidden">
                   <Receipt className="size-4" /> Kasir
                 </Link>
               )}
-              <div className="flex items-center gap-2.5 rounded-2xl bg-white/12 py-1.5 pr-3 pl-1.5">
+              <span className="hidden items-center gap-2 pr-3 text-xs font-medium text-fg-muted xl:flex"><span className={cx('size-2 rounded-full', online ? 'bg-success' : 'bg-warning')} />{online ? 'Online' : 'Offline'}</span>
+              <div className="flex items-center gap-2.5 rounded-2xl border border-line bg-surface py-1.5 pr-3 pl-1.5">
                 <BrandLogo className="h-9 w-11" />
                 <div className="hidden leading-tight sm:block">
                   <p className="text-sm font-bold">{settings.data?.store.name ?? 'Mourden'}</p>
-                  <p className="text-xs text-white/75">
+                  <p className="text-xs text-fg-muted">
                     {userLabel(user)}
                   </p>
                 </div>
@@ -225,8 +229,8 @@ export default function AdminRoutes() {
           </div>
         </header>
         {!online && mode === 'tablet' && <p className="bg-warning px-4 py-2 text-sm font-semibold text-on-warning">Offline: halaman admin butuh internet.</p>}
-        <main className="min-h-0 flex-1 overflow-y-auto pb-20 lg:pb-0">
-          <div key={pathname} className="animate-fade-in">
+        <main className="admin-content min-h-0 flex-1 overflow-y-auto pb-20 lg:pb-0">
+          <div key={pathname}>
             <Routes>
               <Route index element={<DashboardPage />} />
               <Route path="laporan/*" element={<ReportsPage />} />
@@ -246,7 +250,7 @@ export default function AdminRoutes() {
 
       {drawer && (
         <div className="animate-fade-in fixed inset-0 z-40 bg-black/40 lg:hidden" onPointerDown={(e) => e.target === e.currentTarget && setDrawer(false)}>
-          <div className="animate-rise flex h-full w-[82%] max-w-xs flex-col bg-surface shadow-card">
+          <div className="admin-sidebar animate-rise flex h-full w-[82%] max-w-xs flex-col shadow-card">
             <div className="flex items-center justify-between px-4 py-4">
               <Brand />
               <button aria-label="Tutup menu" onClick={() => setDrawer(false)} className="grid size-11 place-items-center rounded-xl hover:bg-surface-2">
@@ -296,7 +300,7 @@ function MobileNav({ onMore }: { onMore: () => void }) {
 /** Judul halaman admin + aksi di kanan. */
 export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) {
   return (
-    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div className="admin-page-heading mb-4 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">{title}</h1>
         {subtitle && <p className="text-fg-muted">{subtitle}</p>}

@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { Navigate, Route, Routes } from 'react-router';
+import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { can, type Permission } from '@mourden/shared';
 import { ConfirmHost, Toaster } from './components/feedback';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -79,9 +79,13 @@ function Home() {
 
 export function App() {
   const ready = useApp((s) => s.ready);
+  const { pathname } = useLocation();
+  // Kasir keeps its existing palette and layout; only TabletShell's header is redesigned.
+  const cashier = /^\/kasir\/?$/i.test(pathname);
   if (!ready) return <Splash />;
   return (
     <ErrorBoundary>
+      <div className={cashier ? 'h-full' : 'workspace-theme h-full'}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/aktivasi" element={<ActivatePage />} />
@@ -117,6 +121,7 @@ export function App() {
       <Toaster />
       <ConfirmHost />
       <UpdatePrompt />
+      </div>
     </ErrorBoundary>
   );
 }
