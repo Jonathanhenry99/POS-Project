@@ -19,6 +19,7 @@ import { userLabel } from '@mourden/shared';
 import { cx } from '../../components/ui';
 import { logout } from '../../lib/session';
 import { BrandLogo } from '../../components/BrandLogo';
+import { AppModeButton } from '../../components/AppModeButton';
 import { useApp } from '../../lib/state';
 import { DashboardPage } from './DashboardPage';
 import { InventoryPage } from './InventoryPage';
@@ -210,6 +211,7 @@ export default function AdminRoutes() {
               ))}
             </p>
             <div className="ml-auto flex items-center gap-2">
+              <AppModeButton light allowFullscreen={false} />
               {mode === 'tablet' && (
                 <Link to="/kasir" className="press hidden h-12 items-center gap-2 rounded-xl bg-primary/10 px-3 text-sm font-semibold text-primary md:flex lg:hidden">
                   <Receipt className="size-4" /> Kasir

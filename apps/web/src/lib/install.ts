@@ -10,7 +10,14 @@ const installStore = createStore<{ prompt: InstallPromptEvent | null; installed:
 
 /** true bila POS sudah dibuka sebagai aplikasi (tanpa address bar Chrome). */
 export function isAppMode(): boolean {
-  return ['fullscreen', 'standalone', 'minimal-ui'].some((m) => window.matchMedia?.(`(display-mode: ${m})`).matches);
+  return (navigator as Navigator & { standalone?: boolean }).standalone === true ||
+    ['fullscreen', 'standalone', 'minimal-ui'].some((m) => window.matchMedia?.(`(display-mode: ${m})`).matches);
+}
+
+/** iPadOS mode desktop melaporkan MacIntel; Mac biasa tidak memiliki multi-touch. */
+export function isAppleMobile(): boolean {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
 if (typeof window !== 'undefined') {

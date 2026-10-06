@@ -1,40 +1,40 @@
 /* Scoped to non-cashier routes. Never move these tokens to :root: the cashier
    catalog, cart, payment dialogs and sidebar must retain their existing design. */
 .workspace-theme {
-  --bg: #f3f6f8;
+  --bg: #f7f7fa;
   --surface: #ffffff;
-  --surface-2: #f5f8fa;
-  --surface-3: #e9eff3;
-  --line: #e1e8ed;
-  --line-strong: #c5d2dc;
-  --fg: #182b3d;
-  --fg-muted: #52677a;
-  --fg-subtle: #667c8e;
-  --primary: #087e86;
-  --primary-strong: #08646e;
-  --accent: #b76728;
+  --surface-2: #f5f4f8;
+  --surface-3: #eae8ef;
+  --line: #e7e5ed;
+  --line-strong: #d0cbdc;
+  --fg: #302d3d;
+  --fg-muted: #676173;
+  --fg-subtle: #797283;
+  --primary: #7058a3;
+  --primary-strong: #594286;
+  --accent: #a87943;
   --success: #07815c;
-  --chart-1: #087e86;
-  --chart-2: #5579c3;
-  --chart-3: #b77840;
-  --glow: 0 4px 12px -5px rgb(8 100 110 / 35%);
-  --shadow-card: 0 2px 4px rgb(24 43 61 / 2%), 0 12px 28px -22px rgb(24 43 61 / 24%);
-  background: radial-gradient(ellipse at 90% 0, #e5f2f2 0, transparent 48%), var(--bg);
+  --chart-1: #8065b0;
+  --chart-2: #5d958b;
+  --chart-3: #b69366;
+  --glow: 0 4px 12px -5px rgb(112 88 163 / 25%);
+  --shadow-card: 0 1px 2px rgb(48 45 61 / 2%), 0 8px 24px -18px rgb(48 45 61 / 16%);
+  background: radial-gradient(ellipse at 100% 0, #f0edf7 0, transparent 45%), var(--bg);
   color: var(--fg);
 }
 
 .workspace-theme .bg-grad-primary {
-  background-image: linear-gradient(115deg, #087e86, #08646e);
+  background-image: linear-gradient(115deg, #8067af, #6a5298);
 }
 .workspace-theme .bg-grad-primary:disabled { background-image: none; }
 .workspace-theme .bg-grad-header {
-  background-image: radial-gradient(ellipse at 100% 0, #155968 0, transparent 65%), linear-gradient(115deg, #101f30, #19384a);
+  background-image: linear-gradient(120deg, #66547f, #8975a1);
 }
 .workspace-theme .bg-grid { background-size: 48px 48px; opacity: .2; }
 .workspace-theme .rounded-3xl { border-radius: 20px; }
 .workspace-theme :is(button, a, input, select, textarea):focus-visible,
 .pos-header :is(button, a):focus-visible {
-  outline: 3px solid #22b7bb;
+  outline: 3px solid #a48acb;
   outline-offset: 3px;
 }
 .workspace-theme :is(input, select, textarea) { box-shadow: 0 1px 2px rgb(24 43 61 / 3%); }
@@ -46,14 +46,14 @@
 }
 
 .admin-sidebar {
-  --fg: #e7eff6;
-  --fg-muted: #a7b9ca;
-  --fg-subtle: #92a8bc;
-  --primary: #70dfd5;
-  --surface-2: #1b3348;
-  --line: #294052;
+  --fg: #302d3d;
+  --fg-muted: #676173;
+  --fg-subtle: #797283;
+  --primary: #7058a3;
+  --surface-2: #f4f1f8;
+  --line: #e7e5ed;
   color: var(--fg);
-  background: radial-gradient(ellipse at 0 0, #1b3b50, transparent 65%), #112437;
+  background: linear-gradient(165deg, #fff 50%, #f8f6fb);
 }
 .admin-sidebar .brand-caption {
   margin-top: 5px;
@@ -63,15 +63,15 @@
 }
 .admin-nav-section {
   padding: 24px 12px 9px;
-  color: #92a8bc;
+  color: #847b90;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .16em;
   text-transform: uppercase;
 }
 .admin-sidebar a[aria-current='page'] {
-  background: linear-gradient(100deg, rgb(68 199 191 / 17%), rgb(68 199 191 / 5%));
-  box-shadow: inset 3px 0 #70dfd5, inset 0 0 0 1px rgb(112 223 213 / 12%);
+  background: linear-gradient(100deg, #ede7f7, #f5f2fa);
+  box-shadow: inset 3px 0 #a58ac7, inset 0 0 0 1px #e8e0f2;
 }
 .admin-topbar {
   background: rgb(255 255 255 / 94%);
@@ -90,18 +90,19 @@
   border-radius: 3px;
   background: var(--primary);
 }
-.catalog-summary { background: linear-gradient(125deg, #fff, #f3fafa); }
+.catalog-summary { background: linear-gradient(125deg, #fff, #faf9fc); }
 .catalog-row { min-height: 88px; transition: background-color 150ms; }
 .catalog-product-mark {
-  background: linear-gradient(140deg, #e7f5f3, #edf2f8);
-  border: 1px solid #dceae9;
-  color: #087e86;
+  background: linear-gradient(140deg, #f1edf8, #f5f3f7);
+  border: 1px solid #e8e2f1;
+  color: #7058a3;
 }
 
 /* Header is the only redesigned surface on /kasir. Its 56px height is unchanged. */
 .pos-header {
-  background: radial-gradient(ellipse at 100% 0, #205c65 0, transparent 65%), linear-gradient(110deg, #102235, #193a4c);
-  box-shadow: inset 0 -1px rgb(112 223 213 / 40%);
+  color: #302d3d;
+  background: linear-gradient(110deg, #fff 20%, #f4f0f9 72%, #f8f4ee);
+  box-shadow: inset 0 -1px #e3ddeb;
 }
 .pos-header::before {
   content: '';
@@ -110,11 +111,17 @@
   right: 12%;
   width: 24%;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #70dfd5, transparent);
+  background: linear-gradient(90deg, transparent, #baa7d3, #d9c9af, transparent);
   pointer-events: none;
 }
 .pos-header :is(button, a) { flex-shrink: 0; }
-.pos-header .bg-white\/12 { background-color: rgb(255 255 255 / 7%); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%); }
+.pos-header .bg-white\/12 { background-color: rgb(255 255 255 / 75%); box-shadow: inset 0 0 0 1px #e3ddeb; }
+.pos-header :is(.text-white\/70, .text-white\/75, .text-white\/80) { color: #736a80; }
+.pos-header .text-white\/40 { color: #93899e; }
+.pos-header .text-teal-200 { color: #08715f; }
+.pos-header .text-amber-200 { color: #936316; }
+.pos-header :is(button, a):hover { box-shadow: inset 0 0 0 1px #b9a7d2; }
+.pos-header a.bg-danger { color: #fff; }
 .pos-header .bg-white { background-color: #e7f8f2; color: #086b50; }
 
 @media (max-width: 639px) {
