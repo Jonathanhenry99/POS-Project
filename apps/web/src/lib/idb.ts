@@ -55,9 +55,29 @@ interface MourdenDB extends DBSchema {
 }
 
 let dbPromise: Promise<IDBPDatabase<MourdenDB>> | null = null;
+export const MAIN_DB = 'mourden-pos';
+export const PREVIEW_DB = 'mourden-pos-preview';
+let dbName = MAIN_DB;
+
+/** Pindah database lokal (mode pratinjau memakai database sendiri agar data tablet asli tidak tersentuh). */
+export async function useDatabase(name: string) {
+  if (name === dbName) return;
+  const prior = dbPromise;
+  dbPromise = null;
+  dbName = name;
+  if (prior) (await prior.catch(() => null))?.close();
+}
+
+export async function deleteDatabase(name: string) {
+  if (name === dbName) throw new Error('Database sedang dipakai');
+  await new Promise<void>((resolve) => {
+    const req = indexedDB.deleteDatabase(name);
+    req.onsuccess = req.onerror = req.onblocked = () => resolve();
+  });
+}
 
 export function db() {
-  dbPromise ??= openDB<MourdenDB>('mourden-pos', 3, {
+  dbPromise ??= openDB<MourdenDB>(dbName, 3, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) {
       d.createObjectStore('kv');
@@ -81,7 +101,7 @@ export async function resetDbForTests() {
   if (dbPromise) (await dbPromise).close();
   dbPromise = null;
   await new Promise<void>((resolve, reject) => {
-    const req = indexedDB.deleteDatabase('mourden-pos');
+    const req = indexedDB.deleteDatabase(dbName);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });

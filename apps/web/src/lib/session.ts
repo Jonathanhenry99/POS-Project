@@ -4,6 +4,7 @@ import { api, setUnauthorizedHandler } from './api';
 import { initBrand } from './brand';
 import { kvDelete, kvGet, kvSet, type BootstrapData, type DeviceInfo } from './idb';
 import { loadActiveShift } from './pos';
+import { enterPreview, exitPreview, previewRequested } from './preview';
 import { appStore } from './state';
 import { refreshBootstrap, startSyncLoop } from './sync';
 
@@ -49,7 +50,10 @@ export async function initApp() {
   }
 
   const session = readJson<{ token: string; user: PublicUser }>(SESSION_KEY);
-  appStore.set({ mode: 'online', token: session?.token ?? null, user: session?.user ?? null, ready: true });
+  appStore.set({ mode: 'online', token: session?.token ?? null, user: session?.user ?? null });
+  // Muat ulang saat pratinjau kasir: lanjutkan pratinjau (butuh koneksi untuk mengambil menu).
+  if (session && previewRequested()) await enterPreview().catch(() => exitPreview());
+  appStore.set({ ready: true });
   if (session) {
     // Perbarui data pengguna (peran bisa berubah); 401 otomatis mengeluarkan.
     api<{ user: PublicUser }>('/auth/me')
@@ -108,12 +112,14 @@ export async function loginTablet(userId: string, pin: string): Promise<PublicUs
 /** Verifikasi PIN owner di tablet untuk persetujuan (void, diskon besar) tanpa mengganti operator. */
 export async function verifyOwnerPin(pin: string): Promise<PublicUser | null> {
   for (const u of appStore.get().data?.users ?? []) {
-    if (u.role === 'owner' && (await verifyPin(pin, u.pinHash))) return publicOf(u);
+    if (u.role === 'owner' && u.pinHash && (await verifyPin(pin, u.pinHash))) return publicOf(u);
   }
   return null;
 }
 
 export function logout() {
+  // Keluar dari pratinjau dulu supaya sesi owner (mode online) ikut dihapus di bawah.
+  if (appStore.get().preview) void exitPreview();
   const s = appStore.get();
   if (s.mode === 'tablet') writeLocal(OPERATOR_KEY, null);
   else writeLocal(SESSION_KEY, null);

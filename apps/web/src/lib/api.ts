@@ -15,6 +15,8 @@ export class ApiError extends Error {
 
 export function authHeaders(operatorId?: string): Record<string, string> {
   const s = appStore.get();
+  // Pratinjau memakai sesi owner, bukan token perangkat (perangkat pratinjau tidak terdaftar di server).
+  if (s.preview) return s.token ? { Authorization: `Bearer ${s.token}` } : {};
   if (s.mode === 'tablet' && s.device) {
     const h: Record<string, string> = { Authorization: `Device ${s.device.token}` };
     const op = operatorId ?? s.user?.id;

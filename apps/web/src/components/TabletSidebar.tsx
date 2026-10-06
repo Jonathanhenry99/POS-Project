@@ -30,6 +30,7 @@ const sections: { label: string; items: { to: string; label: string; icon: Lucid
 
 export function TabletSidebar() {
   const user = useApp((s) => s.user)!;
+  const preview = useApp((s) => s.preview);
   const storeName = useApp((s) => s.data?.settings.store.name ?? 'POS');
   const [collapsed, setCollapsed, hoverEvents] = useSidebarPreference(PREF_KEY, typeof window !== 'undefined' && window.innerWidth < 1366);
   return <Sidebar {...hoverEvents} aria-label="Navigasi utama" collapsed={collapsed} className={cx('flex', collapsed ? 'w-[72px]' : 'w-56')}>
@@ -39,7 +40,8 @@ export function TabletSidebar() {
     </div>
     <nav id="tablet-navigation" className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
       {sections.map((section) => {
-        const items = section.items.filter((item) => !item.permission || can(user.role, item.permission));
+        // Pratinjau: stok & sinkron disembunyikan (stok mengubah data asli; antrean pratinjau tidak pernah dikirim).
+        const items = section.items.filter((item) => (!item.permission || can(user.role, item.permission)) && !(preview && (item.to === '/stok' || item.to === '/sinkron')));
         if (!items.length) return null;
         return <section key={section.label} aria-label={section.label} className="mb-3">
           {collapsed ? <div className="sidebar-section-divider" title={section.label} /> : <p className="sidebar-section-label">{section.label}</p>}

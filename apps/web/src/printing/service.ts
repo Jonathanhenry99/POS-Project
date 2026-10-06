@@ -185,8 +185,27 @@ appStore.subscribe(() => {
   }
 });
 
+// ---------- Mode pratinjau: dokumen ditampilkan di layar, tidak pernah dikirim ke printer ----------
+
+export const previewPrintStore = createStore<{ doc: { label: string; ops: ReceiptOp[]; width: number } | null }>({ doc: null });
+export const usePreviewPrint = () => useStore(previewPrintStore, (s) => s.doc);
+
+async function showInsteadOfPrint(id: string): Promise<boolean> {
+  const job = await (await db()).get('printJobs', id);
+  if (!job) return false;
+  previewPrintStore.set({ doc: { label: job.label, ops: job.ops, width: job.config.width } });
+  const message = 'Mode pratinjau: ditampilkan di layar, tidak dicetak';
+  await finishPrintJob(job, 'handed-off', message);
+  printStatusStore.set({ status: { state: 'done', label: job.label, confirmed: false, message, at: Date.now() } });
+  return true;
+}
+
 /** Mencetak satu dokumen. Tidak pernah melempar error: hasilnya ada di status. */
 async function runImmediate(label: string, build: () => ReceiptOp[]): Promise<boolean> {
+  if (appStore.get().preview) {
+    toast('Mode pratinjau: perintah ke printer tidak dikirim', 'info');
+    return false;
+  }
   if (sending) { toast('Tunggu pengiriman cetak selesai', 'info'); return false; }
   sending = true;
   const config = printerConfigStore.get();
@@ -216,6 +235,7 @@ async function runImmediate(label: string, build: () => ReceiptOp[]): Promise<bo
 
 let sending = false;
 export async function sendPrintJob(id: string, acknowledgeDuplicate = false): Promise<boolean> {
+  if (appStore.get().preview) return showInsteadOfPrint(id);
   if (sending) { toast('Tunggu pengiriman cetak saat ini selesai', 'info'); return false; }
   sending = true;
   let job: Awaited<ReturnType<typeof claimPrintJob>> | null = null;

@@ -1,24 +1,28 @@
-import { Boxes, CloudOff, History, LayoutDashboard, Lock, Printer, Receipt, RefreshCw, Wallet } from 'lucide-react';
+import { Boxes, CloudOff, Eye, History, LayoutDashboard, Lock, LogOut, Printer, Receipt, RefreshCw, Wallet } from 'lucide-react';
 import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { can, formatNumber, userLabel } from '@mourden/shared';
 import { Spinner, StatusDot, cx } from '../components/ui';
 import { listOrders, useOrdersVersion } from '../lib/pos';
+import { exitPreview } from '../lib/preview';
 import { logout } from '../lib/session';
 import { appStore, useApp } from '../lib/state';
 import { usePrintStatus } from '../printing/service';
 import { TabletSidebar } from '../components/TabletSidebar';
 import { AppModeButton } from '../components/AppModeButton';
+import { PreviewPrintModal } from '../components/PreviewPrintModal';
 
 const OWNER_IDLE_LOCK_MS = 10 * 60_000;
 
 export function TabletShell() {
   const user = useApp((s) => s.user)!;
+  const preview = useApp((s) => s.preview);
   const navigate = useNavigate();
 
   // Owner yang lupa keluar di tablet otomatis terkunci setelah 10 menit tidak ada aktivitas.
+  // Tidak berlaku di pratinjau (perangkat owner sendiri, sesi owner tetap dijaga oleh login online).
   useEffect(() => {
-    if (user.role !== 'owner') return;
+    if (user.role !== 'owner' || preview) return;
     let last = Date.now();
     const touch = () => (last = Date.now());
     window.addEventListener('pointerdown', touch);
@@ -32,7 +36,7 @@ export function TabletShell() {
       window.removeEventListener('pointerdown', touch);
       clearInterval(timer);
     };
-  }, [user.role, navigate]);
+  }, [user.role, preview, navigate]);
 
   return (
     <div className="flex h-full">
@@ -42,11 +46,25 @@ export function TabletShell() {
         <div className="relative flex h-14 items-center gap-2 px-3">
           <StoreBlock />
           <div className="ml-auto flex items-center gap-2">
+            {preview && (
+              <span className="flex h-11 items-center gap-1.5 rounded-xl bg-amber-100 px-3 text-sm font-bold text-amber-900 ring-1 ring-amber-300" title="Transaksi tidak disimpan ke server dan tidak dicetak">
+                <Eye className="size-4" /> <span className="hidden sm:inline">Mode pratinjau</span>
+              </span>
+            )}
             <AppModeButton />
             <ShiftChip />
             <Clock />
-            <SyncPill />
+            {!preview && <SyncPill />}
             <PrinterPill />
+            {preview ? (
+              <button
+                onClick={() => void exitPreview().then(() => navigate('/admin', { replace: true }))}
+                className="press flex h-11 items-center gap-2 rounded-xl bg-white/12 px-3 text-sm font-semibold hover:bg-white/20"
+                title="Keluar dari pratinjau kasir (data simulasi dihapus)"
+              >
+                <LogOut className="size-5" /> <span className="hidden md:inline">Keluar pratinjau</span>
+              </button>
+            ) : (
             <button
               onClick={() => {
                 logout();
@@ -58,12 +76,14 @@ export function TabletShell() {
             >
               <Lock className="size-5" />
             </button>
+            )}
           </div>
         </div>
       </header>
       <main className="min-h-0 flex-1">
         <Suspense fallback={<div className="grid h-full place-items-center"><Spinner /></div>}><Outlet /></Suspense>
       </main>
+      {preview && <PreviewPrintModal />}
       </div>
     </div>
   );

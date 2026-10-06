@@ -11,6 +11,8 @@ export type AppMode = 'tablet' | 'online';
 export interface AppState {
   ready: boolean;
   mode: AppMode;
+  /** Owner mencoba layar kasir dari HP/laptop: data lokal terpisah, tidak pernah dikirim ke server atau printer. */
+  preview: boolean;
   device: DeviceInfo | null;
   data: BootstrapData | null;
   user: PublicUser | null;
@@ -24,6 +26,7 @@ export interface AppState {
 export const appStore = createStore<AppState>({
   ready: false,
   mode: 'online',
+  preview: false,
   device: null,
   data: null,
   user: null,

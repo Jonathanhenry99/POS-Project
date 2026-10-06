@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MonitorSmartphone,
   Receipt,
   Settings,
   Users,
@@ -16,7 +17,10 @@ import {
 import { Fragment, useState, type ReactNode } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { ROLE_LABEL, userLabel } from '@mourden/shared';
+import { toast } from '../../components/feedback';
 import { cx } from '../../components/ui';
+import { errorMessage } from '../../lib/api';
+import { enterPreview } from '../../lib/preview';
 import { logout } from '../../lib/session';
 import { BrandLogo } from '../../components/BrandLogo';
 import { AppModeButton } from '../../components/AppModeButton';
@@ -176,6 +180,19 @@ export default function AdminRoutes() {
     logout();
     navigate('/login', { replace: true });
   };
+  const [opening, setOpening] = useState(false);
+  // Owner di HP/laptop: coba layar kasir tanpa mengaktifkan perangkat (transaksi simulasi, tidak tersimpan).
+  const openPreview = async () => {
+    setOpening(true);
+    try {
+      await enterPreview();
+      navigate('/kasir');
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setOpening(false);
+    }
+  };
 
   return (
     <div className="admin-workspace flex h-full">
@@ -191,6 +208,11 @@ export default function AdminRoutes() {
             <Link to="/kasir" className="sidebar-link" title="Kembali ke kasir" aria-label="Kembali ke kasir">
               <Receipt className="size-5 shrink-0" /> {!collapsed && <span>Kembali ke kasir</span>}
             </Link>
+          )}
+          {mode === 'online' && (
+            <button onClick={() => void openPreview()} disabled={opening} className="sidebar-link w-full" title="Pratinjau kasir (simulasi)" aria-label="Pratinjau kasir">
+              <MonitorSmartphone className="size-5 shrink-0" /> {!collapsed && <span>{opening ? 'Membuka…' : 'Pratinjau kasir'}</span>}
+            </button>
           )}
           <button onClick={doLogout} className="sidebar-link w-full" title="Keluar" aria-label="Keluar">
             <LogOut className="size-5 shrink-0" /> {!collapsed && <span>Keluar</span>}
@@ -268,6 +290,11 @@ export default function AdminRoutes() {
             </div>
             <div className="sidebar-footer p-2">
               {mode === 'tablet' && <Link to="/kasir" className="sidebar-link"><Receipt className="size-5" /> Kembali ke kasir</Link>}
+              {mode === 'online' && (
+                <button onClick={() => void openPreview()} disabled={opening} className="sidebar-link w-full">
+                  <MonitorSmartphone className="size-5" /> {opening ? 'Membuka…' : 'Pratinjau kasir'}
+                </button>
+              )}
               <button onClick={doLogout} className="sidebar-link w-full">
                 <LogOut className="size-5" /> Keluar
               </button>

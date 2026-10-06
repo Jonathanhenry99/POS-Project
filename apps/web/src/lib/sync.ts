@@ -4,7 +4,7 @@ import { db, kvSet, type BootstrapData, type OutboxItem } from './idb';
 import { appStore } from './state';
 
 export async function refreshBootstrap(): Promise<boolean> {
-  if (appStore.get().mode !== 'tablet') return false;
+  if (appStore.get().mode !== 'tablet' || appStore.get().preview) return false;
   try {
     const data = await api<Omit<BootstrapData, 'fetchedAt'> & { serverTime: string }>('/sync/bootstrap', { operatorId: '' });
     const { serverTime: _, ...rest } = data;
@@ -54,7 +54,8 @@ let flushing: Promise<void> | null = null;
 
 /** Kirim antrean berurutan. Berhenti saat jaringan/server bermasalah agar urutan tetap terjaga. */
 export function flushOutbox(): Promise<void> {
-  if (appStore.get().mode !== 'tablet') return Promise.resolve();
+  // Mode pratinjau: antrean tetap lokal, tidak pernah dikirim ke server.
+  if (appStore.get().mode !== 'tablet' || appStore.get().preview) return Promise.resolve();
   flushing ??= (async () => {
     appStore.set((s) => ({ ...s, sync: { ...s.sync, syncing: true } }));
     try {
