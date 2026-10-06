@@ -4,7 +4,8 @@ import { can, type Permission } from '@mourden/shared';
 import { ConfirmHost, Toaster } from './components/feedback';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { UpdatePrompt } from './components/UpdatePrompt';
-import { Spinner } from './components/ui';
+import { Button, Spinner } from './components/ui';
+import { logout } from './lib/session';
 import { useApp } from './lib/state';
 import { ActivatePage } from './pages/Activate';
 import { LoginPage } from './pages/Login';
@@ -52,7 +53,25 @@ function Home() {
     <div className="grid h-full place-items-center p-6 text-center">
       <div>
         <p className="text-lg font-bold">Akun kasir hanya bisa dipakai di tablet kasir.</p>
-        <p className="mt-1 text-fg-muted">Login di tablet yang sudah diaktifkan owner.</p>
+        <p className="mt-1 text-fg-muted">Aktifkan perangkat ini sebagai tablet kasir (butuh PIN owner), lalu pilih nama kasir.</p>
+        <div className="mt-5 flex flex-wrap justify-center gap-3">
+          <Button
+            onClick={() => {
+              // Muat ulang langsung ke /aktivasi: navigasi router berprioritas rendah kalah cepat dengan
+              // pengalihan ke /login yang dipicu logout.
+              logout();
+              window.location.replace('/aktivasi');
+            }}
+          >
+            Aktifkan tablet ini
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => logout()}
+          >
+            Keluar
+          </Button>
+        </div>
       </div>
     </div>
   );

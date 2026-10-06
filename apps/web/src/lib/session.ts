@@ -1,5 +1,5 @@
 // Login, aktivasi perangkat, dan inisialisasi aplikasi.
-import { verifyPin, type PublicUser } from '@mourden/shared';
+import { can, verifyPin, type PublicUser } from '@mourden/shared';
 import { api, setUnauthorizedHandler } from './api';
 import { kvDelete, kvGet, kvSet, type BootstrapData, type DeviceInfo } from './idb';
 import { loadActiveShift } from './pos';
@@ -66,6 +66,10 @@ function publicOf(u: PublicUser): PublicUser {
 /** Login di HP/laptop (online): username + PIN dicek server. */
 export async function loginOnline(username: string, pin: string) {
   const res = await api<{ token: string; user: PublicUser }>('/auth/login', { method: 'POST', body: { username, pin } });
+  // Akun yang hanya bisa berjualan (kasir) tidak punya halaman di mode online: tolak sebelum sesi disimpan.
+  if (!can(res.user.role, 'admin') && !can(res.user.role, 'stock.opname')) {
+    throw new Error('Akun kasir hanya bisa dipakai di tablet kasir. Aktifkan tablet ini dulu lewat "Jadikan perangkat ini tablet kasir" (butuh PIN owner), lalu pilih nama kasir.');
+  }
   writeLocal(SESSION_KEY, res);
   appStore.set({ token: res.token, user: res.user });
   return res.user;
