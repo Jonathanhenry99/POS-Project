@@ -31,10 +31,15 @@ export function TabletSidebar() {
   const user = useApp((s) => s.user)!;
   const storeName = useApp((s) => s.data?.settings.store.name ?? 'POS');
   const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem(PREF_KEY) === 'true'; } catch { return false; }
+    // Default: diperkecil di layar tablet (< 1366 px) agar grid menu & keranjang lega; pilihan kasir tetap diingat.
+    try {
+      const saved = localStorage.getItem(PREF_KEY);
+      if (saved !== null) return saved === 'true';
+    } catch { /* abaikan */ }
+    return typeof window !== 'undefined' && window.innerWidth < 1366;
   });
   return <aside aria-label="Navigasi utama" className={cx('flex h-full shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-150 motion-reduce:transition-none', collapsed ? 'w-[72px]' : 'w-56')}>
-    <div className={cx('flex h-16 shrink-0 items-center gap-3 border-b border-line px-3', collapsed && 'justify-center')}>
+    <div className={cx('flex h-14 shrink-0 items-center gap-3 border-b border-line px-3', collapsed && 'justify-center')}>
       <Store className="size-6 shrink-0 text-primary" />
       {!collapsed && <div className="min-w-0"><p className="truncate font-extrabold">{storeName}</p><p className="text-xs text-fg-muted">Menu kasir</p></div>}
     </div>

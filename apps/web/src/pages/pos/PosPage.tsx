@@ -124,14 +124,20 @@ export function PosPage() {
     void printBill(draft).then((ok) => toast(ok ? 'Tagihan dikirim ke printer' : 'Gagal mencetak tagihan', ok ? 'success' : 'error'));
   };
 
+  /** Checker dapur/bar dari seluruh item keranjang (dipanggil dari menu ⋯ di keranjang). */
+  const checker = async () => {
+    if (!await confirmDialog({ title: 'Siapkan checker?', message: 'Checker berisi seluruh item saat ini, belum termasuk pembayaran. Pastikan item ini belum dipesan ke dapur/bar agar tidak dibuat dua kali.', confirmLabel: 'Siapkan checker' })) return;
+    try { const jobs = await queueChecker(); toast(`${jobs.length} tiket disimpan. Kirim tiap tiket dari antrean cetak.`); navigate('/antrean-cetak'); } catch (e) { toast(errorMessage(e), 'error'); }
+  };
+
   const typeBtn = (active: boolean) =>
-    cx('press flex h-full items-center gap-2 rounded-xl px-3.5 text-sm font-semibold', active ? 'bg-primary text-white shadow-[0_6px_16px_-8px_var(--primary)]' : 'text-fg-muted hover:text-fg');
+    cx('press flex h-full items-center gap-1.5 rounded-xl px-3 text-sm font-semibold', active ? 'bg-primary text-white shadow-[0_6px_16px_-8px_var(--primary)]' : 'text-fg-muted hover:text-fg');
 
   return (
-    <div className="flex h-full flex-col gap-3 p-3">
-      {/* Baris atas: tipe pesanan, nama pelanggan, cari, promo, tersimpan */}
-      <div className="flex shrink-0 flex-wrap items-stretch gap-2">
-        <div className="flex h-14 items-center gap-1 rounded-2xl border border-line bg-surface p-1.5 shadow-card">
+    <div className="flex h-full flex-col gap-2.5 p-2.5">
+      {/* Satu baris: tipe pesanan, nama pelanggan, cari, promo, tersimpan (muat di layar tablet 11") */}
+      <div className="flex shrink-0 items-stretch gap-2">
+        <div className="flex h-12 shrink-0 items-center gap-1 rounded-2xl border border-line bg-surface p-1 shadow-card">
           <button className={typeBtn(cart.orderType === 'dine_in')} onClick={() => change(() => setOrderType('dine_in'))}>
             <Utensils className="size-4" /> {ORDER_TYPE_LABEL.dine_in}
           </button>
@@ -139,21 +145,21 @@ export function PosPage() {
             <ShoppingBasket className="size-4" /> {ORDER_TYPE_LABEL.take_away}
           </button>
         </div>
-        <label className="relative flex h-14 min-w-40 flex-1 items-center rounded-2xl border border-line bg-surface shadow-card focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/12">
-          <UserRound className="ml-3.5 size-5 shrink-0 text-fg-subtle" />
-          <span className="absolute top-1.5 left-11 text-[10px] font-semibold tracking-wide text-fg-subtle uppercase">Info tambahan / nama customer</span>
+        <label className="flex h-12 min-w-0 flex-1 items-center rounded-2xl border border-line bg-surface shadow-card focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/12">
+          <UserRound className="ml-3 size-5 shrink-0 text-fg-subtle" />
           <input
             value={cart.customerName}
             onChange={(e) => change(() => setCustomerName(e.target.value.slice(0, 60)))}
-            placeholder="Ketik nama…"
-            className="h-full min-w-0 flex-1 bg-transparent pt-3.5 pr-3 pl-2.5 font-semibold outline-none placeholder:font-normal placeholder:text-fg-subtle"
+            placeholder="Nama / info pelanggan"
+            aria-label="Nama atau info pelanggan"
+            className="h-full min-w-0 flex-1 bg-transparent px-2.5 font-semibold outline-none placeholder:font-normal placeholder:text-fg-subtle"
           />
         </label>
-        <label className="relative flex h-14 w-64 items-center rounded-2xl border border-line bg-surface shadow-card focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/12">
-          <Search className="ml-3.5 size-5 shrink-0 text-fg-subtle" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari menu…" className="h-full min-w-0 flex-1 bg-transparent px-2.5 outline-none placeholder:text-fg-subtle" />
+        <label className="flex h-12 w-44 shrink-0 items-center rounded-2xl border border-line bg-surface shadow-card focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/12 xl:w-60">
+          <Search className="ml-3 size-5 shrink-0 text-fg-subtle" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari menu…" aria-label="Cari menu" className="h-full min-w-0 flex-1 bg-transparent px-2.5 outline-none placeholder:text-fg-subtle" />
           {query && (
-            <button aria-label="Hapus pencarian" onClick={() => setQuery('')} className="mr-1.5 grid size-10 place-items-center rounded-xl text-fg-muted hover:bg-surface-2">
+            <button aria-label="Hapus pencarian" onClick={() => setQuery('')} className="mr-1 grid size-10 place-items-center rounded-xl text-fg-muted hover:bg-surface-2">
               <X className="size-4" />
             </button>
           )}
@@ -162,7 +168,7 @@ export function PosPage() {
           onClick={() => setSheet({ kind: 'discount' })}
           disabled={!cart.lines.length}
           className={cx(
-            'press flex h-14 items-center gap-2 rounded-2xl border px-4 text-sm font-semibold shadow-card disabled:opacity-50',
+            'press flex h-12 shrink-0 items-center gap-2 rounded-2xl border px-3.5 text-sm font-semibold shadow-card disabled:opacity-50',
             cart.discount ? 'border-danger/40 bg-danger/8 text-danger' : 'border-line bg-surface text-fg hover:border-primary/50',
           )}
         >
@@ -170,7 +176,7 @@ export function PosPage() {
         </button>
         <button
           onClick={() => setSheet({ kind: 'saved' })}
-          className="press relative flex h-14 items-center gap-2 rounded-2xl border border-line bg-surface px-4 text-sm font-semibold shadow-card hover:border-accent/60"
+          className="press relative flex h-12 shrink-0 items-center gap-2 rounded-2xl border border-line bg-surface px-3.5 text-sm font-semibold shadow-card hover:border-accent/60"
         >
           <ClipboardList className="size-5 text-accent" /> Tersimpan
           {saved.length > 0 && (
@@ -180,12 +186,8 @@ export function PosPage() {
           )}
         </button>
       </div>
-      <div className="flex shrink-0 flex-wrap gap-2"><Button variant="outline" onClick={() => setSheet({ kind: 'service' })}>{cart.tableName || 'Meja & pax'}{cart.pax ? ` · ${cart.pax} tamu` : ''}</Button><Button variant="outline" disabled={!cart.lines.length} onClick={() => setSheet({ kind: 'transfer' })}>Pindahkan item</Button><Button variant="outline" disabled={!cart.lines.length} onClick={async () => {
-        if (!await confirmDialog({ title: 'Siapkan checker?', message: 'Checker berisi seluruh item saat ini, belum termasuk pembayaran. Pastikan item ini belum dipesan ke dapur/bar agar tidak dibuat dua kali.', confirmLabel: 'Siapkan checker' })) return;
-        try { const jobs = await queueChecker(); toast(`${jobs.length} tiket disimpan. Kirim tiap tiket dari antrean cetak.`); navigate('/antrean-cetak'); } catch (e) { toast(errorMessage(e), 'error'); }
-      }}>Checker dapur/bar</Button></div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(320px,36%)] gap-3">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(320px,36%)] gap-2.5">
         <div className="min-h-0 overflow-hidden rounded-3xl border border-line bg-surface shadow-card">
           <ProductGrid catalog={catalog} lines={cart.lines} favorites={favorites} query={query} onPick={pick} onLongPress={toggleSoldOut} />
         </div>
@@ -199,6 +201,9 @@ export function PosPage() {
             try { const s = saveCart(); if (s) toast(`Pesanan "${s.label}" disimpan`, 'info'); } catch (e) { toast(errorMessage(e), 'error'); }
           }}
           onBill={bill}
+          onService={() => setSheet({ kind: 'service' })}
+          onTransfer={() => setSheet({ kind: 'transfer' })}
+          onChecker={() => void checker()}
           onPay={() => {
             printStatusStore.set({ status: { state: 'idle' } });
             setSheet({ kind: 'pay' });

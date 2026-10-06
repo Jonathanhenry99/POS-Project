@@ -1,4 +1,4 @@
-import { Boxes, CloudOff, History, LayoutDashboard, Lock, Printer, Receipt, RefreshCw, Store, Wallet } from 'lucide-react';
+import { Boxes, CloudOff, History, LayoutDashboard, Lock, Printer, Receipt, RefreshCw, Wallet } from 'lucide-react';
 import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { can, formatNumber, userLabel } from '@mourden/shared';
@@ -39,7 +39,7 @@ export function TabletShell() {
       <div className="flex min-w-0 flex-1 flex-col">
       <header className="bg-grad-header relative shrink-0 text-white">
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
-        <div className="relative flex h-16 items-center gap-3 px-3">
+        <div className="relative flex h-14 items-center gap-2 px-3">
           <StoreBlock />
           <div className="ml-auto flex items-center gap-2">
             <ShiftChip />
@@ -74,10 +74,7 @@ function StoreBlock() {
   const shiftOpen = useApp((s) => !!s.activeShift);
   return (
     <div className="flex min-w-0 items-center gap-2.5">
-      <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white/15 ring-1 ring-white/25">
-        <Store className="size-5" />
-      </span>
-      <div className="hidden min-w-0 leading-tight xl:block">
+      <div className="min-w-0 leading-tight">
         <p className="truncate text-[15px] font-extrabold tracking-tight">{storeName}</p>
         <p className="flex items-center gap-1.5 text-xs text-white/80">
           {userLabel(user)} <span className="text-white/40">|</span>

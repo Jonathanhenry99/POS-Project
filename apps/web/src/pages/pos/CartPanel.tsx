@@ -1,4 +1,5 @@
-import { CheckCircle2, Minus, Plus, Printer, ShoppingBasket, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, ChefHat, CheckCircle2, Minus, MoreHorizontal, Plus, Printer, ShoppingBasket, Trash2, Utensils } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { formatNumber, formatRupiah, ORDER_TYPE_LABEL, type AppSettings } from '@mourden/shared';
 import { cx } from '../../components/ui';
 import { cartTotals, type CartLine } from '../../lib/pos';
@@ -11,12 +12,18 @@ export function CartPanel({
   onEdit,
   onSave,
   onBill,
+  onService,
+  onTransfer,
+  onChecker,
   onPay,
 }: {
   settings: AppSettings;
   onEdit: (l: CartLine) => void;
   onSave: () => void;
   onBill: () => void;
+  onService: () => void;
+  onTransfer: () => void;
+  onChecker: () => void;
   onPay: () => void;
 }) {
   const cart = useCart();
@@ -27,15 +34,34 @@ export function CartPanel({
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-card">
-      <div className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-3">
-        <CheckCircle2 className="size-5 text-success" />
+      <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2">
+        <CheckCircle2 className="size-5 shrink-0 text-success" />
         <p className="min-w-0 flex-1 truncate font-semibold">
           {ORDER_TYPE_LABEL[cart.orderType]}
           {cart.customerName && <span className="text-fg-muted"> · {cart.customerName}</span>}
-          {(cart.tableName || cart.pax > 0) && <span className="block text-xs text-fg-muted">{cart.tableName}{cart.pax ? ` · ${cart.pax} tamu` : ''}</span>}
         </p>
-        {cart.savedId && <span className="rounded-full bg-accent/12 px-2 py-0.5 text-xs font-semibold text-accent">Tersimpan</span>}
-        <button aria-label="Kosongkan pesanan" disabled={empty} onClick={async () => { if (await confirmDialog({ title: 'Kosongkan pesanan?', message: 'Seluruh item pesanan belum dibayar ini akan dihapus. Transaksi lunas tidak berubah.', confirmLabel: 'Kosongkan', danger: true })) change(clearCart); }} className="press grid size-12 place-items-center rounded-xl text-fg-subtle hover:bg-danger/10 hover:text-danger disabled:opacity-30">
+        {cart.savedId && <span className="shrink-0 rounded-full bg-accent/12 px-2 py-0.5 text-xs font-semibold text-accent">Tersimpan</span>}
+        {cart.orderType === 'dine_in' && (
+          <button
+            onClick={onService}
+            className={cx(
+              'press flex h-10 shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-sm font-semibold',
+              cart.tableName ? 'border-primary/40 bg-primary/8 text-primary' : 'border-line text-fg-muted hover:text-fg',
+            )}
+          >
+            <Utensils className="size-4" />
+            {cart.tableName || 'Meja'}
+            {cart.pax > 0 && <span className="text-xs">· {cart.pax}</span>}
+          </button>
+        )}
+        <MoreMenu
+          disabled={empty}
+          items={[
+            { label: 'Pindahkan item', icon: ArrowRightLeft, onClick: onTransfer },
+            { label: 'Checker dapur/bar', icon: ChefHat, onClick: onChecker },
+          ]}
+        />
+        <button aria-label="Kosongkan pesanan" disabled={empty} onClick={async () => { if (await confirmDialog({ title: 'Kosongkan pesanan?', message: 'Seluruh item pesanan belum dibayar ini akan dihapus. Transaksi lunas tidak berubah.', confirmLabel: 'Kosongkan', danger: true })) change(clearCart); }} className="press grid size-10 shrink-0 place-items-center rounded-xl text-fg-subtle hover:bg-danger/10 hover:text-danger disabled:opacity-30">
           <Trash2 className="size-5" />
         </button>
       </div>
@@ -54,27 +80,33 @@ export function CartPanel({
             {t.items.map((item, i) => {
               const line = cart.lines[i];
               return (
-                <li key={line.key} className="animate-slide-in group flex gap-3 rounded-2xl px-2 py-2.5 hover:bg-surface-2">
-                  <span key={line.qty} className="animate-pop grid size-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-bold text-white">
-                    {line.qty}
-                  </span>
-                  <button className="min-w-0 flex-1 text-left" onClick={() => onEdit(line)}>
-                    <span className="block leading-tight font-semibold">{item.name}</span>
-                    {item.options.map((o) => (
-                      <span key={o.optionId} className="block text-[13px] text-primary">
-                        + {o.name}
-                        {o.priceDelta !== 0 && <span className="text-fg-subtle"> ({formatNumber(o.priceDelta)})</span>}
-                      </span>
-                    ))}
-                    {item.note && <span className="block text-[13px] text-accent italic">“{item.note}”</span>}
-                  </button>
-                  <div className="flex flex-col items-end justify-between gap-1.5">
-                    <span className="font-bold tabular">{formatNumber(item.lineTotal)}</span>
-                    <div className="flex items-center rounded-xl border border-line bg-surface">
-                      <button aria-label="Kurangi" onClick={() => change(() => updateLine(line.key, { qty: line.qty - 1 }))} className="press grid size-12 place-items-center rounded-l-xl text-fg-muted hover:text-danger">
+                <li key={line.key} className="animate-slide-in rounded-2xl px-2 py-2 hover:bg-surface-2">
+                  {/* Baris 1: jumlah, nama, total baris */}
+                  <div className="flex items-start gap-2.5">
+                    <span key={line.qty} className="animate-pop mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary text-sm font-bold text-white">
+                      {line.qty}
+                    </span>
+                    <button className="min-w-0 flex-1 text-left leading-tight font-semibold" onClick={() => onEdit(line)}>
+                      {item.name}
+                    </button>
+                    <span className="shrink-0 font-bold tabular">{formatNumber(item.lineTotal)}</span>
+                  </div>
+                  {/* Baris 2: opsi/catatan (sentuh untuk ubah) + tombol jumlah */}
+                  <div className="mt-1 flex items-center gap-2 pl-[38px]">
+                    <button className="min-w-0 flex-1 text-left text-[13px] leading-snug" onClick={() => onEdit(line)}>
+                      {item.options.length > 0 && (
+                        <span className="line-clamp-2 text-primary">
+                          + {item.options.map((o) => o.name).join(', ')}
+                        </span>
+                      )}
+                      {item.note && <span className="line-clamp-1 text-accent italic">“{item.note}”</span>}
+                      {!item.options.length && !item.note && <span className="text-fg-subtle">@ {formatNumber(item.unitPrice)}</span>}
+                    </button>
+                    <div className="flex shrink-0 items-center rounded-xl border border-line bg-surface">
+                      <button aria-label="Kurangi" onClick={() => change(() => updateLine(line.key, { qty: line.qty - 1 }))} className="press grid h-11 w-12 place-items-center rounded-l-xl text-fg-muted hover:text-danger">
                         <Minus className="size-4" />
                       </button>
-                      <button aria-label="Tambah" onClick={() => change(() => updateLine(line.key, { qty: line.qty + 1 }))} className="press grid size-12 place-items-center rounded-r-xl border-l border-line text-fg-muted hover:text-primary">
+                      <button aria-label="Tambah" onClick={() => change(() => updateLine(line.key, { qty: line.qty + 1 }))} className="press grid h-11 w-12 place-items-center rounded-r-xl border-l border-line text-fg-muted hover:text-primary">
                         <Plus className="size-4" />
                       </button>
                     </div>
@@ -95,27 +127,26 @@ export function CartPanel({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-dashed border-line-strong bg-surface-2/60 px-4 pt-3 pb-4">
-        <dl className="tabular space-y-1 text-sm">
-          <Row label="Kuantitas" value={`${itemCount} item`} />
-          <Row label="Subtotal" value={formatNumber(t.subtotal)} />
+      <div className="shrink-0 border-t border-dashed border-line-strong bg-surface-2/60 px-3 pt-2.5 pb-3">
+        <dl className="tabular space-y-0.5 text-sm">
+          <Row label={`Subtotal · ${itemCount} item`} value={formatNumber(t.subtotal)} />
           {t.discountAmount > 0 && <Row label="Diskon" value={`-${formatNumber(t.discountAmount)}`} tone="text-danger" />}
           {t.serviceAmount > 0 && <Row label={`Service ${settings.pricing.servicePct}%`} value={formatNumber(t.serviceAmount)} />}
           {t.taxAmount > 0 && <Row label={`${settings.pricing.taxLabel} ${settings.pricing.taxPct}%`} value={formatNumber(t.taxAmount)} />}
           {t.roundingAmount !== 0 && <Row label="Pembulatan" value={formatNumber(t.roundingAmount)} />}
         </dl>
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           <button
             disabled={empty}
             onClick={onSave}
-            className="press flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-accent/70 bg-accent/5 font-semibold text-accent hover:bg-accent/10 disabled:opacity-40"
+            className="press flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-accent/70 bg-accent/5 font-semibold text-accent hover:bg-accent/10 disabled:opacity-40"
           >
             <ShoppingBasket className="size-5" /> Simpan
           </button>
           <button
             disabled={empty}
             onClick={onBill}
-            className="press flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-primary/60 bg-primary/5 font-semibold text-primary hover:bg-primary/10 disabled:opacity-40"
+            className="press flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-primary/60 bg-primary/5 font-semibold text-primary hover:bg-primary/10 disabled:opacity-40"
           >
             <Printer className="size-5" /> Cetak Struk
           </button>
@@ -124,7 +155,7 @@ export function CartPanel({
           disabled={empty}
           onClick={onPay}
           className={cx(
-            'press mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-2xl text-lg font-bold text-white',
+            'press mt-2 flex h-14 w-full items-center justify-center gap-3 rounded-2xl text-lg font-bold text-white',
             empty ? 'bg-surface-3 text-fg-subtle' : 'bg-grad-primary glow hover:brightness-110',
           )}
         >
@@ -144,6 +175,49 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: stri
     <div className={cx('flex justify-between', tone ?? 'text-fg-muted')}>
       <dt>{label}</dt>
       <dd className="font-semibold">{value}</dd>
+    </div>
+  );
+}
+
+/** Menu kecil "⋯" untuk aksi yang jarang dipakai, supaya kepala keranjang tetap ringkas. */
+function MoreMenu({ items, disabled }: { items: { label: string; icon: typeof Trash2; onClick: () => void }[]; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [open]);
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        aria-label="Aksi lain"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className="press grid size-10 place-items-center rounded-xl text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-30"
+      >
+        <MoreHorizontal className="size-5" />
+      </button>
+      {open && (
+        <div className="animate-rise absolute top-11 right-0 z-20 w-56 overflow-hidden rounded-2xl border border-line bg-surface p-1 shadow-card">
+          {items.map(({ label, icon: Icon, onClick }) => (
+            <button
+              key={label}
+              onClick={() => {
+                setOpen(false);
+                onClick();
+              }}
+              className="flex h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold hover:bg-surface-2"
+            >
+              <Icon className="size-5 text-fg-muted" /> {label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
