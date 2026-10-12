@@ -110,7 +110,10 @@ export function DashboardPage() {
 
       <ErrorNote>{error}</ErrorNote>
       {!s ? (
-        <LoadingGrid />
+        <>
+          <LoadingGrid />
+          <StockWatch alerts={alerts} />
+        </>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -131,6 +134,9 @@ export function DashboardPage() {
             <SalesOverview s={s} prev={prev} mode={mode} range={range} />
             <TopMenu s={s} />
           </div>
+
+          {/* Stok & opname sengaja di tengah: owner perlu melihatnya tanpa menggulir sampai bawah. */}
+          <StockWatch alerts={alerts} />
 
           <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
             <OrdersCard s={s} prev={prev} mode={mode} range={range} />
@@ -171,51 +177,83 @@ export function DashboardPage() {
         </>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel
-          title="Peringatan Stok"
-          icon={<AlertTriangle className="size-[18px]" />}
-          action={
-            <Link to="/admin/stok" className="flex items-center gap-1 text-sm font-medium text-fg-muted hover:text-fg">
-              Lihat stok <ArrowUpRight className="size-3.5" />
-            </Link>
-          }
-        >
-          <ErrorNote>{alerts.error}</ErrorNote>
-          {alerts.data && !alerts.data.lowStock.length && <p className="text-sm text-success">Semua stok aman.</p>}
-          <ul className="flex flex-col gap-2">
-            {alerts.data?.lowStock.map((st) => (
-              <li key={st.id} className="tile-soft flex items-center justify-between gap-2 px-3.5 py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold">{st.name}</p>
-                  <p className="text-xs text-fg-muted">
-                    Sisa {formatNumber(st.stock)} {st.unit}
-                    {st.daysLeft !== null && ` · ± ${st.daysLeft} hari lagi`} · {STATION_LABEL[st.station]}
-                  </p>
-                </div>
-                <Badge tone={st.status === 'habis' ? 'red' : 'amber'}>{st.status === 'habis' ? 'Habis' : 'Menipis'}</Badge>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 flex items-start gap-2 text-xs text-fg-muted">
-            <Sparkles className="size-4 shrink-0 text-[var(--violet)]" />
-            Perkiraan “hari lagi” dihitung dari rata-rata pemakaian 7 hari. Data pergerakan stok sudah disiapkan untuk prediksi AI berikutnya.
-          </p>
-        </Panel>
-        <Panel title="Selisih Opname 7 Hari" icon={<ClipboardList className="size-[18px]" />}>
-          {alerts.data && !alerts.data.opnameVariances.length && <p className="text-sm text-fg-muted">Tidak ada selisih opname.</p>}
-          <ul className="divide-y divide-line">
-            {alerts.data?.opnameVariances.map((o) => (
-              <li key={o.id} className="flex justify-between gap-2 py-2.5 text-sm">
-                <span>
-                  {formatDateLabel(o.businessDate)} · {STATION_LABEL[o.station as keyof typeof STATION_LABEL]} · {o.userName}
-                </span>
-                <span className={cx('font-semibold tabular', o.diffValue < 0 ? 'text-danger' : 'text-success')}>{formatRupiah(o.diffValue)}</span>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      </div>
+    </div>
+  );
+}
+
+const STOCK_PREVIEW = 5;
+
+/** Peringatan stok (bahan paling kritis dulu) + selisih opname 7 hari. */
+function StockWatch({ alerts }: { alerts: { data: Alerts | null; error: string } }) {
+  const low = [...(alerts.data?.lowStock ?? [])].sort((a, b) => Number(b.status === 'habis') - Number(a.status === 'habis') || (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999) || a.name.localeCompare(b.name));
+  const out = low.filter((x) => x.status === 'habis').length;
+  const variances = alerts.data?.opnameVariances ?? [];
+  const diffTotal = variances.reduce((n, o) => n + o.diffValue, 0);
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Panel
+        title="Peringatan Stok"
+        icon={<AlertTriangle className="size-[18px]" />}
+        sub={alerts.data ? (low.length ? `${out} habis · ${low.length - out} menipis` : 'Tidak ada bahan yang perlu dibeli') : undefined}
+        action={
+          <Link to="/admin/stok" className="flex items-center gap-1 text-sm font-medium text-fg-muted hover:text-fg">
+            Lihat stok <ArrowUpRight className="size-3.5" />
+          </Link>
+        }
+      >
+        <ErrorNote>{alerts.error}</ErrorNote>
+        {!alerts.data && !alerts.error && <div className="skeleton h-24" />}
+        {alerts.data && !low.length && <p className="text-sm text-success">Semua stok aman.</p>}
+        <ul className="flex flex-col gap-2">
+          {low.slice(0, STOCK_PREVIEW).map((st) => (
+            <li key={st.id} className="tile-soft flex items-center justify-between gap-2 px-3.5 py-2.5">
+              <div className="min-w-0">
+                <p className="truncate font-semibold">{st.name}</p>
+                <p className="text-xs text-fg-muted">
+                  Sisa {formatNumber(st.stock)} {st.unit}
+                  {st.daysLeft !== null && ` · ± ${st.daysLeft} hari lagi`} · {STATION_LABEL[st.station]}
+                </p>
+              </div>
+              <Badge tone={st.status === 'habis' ? 'red' : 'amber'}>{st.status === 'habis' ? 'Habis' : 'Menipis'}</Badge>
+            </li>
+          ))}
+        </ul>
+        {low.length > STOCK_PREVIEW && (
+          <Link to="/admin/stok" className="mt-2 flex items-center justify-center gap-1 rounded-2xl py-2.5 text-sm font-semibold text-fg-muted hover:bg-surface-2 hover:text-fg">
+            + {low.length - STOCK_PREVIEW} bahan lain <ArrowUpRight className="size-3.5" />
+          </Link>
+        )}
+        <p className="mt-3 flex items-start gap-2 text-xs text-fg-muted">
+          <Sparkles className="size-4 shrink-0 text-[var(--violet)]" />
+          Perkiraan “hari lagi” dihitung dari rata-rata pemakaian 7 hari. Data pergerakan stok sudah disiapkan untuk prediksi AI berikutnya.
+        </p>
+      </Panel>
+      <Panel
+        title="Selisih Opname 7 Hari"
+        icon={<ClipboardList className="size-[18px]" />}
+        sub={alerts.data ? (variances.length ? `${variances.length} opname berselisih` : 'Hitungan fisik cocok dengan sistem') : undefined}
+        action={
+          variances.length ? (
+            <span className={cx('rounded-full px-2.5 py-1 text-xs font-bold tabular', diffTotal < 0 ? 'bg-danger/12 text-danger' : 'bg-success/12 text-success')}>Total {formatRupiah(diffTotal)}</span>
+          ) : undefined
+        }
+      >
+        {!alerts.data && !alerts.error && <div className="skeleton h-24" />}
+        {alerts.data && !variances.length && <p className="text-sm text-fg-muted">Tidak ada selisih opname.</p>}
+        <ul className="flex flex-col gap-2">
+          {variances.map((o) => (
+            <li key={o.id} className="tile-soft flex items-center justify-between gap-3 px-3.5 py-2.5 text-sm">
+              <div className="min-w-0">
+                <p className="truncate font-semibold">
+                  {STATION_LABEL[o.station as keyof typeof STATION_LABEL]} · {o.userName}
+                </p>
+                <p className="text-xs text-fg-muted">{formatDateLabel(o.businessDate)}</p>
+              </div>
+              <span className={cx('font-semibold whitespace-nowrap tabular', o.diffValue < 0 ? 'text-danger' : 'text-success')}>{formatRupiah(o.diffValue)}</span>
+            </li>
+          ))}
+        </ul>
+      </Panel>
     </div>
   );
 }

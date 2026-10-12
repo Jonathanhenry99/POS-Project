@@ -33,7 +33,7 @@ export function TabletSidebar() {
   const preview = useApp((s) => s.preview);
   const storeName = useApp((s) => s.data?.settings.store.name ?? 'POS');
   const [collapsed, setCollapsed, hoverEvents] = useSidebarPreference(PREF_KEY, typeof window !== 'undefined' && window.innerWidth < 1366);
-  return <Sidebar {...hoverEvents} aria-label="Navigasi utama" collapsed={collapsed} className={cx('flex', collapsed ? 'w-[72px]' : 'w-56')}>
+  return <Sidebar {...hoverEvents} openWidth={224} aria-label="Navigasi utama" collapsed={collapsed} className={cx('flex', collapsed ? 'w-[72px]' : 'w-56')}>
     <div className="sidebar-brand h-14">
       <BrandLogo className="size-10" />
       {!collapsed && <div className="min-w-0"><p className="truncate text-sm font-semibold">{storeName}</p><p className="text-[11px] text-neutral-500">Menu kasir</p></div>}
