@@ -138,6 +138,12 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - **Hitungan buta**: angka stok sistem tidak dikirim ke akun barista/kitchen (bukan hanya disembunyikan di layar).
 - **Selisih Bahan** (Inventori → Selisih Bahan): per bahan, pemakaian tercatat (terjual + komplimen), terbuang yang dicatat, dan selisih opname, dinilai wajar/abnormal terhadap toleransi (bawaan di Pengaturan, khusus per bahan di Stok Bahan).
 
+## Tutup kasir & menu habis
+
+- **Tutup kasir** (Shift & kas, atau Ganti Shift / Hari): satu lembar berisi hitung uang tunai, angka struk settlement EDC (QRIS, debit/kredit), dan foto bukti (struk settlement, uang tunai). Foto dikompres di tablet dan ikut antrean offline. Owner melihat pencocokan fisik/struk vs sistem dan fotonya di Transaksi → Tutup Kasir; selisih settlement masuk Perlu Ditinjau. "Wajib bukti saat tutup kasir" diatur di Pengaturan → Kebijakan kasir.
+- **Menu habis**: tombol di toolbar kasir membuka daftar menu dengan sakelar; menu yang habis berlabel HABIS dan tidak bisa dipesan (tekan-lama kartu menu tetap berfungsi sebagai jalan pintas).
+- **Opname** dikerjakan dari HP barista/kitchen (login web), bukan dari tablet kasir.
+
 ## Menguji dari HP/laptop owner
 
 - **Pratinjau kasir** (tombol di back office): layar kasir dengan menu asli. Bawaan **simulasi**: tidak ada yang tersimpan, cetak hanya tampil di layar.

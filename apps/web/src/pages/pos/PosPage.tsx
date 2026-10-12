@@ -1,4 +1,4 @@
-import { ClipboardList, Percent, Search, ShoppingBasket, Trash2, UserRound, Utensils, Wallet, X } from 'lucide-react';
+import { ClipboardList, PackageX, Percent, Search, ShoppingBasket, Trash2, UserRound, Utensils, Wallet, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { formatDateTime, formatNumber, formatRupiah, ORDER_TYPE_LABEL, type Order, type Product } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
@@ -16,6 +16,7 @@ import { DiscountSheet } from './DiscountSheet';
 import { DoneSheet } from './DoneSheet';
 import { OptionSheet } from './OptionSheet';
 import { PaymentSheet } from './PaymentSheet';
+import { SoldOutSheet } from './SoldOutSheet';
 import { ProductGrid } from './ProductGrid';
 import { queueChecker } from '../../printing/routing';
 import { useNavigate } from 'react-router';
@@ -26,6 +27,7 @@ type Sheet =
   | { kind: 'edit'; product: Product; line: CartLine }
   | { kind: 'discount' }
   | { kind: 'saved' }
+  | { kind: 'soldout' }
   | { kind: 'pay' }
   | { kind: 'service' }
   | { kind: 'transfer' }
@@ -67,6 +69,7 @@ export function PosPage() {
   if (cart.checkoutId && paidDraft === cart.checkoutId && cart.lines.length) return <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center"><h1 className="text-xl font-bold">Pesanan ini sudah dibayar</h1><p>Transaksi aman di Riwayat. Kosongkan keranjang sebelum memulai pesanan baru; pembayaran tidak perlu diulang.</p><Button onClick={() => { try { clearCart(); } catch (e) { toast(errorMessage(e), 'error'); } }}>Kosongkan keranjang selesai</Button><Button variant="outline" onClick={() => navigate('/riwayat')}>Buka riwayat transaksi</Button></div>;
 
   const { catalog, settings } = data;
+  const soldOutCount = catalog.products.filter((p) => p.soldOut).length;
   const totals = cartTotals(cart.lines, cart.discount, settings.pricing);
   const close = () => setSheet({ kind: 'none' });
   const change = (fn: () => void) => { try { fn(); } catch (e) { toast(errorMessage(e), 'error'); } };
@@ -77,14 +80,8 @@ export function PosPage() {
     else setSheet({ kind: 'add', product });
   };
 
-  const toggleSoldOut = async (product: Product) => {
-    const next = !product.soldOut;
-    const ok = await confirmDialog({
-      title: next ? 'Tandai habis?' : 'Tandai tersedia?',
-      message: next ? `${product.name} tidak bisa dipesan sampai ditandai tersedia lagi.` : `${product.name} bisa dipesan lagi.`,
-      confirmLabel: next ? 'Tandai habis' : 'Tandai tersedia',
-    });
-    if (!ok) return;
+  /** Tandai menu habis/tersedia: langsung berlaku di layar kasir, tersimpan di tablet, lalu tersinkron. */
+  const setSoldOut = async (product: Product, next: boolean) => {
     const s = appStore.get();
     if (!s.data || !s.user) return;
     const updated = { ...s.data, catalog: { ...s.data.catalog, products: s.data.catalog.products.map((p) => (p.id === product.id ? { ...p, soldOut: next } : p)) } };
@@ -92,6 +89,17 @@ export function PosPage() {
     await kvSet('bootstrap', updated);
     await enqueue({ method: 'POST', path: `/products/${product.id}/sold-out`, body: { soldOut: next }, operatorId: s.user.id, label: `${product.name} ${next ? 'habis' : 'tersedia'}`, ref: null });
     toast(`${product.name} ${next ? 'ditandai habis' : 'tersedia lagi'}`, 'info');
+  };
+
+  /** Tekan-lama kartu menu: jalan pintas yang sama, dengan konfirmasi. */
+  const toggleSoldOut = async (product: Product) => {
+    const next = !product.soldOut;
+    const ok = await confirmDialog({
+      title: next ? 'Tandai habis?' : 'Tandai tersedia?',
+      message: next ? `${product.name} tidak bisa dipesan sampai ditandai tersedia lagi.` : `${product.name} bisa dipesan lagi.`,
+      confirmLabel: next ? 'Tandai habis' : 'Tandai tersedia',
+    });
+    if (ok) await setSoldOut(product, next);
   };
 
   /** Tagihan sementara sebelum bayar (satu sentuhan, langsung ke printer). */
@@ -179,6 +187,15 @@ export function PosPage() {
           <Percent className="size-5" /> {cart.discount ? `Diskon ${cart.discount.type === 'percent' ? `${cart.discount.value}%` : formatNumber(cart.discount.value)}` : 'Promo'}
         </button>
         <button
+          onClick={() => setSheet({ kind: 'soldout' })}
+          title="Menu habis"
+          aria-label={`Menu habis${soldOutCount ? `, ${soldOutCount} ditandai` : ''}`}
+          className={cx('press relative flex h-12 shrink-0 items-center gap-2 rounded-2xl border px-3 text-sm font-semibold shadow-card', soldOutCount ? 'border-danger/40 bg-danger/8 text-danger' : 'border-line bg-surface text-fg hover:border-danger/40')}
+        >
+          <PackageX className="size-5" /> <span className="hidden xl:inline">Habis</span>
+          {soldOutCount > 0 && <span className="grid h-6 min-w-6 place-items-center rounded-full bg-danger px-1.5 text-xs font-bold text-white">{soldOutCount}</span>}
+        </button>
+        <button
           onClick={() => setSheet({ kind: 'saved' })}
           className="press relative flex h-12 shrink-0 items-center gap-2 rounded-2xl border border-line bg-surface px-3.5 text-sm font-semibold shadow-card hover:border-accent/60"
         >
@@ -244,6 +261,7 @@ export function PosPage() {
       {sheet.kind === 'service' && <ServiceSheet onClose={close} />}
       {sheet.kind === 'transfer' && <TransferSheet onClose={close} />}
       {sheet.kind === 'cancelLine' && <CancellationSheet kind="menu" title="Batalkan item?" onClose={close} onSubmit={(reason) => { cancelLine(sheet.key, reason); close(); }} />}
+      {sheet.kind === 'soldout' && <SoldOutSheet catalog={catalog} onSet={setSoldOut} onClose={close} />}
       {sheet.kind === 'pay' && <PaymentSheet total={totals.total} onClose={close} onPaid={(order) => setSheet({ kind: 'done', order })} />}
       {sheet.kind === 'done' && <DoneSheet order={sheet.order} onClose={close} />}
     </div>

@@ -173,6 +173,12 @@ export function SettingsPage() {
                 label="Tutup kasir buta"
                 description="Kasir menghitung uang laci tanpa melihat angka “seharusnya”. Selisih baru tampil setelah kasir ditutup dan tidak bisa diubah."
               />
+              <Toggle
+                checked={form.policy.requireClosingProof ?? false}
+                onChange={(v) => set('policy', 'requireClosingProof', v)}
+                label="Wajib bukti saat tutup kasir"
+                description="Kasir harus mengisi angka settlement EDC (QRIS, debit/kredit) serta melampirkan foto struk settlement dan foto uang tunai. Bila mati, tetap bisa diisi tetapi boleh dilewati (tercatat “tidak diisi”)."
+              />
               <Field label="Batas diskon kasir tanpa PIN owner (%)" hint="100 = bebas.">
                 {(id) => <TextInput id={id} inputMode="numeric" value={String(form.policy.maxCashierDiscountPct)} onChange={(e) => set('policy', 'maxCashierDiscountPct', Math.min(100, num(e.target.value)))} />}
               </Field>

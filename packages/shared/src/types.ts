@@ -38,6 +38,8 @@ export interface PolicySettings {
   maxCashierDiscountPct: number;
   /** Jumlah tablet kasir aktif maksimal. Kasir hanya bisa berjualan dari tablet yang diaktifkan owner. */
   maxDevices: number;
+  /** Tutup kasir wajib mengisi settlement EDC dan melampirkan foto struk settlement + uang tunai. */
+  requireClosingProof?: boolean;
   /**
    * Tutup kasir buta: kasir menghitung uang laci tanpa melihat angka "seharusnya" (dan rincian tunai)
    * sampai shift ditutup. Owner tetap melihat semuanya.
@@ -318,6 +320,22 @@ export interface Shift {
   /** Metadata tambahan; shift lama tetap valid tanpa hari usaha. */
   businessDayId?: string;
   closeMode?: 'shift' | 'day';
+  /** Angka dari struk settlement EDC yang diketik saat tutup kasir (null = tidak diisi). */
+  settlement?: ShiftSettlement | null;
+  /** Hanya dari server untuk owner: daftar foto bukti tutup kasir. */
+  proofs?: ShiftProofInfo[];
+}
+
+export interface ShiftSettlement {
+  qris: number | null;
+  card: number | null;
+}
+
+export interface ShiftProofInfo {
+  id: string;
+  kind: 'edc' | 'cash';
+  userName: string;
+  createdAt: string;
 }
 
 /** Hari operasional satu terminal. Tidak mengganti tanggal kalender transaksi/laporan lama. */

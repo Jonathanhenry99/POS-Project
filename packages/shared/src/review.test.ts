@@ -34,4 +34,13 @@ describe('daftar perlu ditinjau', () => {
     const r = buildReview({ ...empty(), events: [ev({ id: 'a', type: 'order_deleted', billPrints: 2 })], drawers: [{ id: 'k', at: '2026-10-12T06:00:00.000Z', userName: 'Rina' }], reviewed: new Set(['event:a']) });
     expect(r.map((i) => [i.key, i.reviewed])).toEqual([['drawer:k', false], ['event:a', true]]);
   });
+
+  it('settlement EDC: kurang dari sistem = tinggi, tidak diisi padahal ada transaksi = sedang, cocok = tidak ditandai', () => {
+    const shift = (id: string, nonCash: { qris: number; card: number }, settlement: { qris: number | null; card: number | null } | null) => ({ id, closedAt: '2026-10-12T15:00:00.000Z', closedByName: 'Rina', expectedCash: 100000, countedCash: 100000, nonCash, settlement });
+    const r = buildReview({ ...empty(), shifts: [shift('a', { qris: 132300, card: 50000 }, { qris: 100000, card: 50000 }), shift('b', { qris: 80000, card: 0 }, null), shift('c', { qris: 80000, card: 20000 }, { qris: 80000, card: 22000 }), shift('d', { qris: 0, card: 0 }, null)] });
+    expect(r.map((i) => [i.key, i.severity, i.title])).toEqual([
+      ['settle:a:qris', 'high', 'Settlement QRIS kurang Rp 32.300'],
+      ['settle:b:qris', 'medium', 'Settlement QRIS tidak diisi'],
+    ]);
+  });
 });

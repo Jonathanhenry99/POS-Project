@@ -321,6 +321,7 @@ const shiftSchema = z.object({
   summary: z.record(z.string(), z.unknown()).nullable(),
   businessDayId: uuid.optional(),
   closeMode: z.enum(['shift', 'day']).optional(),
+  settlement: z.object({ qris: money.nullable(), card: money.nullable() }).nullable().optional(),
 });
 
 /** Simpan/update shift dari tablet. Shift yang sudah ditutup tidak bisa diubah lagi. */
@@ -341,13 +342,13 @@ ordersRouter.put('/shifts/:id', needDevice, need('pos.shift'), async (req, res) 
   }
   const { rowCount } = await c.query(
     `insert into shifts (id, device_id, opened_by, opened_by_name, opened_at, opening_cash, cash_movements,
-       closed_by, closed_by_name, closed_at, counted_cash, closing_note, summary, business_day_id, close_mode)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       closed_by, closed_by_name, closed_at, counted_cash, closing_note, summary, business_day_id, close_mode, settlement)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      on conflict (id) do update set
        cash_movements = excluded.cash_movements, closed_by = excluded.closed_by, closed_by_name = excluded.closed_by_name,
        closed_at = excluded.closed_at, counted_cash = excluded.counted_cash, closing_note = excluded.closing_note,
        summary = excluded.summary, business_day_id = coalesce(shifts.business_day_id, excluded.business_day_id),
-       close_mode = excluded.close_mode, updated_at = now()
+       close_mode = excluded.close_mode, settlement = excluded.settlement, updated_at = now()
      where shifts.closed_at is null`,
     [
       s.id,
@@ -365,6 +366,7 @@ ordersRouter.put('/shifts/:id', needDevice, need('pos.shift'), async (req, res) 
       s.summary ? JSON.stringify(s.summary) : null,
       s.businessDayId ?? null,
       s.closeMode ?? null,
+      s.settlement ? JSON.stringify(s.settlement) : null,
     ],
   );
   return rowCount ? 'saved' : 'closed-unchanged';
@@ -373,13 +375,46 @@ ordersRouter.put('/shifts/:id', needDevice, need('pos.shift'), async (req, res) 
   res.json({ ok: true, status });
 });
 
+// ---------- Foto bukti tutup kasir (struk settlement EDC, uang tunai) ----------
+
+const proofBody = z.object({
+  shiftId: uuid,
+  kind: z.enum(['edc', 'cash']),
+  // Foto dikompres di tablet sebelum dikirim; batas ini menjaga ukuran database.
+  dataUrl: z.string().max(700_000).regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/, 'Format foto harus JPG, PNG atau WebP'),
+});
+
+/** Idempotent (ID dari tablet). Maksimal 6 foto per shift. */
+ordersRouter.put('/tablet/shift-proofs/:id', needDevice, need('pos.shift'), async (req, res) => {
+  const id = parse(uuid, req.params.id);
+  const b = parse(proofBody, req.body);
+  const [head, base64] = b.dataUrl.split(',');
+  const mime = head.slice(5, head.indexOf(';'));
+  const { rows } = await pool.query('select count(*)::int as n from shift_proofs where shift_id = $1 and id <> $2', [b.shiftId, id]);
+  if (rows[0].n >= 6) throw badRequest('Maksimal 6 foto bukti per shift');
+  await pool.query(
+    `insert into shift_proofs (id, shift_id, device_id, kind, mime, image, user_id, user_name) values ($1,$2,$3,$4,$5,$6,$7,$8)
+     on conflict (id) do nothing`,
+    [id, b.shiftId, req.auth.device!.id, b.kind, mime, Buffer.from(base64, 'base64'), req.auth.user!.id, req.auth.user!.name],
+  );
+  res.json({ ok: true });
+});
+
+ordersRouter.get('/shift-proofs/:id', need('admin'), async (req, res) => {
+  const { rows } = await pool.query<{ mime: string; image: Buffer }>('select mime, image from shift_proofs where id = $1', [parse(uuid, req.params.id)]);
+  if (!rows[0]) throw notFound();
+  res.set('Content-Type', rows[0].mime).set('Cache-Control', 'private, max-age=86400').send(rows[0].image);
+});
+
 ordersRouter.get('/shifts', need('admin'), async (req, res) => {
   const q = parse(dateRangeQuery, req.query);
   const tz = await getTimezone(pool);
   const { rows } = await pool.query(
     `select id, opened_by_name as "openedByName", opened_at as "openedAt", opening_cash as "openingCash",
        cash_movements as "cashMovements", closed_by_name as "closedByName", closed_at as "closedAt",
-       counted_cash as "countedCash", closing_note as "closingNote", summary
+       counted_cash as "countedCash", closing_note as "closingNote", summary, settlement,
+       coalesce((select json_agg(json_build_object('id', p.id, 'kind', p.kind, 'userName', p.user_name, 'createdAt', p.created_at) order by p.created_at)
+         from shift_proofs p where p.shift_id = shifts.id), '[]'::json) as proofs
      from shifts where (opened_at at time zone $3)::date between $1 and $2 order by opened_at desc`,
     [q.from, q.to, tz],
   );

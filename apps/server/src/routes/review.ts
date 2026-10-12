@@ -69,7 +69,8 @@ reviewRouter.get('/reports/review', need('admin'), async (req, res) => {
       [...range, tz],
     ),
     pool.query(
-      `select id, closed_at as "closedAt", closed_by_name as "closedByName", coalesce((summary->>'expectedCash')::int, 0) as "expectedCash", counted_cash as "countedCash"
+      `select id, closed_at as "closedAt", closed_by_name as "closedByName", coalesce((summary->>'expectedCash')::int, 0) as "expectedCash", counted_cash as "countedCash",
+         json_build_object('qris', coalesce((summary->'byMethod'->>'qris')::int, 0), 'card', coalesce((summary->'byMethod'->>'card')::int, 0)) as "nonCash", settlement
        from shifts where closed_at is not null and counted_cash is not null and summary is not null and (closed_at at time zone $3)::date between $1 and $2`,
       [...range, tz],
     ),

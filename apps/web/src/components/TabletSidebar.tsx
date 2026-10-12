@@ -1,4 +1,4 @@
-import { Boxes, CalendarDays, History, LayoutDashboard, Printer, Receipt, RefreshCw, Utensils, Wallet, type LucideIcon } from 'lucide-react';
+import { CalendarDays, History, LayoutDashboard, Printer, Receipt, RefreshCw, Utensils, Wallet, type LucideIcon } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { NavLink } from 'react-router';
 import { can, ROLE_LABEL, type Permission } from '@mourden/shared';
@@ -16,7 +16,6 @@ const sections: { label: string; items: { to: string; label: string; icon: Lucid
   { label: 'Operasional', items: [
     { to: '/shift', label: 'Shift & kas', icon: Wallet, permission: 'pos.shift' },
     { to: '/hari', label: 'Ganti Shift / Hari', icon: CalendarDays, permission: 'pos.shift' },
-    { to: '/stok', label: 'Stok', icon: Boxes, permission: 'stock.opname' },
   ] },
   { label: 'Perangkat', items: [
     { to: '/printer', label: 'Pengaturan printer', icon: Printer },

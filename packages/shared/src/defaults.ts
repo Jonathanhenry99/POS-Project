@@ -37,6 +37,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     maxCashierDiscountPct: 100,
     maxDevices: 1,
     blindCashClose: true,
+    requireClosingProof: false,
   },
   pos: { tables: [], notes: [], cancellationReasons: [], productStations: {} },
   brand: { logo: '' },

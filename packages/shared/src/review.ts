@@ -21,7 +21,7 @@ export interface CashierEvent {
 }
 
 export type ReviewSeverity = 'high' | 'medium' | 'low';
-export type ReviewKind = 'order_deleted' | 'item_removed' | 'bill_reprint' | 'void' | 'discount' | 'free_item' | 'drawer' | 'cash_diff' | 'comp';
+export type ReviewKind = 'order_deleted' | 'item_removed' | 'bill_reprint' | 'void' | 'discount' | 'free_item' | 'drawer' | 'cash_diff' | 'comp' | 'settlement';
 
 export interface ReviewItem {
   key: string;
@@ -45,6 +45,7 @@ export const REVIEW_KIND_LABEL: Record<ReviewKind, string> = {
   drawer: 'Laci dibuka',
   cash_diff: 'Selisih kas',
   comp: 'Komplimen',
+  settlement: 'Settlement EDC',
 };
 
 /** Diskon mulai persen ini dari subtotal masuk daftar tinjau. */
@@ -58,7 +59,7 @@ export interface ReviewSource {
   discounts: { id: string; number: string; cashierName: string; at: string; subtotal: number; discountAmount: number; reason: string }[];
   freeItems: { id: string; number: string; cashierName: string; at: string; name: string; qty: number }[];
   drawers: { id: string; at: string; userName: string }[];
-  shifts: { id: string; closedAt: string; closedByName: string; expectedCash: number; countedCash: number }[];
+  shifts: { id: string; closedAt: string; closedByName: string; expectedCash: number; countedCash: number; nonCash?: { qris: number; card: number }; settlement?: { qris: number | null; card: number | null } | null }[];
   /** Komplimen yang melebihi jatah harian (disetujui owner, atau lolos tanpa persetujuan). */
   comps?: { id: string; number: string; at: string; cashierName: string; employeeName: string; qty: number; value: number; approved: boolean; dayQty: number; perDay: number }[];
   reviewed: Set<string>;
@@ -131,6 +132,30 @@ export function buildReview(src: ReviewSource): ReviewItem[] {
       detail: `Tutup shift · dihitung ${rp(s.countedCash)} · seharusnya ${rp(s.expectedCash)}`,
       amount: diff,
     });
+  }
+  // Settlement EDC vs catatan sistem. Settlement lebih kecil = ada transaksi dicatat QRIS/kartu tetapi uangnya tidak masuk EDC.
+  for (const s of src.shifts) {
+    if (!s.nonCash) continue;
+    for (const [method, label] of [['qris', 'QRIS'], ['card', 'Debit/Kredit']] as const) {
+      const system = s.nonCash[method];
+      const slip = s.settlement?.[method] ?? null;
+      if (slip === null) {
+        if (system > 0) out.push({ key: `settle:${s.id}:${method}`, kind: 'settlement', severity: 'medium', at: s.closedAt, actor: s.closedByName, title: `Settlement ${label} tidak diisi`, detail: `Tutup shift · sistem mencatat ${rp(system)} lewat ${label}, tetapi angka struk settlement tidak diisi`, amount: system });
+        continue;
+      }
+      const diff = slip - system;
+      if (Math.abs(diff) < CASH_DIFF_FLAG) continue;
+      out.push({
+        key: `settle:${s.id}:${method}`,
+        kind: 'settlement',
+        severity: diff < 0 ? 'high' : 'medium',
+        at: s.closedAt,
+        actor: s.closedByName,
+        title: diff < 0 ? `Settlement ${label} kurang ${rp(-diff)}` : `Settlement ${label} lebih ${rp(diff)}`,
+        detail: `Tutup shift · struk settlement ${rp(slip)} · catatan sistem ${rp(system)}`,
+        amount: diff,
+      });
+    }
   }
   for (const c of src.comps ?? []) {
     out.push({

@@ -269,6 +269,33 @@ describe('shift', () => {
   });
 });
 
+describe('tutup kasir: settlement EDC & foto bukti', () => {
+  it('angka settlement tersimpan bersama shift, foto bukti idempotent dan hanya owner yang bisa melihat, selisih masuk tinjauan', async () => {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const summary = { orderCount: 2, voidCount: 0, voidAmount: 0, grossSales: 126000, discountTotal: 0, serviceTotal: 6300, taxTotal: 0, netSales: 132300, byMethod: { cash: 0, qris: 132300, card: 0 }, cashIn: 0, cashOut: 0, expectedCash: 100000 };
+    const shift = { id, deviceId: 'x', openedById: userId('kasir'), openedByName: 'Kasir 1', openedAt: now, openingCash: 100000, cashMovements: [], closedById: userId('kasir'), closedByName: 'Kasir 1', closedAt: now, countedCash: 100000, closingNote: '', summary, settlement: { qris: 100000, card: null } };
+    expect((await request(app).put(`/api/shifts/${id}`).set(asDevice('kasir')).send(shift)).body.status).toBe('saved');
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    const proofId = randomUUID();
+    for (let i = 0; i < 2; i++) await request(app).put(`/api/tablet/shift-proofs/${proofId}`).set(asDevice('kasir')).send({ shiftId: id, kind: 'edc', dataUrl: png }).expect(200);
+    await request(app).put(`/api/tablet/shift-proofs/${randomUUID()}`).set(asDevice('kasir')).send({ shiftId: id, kind: 'cash', dataUrl: png }).expect(200);
+    await request(app).put(`/api/tablet/shift-proofs/${randomUUID()}`).set(asDevice('kasir')).send({ shiftId: id, kind: 'edc', dataUrl: 'data:text/html;base64,PGgxPg==' }).expect(400);
+    await request(app).put(`/api/tablet/shift-proofs/${randomUUID()}`).set(asOwner()).send({ shiftId: id, kind: 'edc', dataUrl: png }).expect(401);
+    const list = (await request(app).get('/api/shifts?from=2000-01-01&to=2100-01-01').set(asOwner()).expect(200)).body;
+    const saved = list.find((s: { id: string }) => s.id === id);
+    expect(saved.settlement).toEqual({ qris: 100000, card: null });
+    expect(saved.proofs.map((p: { kind: string }) => p.kind).sort()).toEqual(['cash', 'edc']);
+    const img = await request(app).get(`/api/shift-proofs/${proofId}`).set(asOwner()).expect(200);
+    expect(img.headers['content-type']).toContain('image/png'); expect(img.body.length).toBeGreaterThan(20);
+    await request(app).get(`/api/shift-proofs/${proofId}`).set(asDevice('kasir')).expect(403);
+    const review = (await request(app).get('/api/reports/review?from=2000-01-01&to=2100-01-01').set(asOwner())).body;
+    expect(review.items.find((i: { key: string }) => i.key === `settle:${id}:qris`)).toMatchObject({ kind: 'settlement', severity: 'high', title: 'Settlement QRIS kurang Rp 32.300' });
+    expect((await request(app).put('/api/settings').set(asOwner()).send({ policy: { requireClosingProof: true } }).expect(200)).body.policy.requireClosingProof).toBe(true);
+    await request(app).put('/api/settings').set(asOwner()).send({ policy: { requireClosingProof: false } }).expect(200);
+  });
+});
+
 describe('stok & opname', () => {
   let baristaToken = '';
 

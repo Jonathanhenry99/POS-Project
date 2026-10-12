@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '@mourden/shared';
 import { db, resetDbForTests } from './idb';
-import { checkout, compUsedToday, currentShiftSummary, openShift } from './pos';
+import { attachShiftProof, checkout, closeShift, compUsedToday, currentShiftSummary, openShift } from './pos';
 import { appStore } from './state';
 
 const owner = { id: '11111111-1111-4111-8111-111111111111', name: 'Owner', username: 'owner', role: 'owner' as const, active: true, pinHash: '' };
@@ -53,4 +53,18 @@ it('komplimen ditolak bila dinonaktifkan atau menu melewati batas harga tanpa PI
   appStore.set({ data: { ...s.data!, settings: { ...s.data!.settings, comp: { enabled: false, perDay: 3, maxUnitPrice: 0 } } } });
   await expect(checkout({ ...base, lines: line(), comp: { employeeId: barista.id, approvedById: null } })).rejects.toThrow('dinonaktifkan');
   expect(await (await db()).count('orders')).toBe(0);
+});
+
+it('tutup kasir menyimpan angka settlement EDC dan mengantrekan foto bukti setelah shift', async () => {
+  await checkout({ ...base, lines: line(2), method: 'qris', tendered: 0 });
+  const closed = await closeShift(100000, 'EDC sempat offline', 'shift', { qris: 50000, card: null });
+  expect(closed).toMatchObject({ countedCash: 100000, settlement: { qris: 50000, card: null }, closingNote: 'EDC sempat offline' });
+  expect(closed.summary!.byMethod.qris).toBe(52500);
+  await attachShiftProof(closed.id, 'edc', 'data:image/jpeg;base64,AAAA');
+  const queue = await (await db()).getAll('outbox');
+  const shiftAt = queue.findIndex((o) => o.path === `/shifts/${closed.id}` && (o.body as { closedAt: string | null }).closedAt);
+  const proofAt = queue.findIndex((o) => o.path.startsWith('/tablet/shift-proofs/'));
+  expect(shiftAt).toBeGreaterThanOrEqual(0); expect(proofAt).toBeGreaterThan(shiftAt);
+  expect(queue[proofAt].body).toMatchObject({ shiftId: closed.id, kind: 'edc' });
+  expect((queue[shiftAt].body as { settlement: unknown }).settlement).toEqual({ qris: 50000, card: null });
 });

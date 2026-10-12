@@ -15,13 +15,14 @@ import {
   type PricingSettings,
   type PublicUser,
   type Shift,
+  type ShiftSettlement,
   type BusinessDay,
 } from '@mourden/shared';
 import { uuid } from './id';
 import { db, kvGet, type LocalBusinessDay, type LocalOrder, type OutboxItem } from './idb';
 import { appStore } from './state';
 import { createStore, useStore } from './store';
-import { flushOutbox, updateCounts } from './sync';
+import { enqueue, flushOutbox, updateCounts } from './sync';
 import { api } from './api';
 
 /** Naik setiap ada transaksi baru/void, agar ringkasan di layar ikut diperbarui. */
@@ -359,7 +360,8 @@ export async function currentShiftSummary() {
   return computeShiftSummary(shift, await listOrders({ shiftId: shift.id }));
 }
 
-export async function closeShift(countedCash: number, note: string, closeMode: 'shift' | 'day' = 'shift'): Promise<Shift> {
+/** `settlement`: angka dari struk settlement EDC (QRIS, debit/kredit) yang diketik kasir; null = tidak diisi. */
+export async function closeShift(countedCash: number, note: string, closeMode: 'shift' | 'day' = 'shift', settlement: ShiftSettlement | null = null): Promise<Shift> {
   if (!Number.isSafeInteger(countedCash) || countedCash < 0) throw new Error('Kas dihitung harus rupiah bulat, minimal Rp0');
   const s = appStore.get();
   if (!s.activeShift || !s.user) throw new Error('Tidak ada shift aktif');
@@ -373,10 +375,19 @@ export async function closeShift(countedCash: number, note: string, closeMode: '
     closingNote: note.trim(),
     summary,
     closeMode,
+    settlement,
   };
   const saved = await saveShift(closed, 'Tutup shift');
   appStore.set({ activeShift: null });
   return saved;
+}
+
+/** Foto bukti tutup kasir masuk antrean kirim (tetap terkirim nanti bila sedang offline). */
+export async function attachShiftProof(shiftId: string, kind: 'edc' | 'cash', dataUrl: string) {
+  const user = appStore.get().user;
+  if (!user) throw new Error('Silakan login');
+  const id = uuid();
+  await enqueue({ method: 'PUT', path: `/tablet/shift-proofs/${id}`, body: { shiftId, kind, dataUrl }, operatorId: user.id, label: kind === 'edc' ? 'Foto struk settlement' : 'Foto uang tunai', ref: null });
 }
 
 export async function lastClosedShift(): Promise<Shift | null> {
