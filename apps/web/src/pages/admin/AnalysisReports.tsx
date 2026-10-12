@@ -47,7 +47,7 @@ export function MenuMatrixReport({ range }: { range: Range }) {
           const list = data.rows.filter((r) => r.quadrant === q);
           const amount = list.reduce((n, r) => n + r.amount, 0);
           return (
-            <button key={q} onClick={() => setFilter(filter === q ? 'all' : q)} aria-pressed={filter === q} className={cx('tile press flex flex-col p-4 text-left ring-2 transition-shadow', filter === q ? 'ring-fg' : 'ring-transparent hover:ring-line-strong')}>
+            <button key={q} onClick={() => setFilter(filter === q ? 'all' : q)} aria-pressed={filter === q} className={cx('tile press flex flex-col p-4 text-left outline-2', filter === q ? 'outline-fg' : 'outline-transparent hover:outline-line-strong')}>
               <span className="flex items-center justify-between">
                 <QuadrantBadge q={q} />
                 <span className="icon-chip">{QUADRANT_STYLE[q].icon}</span>

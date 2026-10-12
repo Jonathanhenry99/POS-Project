@@ -9,7 +9,7 @@ import { cartTotals, listOrders, openShift, type CartLine } from '../../lib/pos'
 import { appStore, useApp } from '../../lib/state';
 import { enqueue } from '../../lib/sync';
 import { printBill, printStatusStore } from '../../printing/service';
-import { addToCart, cancelLine, clearCart, deleteSaved, markPaidDraft, openSaved, saveCart, setCustomerName, setOrderType, updateLine, useCart, usePaidDraft, useSaved } from './cart';
+import { addToCart, cancelLine, clearCart, deleteSaved, markPaidDraft, noteBillPrinted, openSaved, saveCart, setCustomerName, setOrderType, updateLine, useCart, usePaidDraft, useSaved } from './cart';
 import { CancellationSheet, ServiceSheet, TransferSheet } from './ServiceSheets';
 import { CartPanel } from './CartPanel';
 import { DiscountSheet } from './DiscountSheet';
@@ -121,7 +121,11 @@ export function PosPage() {
       voidedByName: '',
       voidApprovedById: null,
     };
-    void printBill(draft).then((ok) => toast(ok ? 'Tagihan dikirim ke printer' : 'Gagal mencetak tagihan', ok ? 'success' : 'error'));
+    void printBill(draft).then((ok) => {
+      // Cetak tagihan dihitung per pesanan: cetak ganda dan penghapusan sesudahnya dilaporkan ke owner.
+      if (ok) { try { noteBillPrinted(); } catch { /* pencatatan tidak boleh menggagalkan cetak */ } }
+      toast(ok ? 'Tagihan dikirim ke printer' : 'Gagal mencetak tagihan', ok ? 'success' : 'error');
+    });
   };
 
   /** Checker dapur/bar dari seluruh item keranjang (dipanggil dari menu ⋯ di keranjang). */

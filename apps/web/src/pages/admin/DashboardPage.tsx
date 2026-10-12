@@ -10,6 +10,8 @@ import {
   QrCode,
   ReceiptText,
   Share,
+  ShieldAlert,
+  ShieldCheck,
   ShoppingBag,
   Sparkles,
   Target,
@@ -28,6 +30,7 @@ import { Composition, Heatmap, shortNumber } from './charts';
 import { formatDateLabel, storeTimezone, today, useApi, addDays } from './hooks';
 import { daysBetween, downloadOrdersCsv, insights, netRevenue, useSummary, type Pulse, type Range, type Summary } from './reportData';
 import { LoadingGrid } from './ReportsPage';
+import type { ReviewData } from './ReviewPage';
 import { DeltaPill, HighlightBars, MiniStat, ProgressRing, StatCard, TrendArea } from './widgets';
 
 interface Alerts {
@@ -55,6 +58,7 @@ export function DashboardPage() {
   const { data: s, prev, error } = summary;
   const pulse = useApi<Pulse>('/reports/pulse');
   const alerts = useApi<Alerts>('/reports/alerts');
+  const review = useApi<ReviewData>(`/reports/review?from=${addDays(t, -6)}&to=${t}`);
   const compare = MODES.find((m) => m.id === mode)!.compare;
 
   // Penjualan hari ini diperbarui otomatis tiap menit selama halaman terlihat.
@@ -135,7 +139,8 @@ export function DashboardPage() {
             <TopMenu s={s} />
           </div>
 
-          {/* Stok & opname sengaja di tengah: owner perlu melihatnya tanpa menggulir sampai bawah. */}
+          {/* Pengawasan, stok & opname sengaja di tengah: owner perlu melihatnya tanpa menggulir sampai bawah. */}
+          <ReviewBanner review={review.data} />
           <StockWatch alerts={alerts} />
 
           <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -178,6 +183,28 @@ export function DashboardPage() {
       )}
 
     </div>
+  );
+}
+
+/** Ringkasan aktivitas kasir yang belum ditinjau (7 hari terakhir). */
+function ReviewBanner({ review }: { review: ReviewData | null }) {
+  if (!review) return null;
+  const clear = review.open === 0;
+  // .tile dan .icon-chip mengatur bayangan/latar sendiri, jadi warna status dipasang lewat outline & style.
+  const tone = review.high ? { background: 'color-mix(in oklab, var(--danger) 13%, white)', color: 'var(--danger)' } : clear ? { background: 'color-mix(in oklab, var(--success) 13%, white)', color: 'var(--success)' } : { background: 'color-mix(in oklab, var(--warning) 18%, white)', color: '#8a5a00' };
+  return (
+    <Link to="/admin/tinjau" className={cx('tile animate-rise flex flex-wrap items-center gap-3 p-4 outline-2', review.high ? 'outline-danger/35' : 'outline-transparent')}>
+      <span className="icon-chip" style={tone}>{clear ? <ShieldCheck className="size-[18px]" /> : <ShieldAlert className="size-[18px]" />}</span>
+      <div className="min-w-0 flex-1 basis-56">
+        <p className="font-semibold">{clear ? 'Tidak ada aktivitas kasir yang perlu ditinjau' : `${review.open} aktivitas kasir perlu ditinjau`}</p>
+        <p className="text-sm text-fg-muted">
+          {clear ? '7 hari terakhir: tidak ada void, diskon besar, penghapusan pesanan, atau selisih kas yang belum ditinjau.' : `${review.high} risiko tinggi · 7 hari terakhir · void, diskon besar, pesanan dihapus setelah tagihan, selisih kas`}
+        </p>
+      </div>
+      <span className="flex items-center gap-1 text-sm font-semibold">
+        Tinjau <ArrowUpRight className="size-4" />
+      </span>
+    </Link>
   );
 }
 

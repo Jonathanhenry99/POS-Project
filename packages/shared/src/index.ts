@@ -6,6 +6,7 @@ export * from './format';
 export * from './pin';
 export * from './defaults';
 export * from './menu-engineering';
+export * from './review';
 export * from './receipt/escpos';
 export * from './receipt/layout';
 export * from './receipt/image';

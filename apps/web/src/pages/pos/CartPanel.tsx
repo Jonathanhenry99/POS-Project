@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatNumber, formatRupiah, ORDER_TYPE_LABEL, type AppSettings } from '@mourden/shared';
 import { cx } from '../../components/ui';
 import { cartTotals, type CartLine } from '../../lib/pos';
-import { clearCart, updateLine, useCart } from './cart';
+import { discardCart, updateLine, useCart } from './cart';
 import { confirmDialog, toast } from '../../components/feedback';
 import { errorMessage } from '../../lib/api';
 
@@ -61,7 +61,7 @@ export function CartPanel({
             { label: 'Checker dapur/bar', icon: ChefHat, onClick: onChecker },
           ]}
         />
-        <button aria-label="Kosongkan pesanan" disabled={empty} onClick={async () => { if (await confirmDialog({ title: 'Kosongkan pesanan?', message: 'Seluruh item pesanan belum dibayar ini akan dihapus. Transaksi lunas tidak berubah.', confirmLabel: 'Kosongkan', danger: true })) change(clearCart); }} className="press grid size-10 shrink-0 place-items-center rounded-xl text-fg-subtle hover:bg-danger/10 hover:text-danger disabled:opacity-30">
+        <button aria-label="Kosongkan pesanan" disabled={empty} onClick={async () => { if (await confirmDialog({ title: 'Kosongkan pesanan?', message: cart.billPrints > 0 ? 'Tagihan pesanan ini sudah dicetak. Penghapusan akan tercatat dan dilaporkan ke owner.' : 'Seluruh item pesanan belum dibayar ini akan dihapus. Transaksi lunas tidak berubah.', confirmLabel: 'Kosongkan', danger: true })) change(() => discardCart()); }} className="press grid size-10 shrink-0 place-items-center rounded-xl text-fg-subtle hover:bg-danger/10 hover:text-danger disabled:opacity-30">
           <Trash2 className="size-5" />
         </button>
       </div>

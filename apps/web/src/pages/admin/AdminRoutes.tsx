@@ -31,6 +31,7 @@ import { InventoryPage } from './InventoryPage';
 import { MenuPage } from './MenuPage';
 import { RecipesPage } from './RecipesPage';
 import { ReportsPage } from './ReportsPage';
+import { ReviewPage } from './ReviewPage';
 import { SettingsPage } from './SettingsPage';
 import { ShiftsPage } from './ShiftsPage';
 import { TransactionsPage } from './TransactionsPage';
@@ -68,6 +69,7 @@ const NAV: NavGroup[] = [
     label: 'Transaksi',
     icon: Receipt,
     items: [
+      { to: '/admin/tinjau', label: 'Perlu Ditinjau' },
       { to: '/admin/transaksi', label: 'Detail Penjualan' },
       { to: '/admin/shift', label: 'Tutup Kasir' },
     ],
@@ -94,6 +96,7 @@ const TITLES: [prefix: string, title: string][] = [
   ['/admin/laporan/void', 'Laporan › Batal & Void'],
   ['/admin/laporan/laba', 'Laporan › Laba Kotor'],
   ['/admin/laporan', 'Laporan › Rangkuman Penjualan'],
+  ['/admin/tinjau', 'Transaksi › Perlu Ditinjau'],
   ['/admin/transaksi', 'Transaksi › Detail Penjualan'],
   ['/admin/shift', 'Transaksi › Tutup Kasir'],
   ['/admin/stok', 'Inventori › Stok Bahan'],
@@ -266,6 +269,7 @@ export default function AdminRoutes() {
             <Routes>
               <Route index element={<DashboardPage />} />
               <Route path="laporan/*" element={<ReportsPage />} />
+              <Route path="tinjau" element={<ReviewPage />} />
               <Route path="transaksi" element={<TransactionsPage />} />
               <Route path="shift" element={<ShiftsPage />} />
               <Route path="stok" element={<InventoryPage />} />

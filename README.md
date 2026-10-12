@@ -127,6 +127,13 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - **Analisa Menu** (Laporan): matriks popularitas x margin per porsi (Bintang / Andalan / Potensi / Evaluasi). Akurat bila Resep & HPP sudah diisi.
 - **Kinerja Kasir** (Laporan): penjualan, rata-rata bill, diskon, dan void per kasir.
 
+## Pengawasan (anti-kecurangan)
+
+- **Perlu Ditinjau** (Transaksi → Perlu Ditinjau, ringkasan di dashboard): pesanan dihapus / item dikurangi setelah tagihan dicetak, tagihan dicetak ganda, void, diskon ≥ 30%, menu Rp 0 terjual, laci dibuka tanpa transaksi, dan selisih kas tutup shift. Bertingkat risiko, bisa ditandai sudah ditinjau.
+- Aktivitas dicatat di tablet dan dikirim lewat antrean offline yang sama dengan transaksi (tetap tercatat saat internet putus).
+- **Tutup kasir buta** (Pengaturan → Kebijakan kasir, aktif secara bawaan): kasir menghitung uang laci tanpa melihat angka "seharusnya"; selisih baru tampil setelah terkunci.
+- Opname harian hanya menangkap penjualan yang tidak diinput bila **Resep & HPP** sudah diisi.
+
 ## Tahap berikutnya
 
 - Alert stok berbasis AI: prediksi kebutuhan dari pola penjualan dan opname. Data pergerakan stok sudah tersedia.

@@ -37,3 +37,9 @@ export const appStore = createStore<AppState>({
 });
 
 export const useApp = <S,>(selector: (s: AppState) => S) => useStore(appStore, selector);
+
+/**
+ * Tutup kasir buta: kasir (bukan owner) tidak melihat uang laci "seharusnya" maupun rincian tunai
+ * selama shift berjalan, supaya hitungan saat tutup kasir tidak bisa disesuaikan.
+ */
+export const useBlindCash = () => useApp((s) => (s.data?.settings.policy.blindCashClose ?? true) && s.user?.role !== 'owner');

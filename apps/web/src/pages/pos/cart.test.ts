@@ -58,3 +58,33 @@ it('meja/pax pada saved order aktif mengikuti perubahan dan legacy cart tetap pu
   storage.delete('mourden.order-session'); storage.set('mourden.cart', JSON.stringify({ lines: [{ key: 'legacy', productId: 'kopi', name: 'Kopi', basePrice: 25000, qty: 1, options: [], note: '' }], discount: null, customerName: 'Lama', orderType: 'dine_in', savedId: null }));
   vi.resetModules(); const legacy = await import('./cart'); expect(legacy.cartStore.get().customerName).toBe('Lama'); expect(legacy.cartStore.get().tableName).toBe(''); expect(legacy.cartStore.get().lines).toHaveLength(1);
 });
+
+it('cetak tagihan dihitung per pesanan; pengurangan item & pengosongan sesudahnya dilaporkan', () => {
+  const sent: { type: string; billPrints: number; detail: string; amount: number; orderRef: string; reason: string }[] = [];
+  cart.setCartReporter((e) => sent.push(e));
+  cart.addToCart(product, [], 2, '');
+  cart.noteBillPrinted(); cart.noteBillPrinted();
+  expect(sent.map((e) => [e.type, e.billPrints])).toEqual([['bill_printed', 1], ['bill_printed', 2]]);
+  expect(sent[0].orderRef).toBe(sent[1].orderRef); expect(sent[0].amount).toBe(50000);
+  cart.updateLine(cart.cartStore.get().lines[0].key, { qty: 1 });
+  expect(sent[2]).toMatchObject({ type: 'item_removed', detail: 'Kopi: 2 → 1', amount: 25000, billPrints: 2 });
+  cart.updateLine(cart.cartStore.get().lines[0].key, { qty: 3 });
+  expect(sent).toHaveLength(3);
+  cart.discardCart();
+  expect(sent[3]).toMatchObject({ type: 'order_deleted', billPrints: 2, amount: 75000 });
+  expect(cart.cartStore.get().lines).toHaveLength(0); expect(cart.cartStore.get().billPrints).toBe(0);
+});
+it('tanpa tagihan: edit biasa tidak dilaporkan; pesanan tersimpan yang dibatalkan dilaporkan beserta alasannya', () => {
+  const sent: { type: string; reason: string; label: string; billPrints: number }[] = [];
+  cart.setCartReporter((e) => sent.push(e));
+  cart.addToCart(product, [], 2, ''); cart.updateLine(cart.cartStore.get().lines[0].key, { qty: 1 }); cart.discardCart();
+  expect(sent).toHaveLength(0);
+  cart.setService('Meja 4', 2); cart.addToCart(product, [], 1, ''); cart.noteBillPrinted();
+  const saved = cart.saveCart()!;
+  expect(saved.billPrints).toBe(1);
+  cart.deleteSaved(saved.id, 'pelanggan pergi');
+  expect(sent[sent.length - 1]).toMatchObject({ type: 'order_deleted', reason: 'pelanggan pergi', label: 'Meja 4', billPrints: 1 });
+  // Pesanan tersimpan yang dibuka lalu dikosongkan juga dilaporkan walau tagihan belum dicetak.
+  cart.addToCart(product, [], 1, ''); const held = cart.saveCart()!; cart.openSaved(held.id); const n = sent.length; cart.discardCart();
+  expect(sent).toHaveLength(n + 1); expect(sent[n].type).toBe('order_deleted');
+});

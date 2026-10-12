@@ -38,6 +38,11 @@ export interface PolicySettings {
   maxCashierDiscountPct: number;
   /** Jumlah tablet kasir aktif maksimal. Kasir hanya bisa berjualan dari tablet yang diaktifkan owner. */
   maxDevices: number;
+  /**
+   * Tutup kasir buta: kasir menghitung uang laci tanpa melihat angka "seharusnya" (dan rincian tunai)
+   * sampai shift ditutup. Owner tetap melihat semuanya.
+   */
+  blindCashClose: boolean;
 }
 
 export interface BrandSettings {

@@ -370,6 +370,33 @@ describe('laporan & admin', () => {
     await request(app).get(`/api/reports/menu-matrix?from=${from}&to=${to}`).set(asDevice('kasir')).expect(403);
   });
 
+  it('perlu ditinjau: aktivitas tablet tercatat sekali, tersaring bertingkat risiko, bisa ditandai; kasir tidak boleh melihat', async () => {
+    const t = new Date().toISOString();
+    const ev = (type: string, extra: Record<string, unknown> = {}) => ({ id: randomUUID(), at: t, type, orderRef: 'ord-tinjau', label: 'Meja 9', amount: 58000, itemCount: 2, billPrints: 0, reason: '', detail: '', ...extra });
+    const bill1 = ev('bill_printed'); const bill2 = ev('bill_printed'); const del = ev('order_deleted', { billPrints: 2, reason: 'pelanggan batal' });
+    for (const e of [bill1, bill2, del, del]) await request(app).put(`/api/tablet/events/${e.id}`).set(asDevice('kasir')).send(e).expect(200);
+    await request(app).put(`/api/tablet/events/${randomUUID()}`).set(asDevice('kasir')).send(del).expect(400);
+    await request(app).put(`/api/tablet/events/${del.id}`).set(asOwner()).send(del).expect(401);
+    const url = '/api/reports/review?from=2000-01-01&to=2100-01-01';
+    await request(app).get(url).set(asDevice('kasir')).expect(403);
+    const r = (await request(app).get(url).set(asOwner()).expect(200)).body;
+    const deleted = r.items.filter((i: { key: string }) => i.key === `event:${del.id}`);
+    expect(deleted).toHaveLength(1);
+    expect(deleted[0]).toMatchObject({ severity: 'high', actor: 'Kasir 1', reviewed: false });
+    expect(r.items.find((i: { key: string }) => i.key === 'bill:ord-tinjau')).toMatchObject({ kind: 'bill_reprint', title: 'Tagihan dicetak 2 kali' });
+    expect(r.items.some((i: { kind: string }) => i.kind === 'void')).toBe(true);
+    expect(r.open).toBe(r.items.length); expect(r.high).toBeGreaterThan(0);
+    await request(app).post('/api/reports/review/mark').set(asOwner()).send({ keys: [`event:${del.id}`], reviewed: true }).expect(200);
+    const after = (await request(app).get(url).set(asOwner())).body;
+    expect(after.open).toBe(r.open - 1);
+    expect(after.items.find((i: { key: string }) => i.key === `event:${del.id}`).reviewed).toBe(true);
+    await request(app).post('/api/reports/review/mark').set(asOwner()).send({ keys: [`event:${del.id}`], reviewed: false }).expect(200);
+    await request(app).post('/api/reports/review/mark').set(asDevice('kasir')).send({ keys: ['x:1'], reviewed: true }).expect(403);
+    const s = await request(app).put('/api/settings').set(asOwner()).send({ policy: { blindCashClose: false } }).expect(200);
+    expect(s.body.policy.blindCashClose).toBe(false);
+    await request(app).put('/api/settings').set(asOwner()).send({ policy: { blindCashClose: true } }).expect(200);
+  });
+
   it('kasir tidak bisa membuka laporan atau mengubah menu', async () => {
     expect((await request(app).get('/api/reports/summary?from=2026-01-01&to=2026-01-02').set(asDevice('kasir'))).status).toBe(403);
     expect((await request(app).post('/api/categories').set(asDevice('kasir')).send({ name: 'X' })).status).toBe(403);

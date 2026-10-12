@@ -7,7 +7,7 @@ import { confirmDialog, toast } from '../../components/feedback';
 import { Button, Card, ErrorNote, Field, MoneyInput, Modal, Segmented, TextInput, cx } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import { addCashMovement, closeShift, currentShiftSummary, lastClosedShift } from '../../lib/pos';
-import { useApp } from '../../lib/state';
+import { useApp, useBlindCash } from '../../lib/state';
 import { printShift, printStatusStore } from '../../printing/service';
 
 export function ShiftPage() {
@@ -19,6 +19,7 @@ export function ShiftPage() {
   const [lastClosed, setLastClosed] = useState<Shift | null>(null);
   const [cashSheet, setCashSheet] = useState(false);
   const [closing, setClosing] = useState(false);
+  const blind = useBlindCash();
 
   useEffect(() => {
     void currentShiftSummary().then(setSummary);
@@ -50,7 +51,7 @@ export function ShiftPage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <ShiftStat label="Total penjualan" value={formatRupiah(summary.netSales)} icon={<TrendingUp className="size-5" />} tone="bg-primary/10 text-primary" />
           <ShiftStat label="Transaksi" value={`${summary.orderCount}${summary.voidCount ? ` (+${summary.voidCount} void)` : ''}`} icon={<Receipt className="size-5" />} tone="bg-accent/12 text-accent" />
-          <ShiftStat label="Uang di laci seharusnya" value={formatRupiah(summary.expectedCash)} icon={<Wallet className="size-5" />} tone="bg-success/12 text-success" />
+          <ShiftStat label={blind ? 'Uang laci dihitung' : 'Uang di laci seharusnya'} value={blind ? 'Saat tutup' : formatRupiah(summary.expectedCash)} icon={<Wallet className="size-5" />} tone="bg-success/12 text-success" />
           <ShiftStat
             label="Kas masuk / keluar"
             value={`+${formatNumber(summary.cashIn)} / −${formatNumber(summary.cashOut)}`}
@@ -61,7 +62,7 @@ export function ShiftPage() {
       )}
       <div className="grid gap-4 md:grid-cols-2">
       <Card title="Rincian shift berjalan">
-        {summary && <SummaryTable summary={summary} openingCash={shift.openingCash} />}
+        {summary && <SummaryTable summary={summary} openingCash={shift.openingCash} blind={blind} />}
       </Card>
       <div className="flex flex-col gap-4">
         <Card
@@ -95,13 +96,14 @@ export function ShiftPage() {
       </div>
       </div>
       {cashSheet && <CashMovementSheet onClose={() => setCashSheet(false)} />}
-      {closing && summary && <CloseShiftSheet summary={summary} onClose={() => setClosing(false)} onClosed={setLastClosed} />}
+      {closing && summary && <CloseShiftSheet summary={summary} blind={blind} onClose={() => setClosing(false)} onClosed={setLastClosed} />}
     </div>
     </div>
   );
 }
 
-export function SummaryTable({ summary: s, openingCash }: { summary: ShiftSummary; openingCash: number }) {
+/** `blind`: sembunyikan rincian per metode & kas laci (shift berjalan, kasir non-owner). */
+export function SummaryTable({ summary: s, openingCash, blind = false }: { summary: ShiftSummary; openingCash: number; blind?: boolean }) {
   const row = (label: string, value: number, bold = false) => (
     <div key={label} className={cx('flex justify-between py-1', bold && 'font-bold')}>
       <span>{label}</span>
@@ -119,13 +121,23 @@ export function SummaryTable({ summary: s, openingCash }: { summary: ShiftSummar
       </div>
       {row('Total penjualan', s.netSales, true)}
       <div className="my-2 border-t border-line" />
-      {PAYMENT_METHODS.map((m) => row(PAYMENT_LABEL[m], s.byMethod[m]))}
-      <div className="my-2 border-t border-line" />
-      {row('Modal awal', openingCash)}
-      {row('Penjualan tunai', s.byMethod.cash)}
-      {s.cashIn > 0 && row('Kas masuk', s.cashIn)}
-      {s.cashOut > 0 && row('Kas keluar', -s.cashOut)}
-      {row('Uang di laci seharusnya', s.expectedCash, true)}
+      {blind ? (
+        <>
+          {s.cashIn > 0 && row('Kas masuk', s.cashIn)}
+          {s.cashOut > 0 && row('Kas keluar', -s.cashOut)}
+          <p className="mt-2 rounded-xl bg-surface-2 p-3 text-fg-muted">Rincian tunai dan uang laci tampil setelah kasir ditutup. Hitung uang di laci apa adanya saat tutup kasir.</p>
+        </>
+      ) : (
+        <>
+          {PAYMENT_METHODS.map((m) => row(PAYMENT_LABEL[m], s.byMethod[m]))}
+          <div className="my-2 border-t border-line" />
+          {row('Modal awal', openingCash)}
+          {row('Penjualan tunai', s.byMethod.cash)}
+          {s.cashIn > 0 && row('Kas masuk', s.cashIn)}
+          {s.cashOut > 0 && row('Kas keluar', -s.cashOut)}
+          {row('Uang di laci seharusnya', s.expectedCash, true)}
+        </>
+      )}
     </div>
   );
 }
@@ -179,7 +191,7 @@ function CashMovementSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-function CloseShiftSheet({ summary, onClose, onClosed }: { summary: ShiftSummary; onClose: () => void; onClosed: (s: Shift) => void }) {
+function CloseShiftSheet({ summary, blind, onClose, onClosed }: { summary: ShiftSummary; blind: boolean; onClose: () => void; onClosed: (s: Shift) => void }) {
   const [counted, setCounted] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -189,7 +201,11 @@ function CloseShiftSheet({ summary, onClose, onClosed }: { summary: ShiftSummary
 
   const submit = async () => {
     if (counted === null) return;
-    if (diff !== 0) {
+    if (blind) {
+      // Buta: selisih tidak ditampilkan sebelum terkunci, supaya hitungan tidak disesuaikan.
+      const ok = await confirmDialog({ title: 'Tutup kasir?', message: `Uang yang Anda hitung: ${formatRupiah(counted)}. Setelah ditutup, hitungan tidak bisa diubah.`, confirmLabel: 'Tutup kasir' });
+      if (!ok) return;
+    } else if (diff !== 0) {
       const ok = await confirmDialog({
         title: 'Ada selisih kas',
         message: `Uang di laci ${diff! > 0 ? 'lebih' : 'kurang'} ${formatRupiah(Math.abs(diff!))} dari seharusnya. Tetap tutup kasir?`,
@@ -218,6 +234,13 @@ function CloseShiftSheet({ summary, onClose, onClosed }: { summary: ShiftSummary
       <Modal open size="md" onClose={onClose} title="Kasir ditutup">
         <div className="flex flex-col gap-3">
           <p>Rekap tutup kasir sedang dicetak. Serahkan struk rekap beserta uang ke owner.</p>
+          {closed.countedCash !== null && closed.summary && (
+            <dl className="grid grid-cols-3 gap-2 rounded-xl bg-surface-2 p-3 text-sm">
+              <div><dt className="text-fg-muted">Dihitung</dt><dd className="font-bold tabular">{formatNumber(closed.countedCash)}</dd></div>
+              <div><dt className="text-fg-muted">Seharusnya</dt><dd className="font-bold tabular">{formatNumber(closed.summary.expectedCash)}</dd></div>
+              <div><dt className="text-fg-muted">Selisih</dt><dd className={cx('font-bold tabular', closed.countedCash === closed.summary.expectedCash ? 'text-success' : 'text-danger')}>{formatNumber(closed.countedCash - closed.summary.expectedCash)}</dd></div>
+            </dl>
+          )}
           <PrintStatusCard />
           <Button variant="outline" icon={<Printer className="size-5" />} onClick={() => void printShift(closed)}>
             Cetak rekap lagi
@@ -240,14 +263,18 @@ function CloseShiftSheet({ summary, onClose, onClosed }: { summary: ShiftSummary
       }
     >
       <div className="flex flex-col gap-4">
-        <div className="rounded-xl bg-surface-2 p-3">
-          <p className="text-sm text-fg-muted">Uang di laci seharusnya</p>
-          <p className="text-2xl font-bold tabular">{formatRupiah(summary.expectedCash)}</p>
-        </div>
+        {blind ? (
+          <p className="rounded-xl bg-surface-2 p-3 text-sm text-fg-muted">Hitung semua uang tunai di laci, lalu ketik jumlahnya apa adanya. Hasil perbandingan dengan catatan sistem tampil setelah kasir ditutup.</p>
+        ) : (
+          <div className="rounded-xl bg-surface-2 p-3">
+            <p className="text-sm text-fg-muted">Uang di laci seharusnya</p>
+            <p className="text-2xl font-bold tabular">{formatRupiah(summary.expectedCash)}</p>
+          </div>
+        )}
         <Field label="Uang tunai yang dihitung di laci">
           {(id) => <MoneyInput id={id} value={counted ?? 0} onChange={(n) => setCounted(n)} autoFocus placeholder="Hitung lalu ketik" />}
         </Field>
-        {diff !== null && (
+        {diff !== null && !blind && (
           <p className={cx('text-lg font-semibold', diff === 0 ? 'text-success' : 'text-danger')}>
             {diff === 0 ? 'Pas, tidak ada selisih.' : `Selisih ${diff > 0 ? 'lebih' : 'kurang'} ${formatRupiah(Math.abs(diff))}`}
           </p>

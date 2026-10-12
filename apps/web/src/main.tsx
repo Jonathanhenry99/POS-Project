@@ -5,6 +5,7 @@ import fontUrl from '@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-s
 import { App } from './App';
 import { initApp } from './lib/session';
 import './lib/install';
+import './lib/activity';
 import './index.css';
 
 // Plus Jakarta Sans (subset latin, variabel 200-800) ikut di-cache service worker agar tampil saat offline.

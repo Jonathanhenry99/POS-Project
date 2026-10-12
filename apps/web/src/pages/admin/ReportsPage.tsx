@@ -61,18 +61,19 @@ export function FilterCard({ value, onApply, extra, exportable = true }: { value
   return (
     <section className="tile animate-rise mb-4 p-4">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1">
+        {/* HP: blok tanggal satu baris penuh, tombol turun ke baris berikutnya. */}
+        <div className="min-w-0 flex-1 basis-full lg:basis-0">
           <p className="mb-1.5 text-sm font-semibold text-fg-muted">Tanggal Pesan</p>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex h-12 items-center overflow-hidden rounded-xl border border-line bg-surface-2 focus-within:border-primary">
+            <div className="flex h-12 max-w-full items-center overflow-hidden rounded-xl border border-line bg-surface-2 focus-within:border-primary">
               <span className="grid h-full w-12 place-items-center bg-[var(--ink)] text-white">
                 <CalendarDays className="size-5" />
               </span>
-              <input type="date" value={draft.from} max={draft.to} onChange={(e) => setDraft({ ...draft, from: e.target.value })} className="h-full bg-transparent px-3 font-semibold outline-none" aria-label="Dari tanggal" />
+              <input type="date" value={draft.from} max={draft.to} onChange={(e) => setDraft({ ...draft, from: e.target.value })} className="h-full min-w-0 flex-1 bg-transparent px-2 font-semibold outline-none sm:px-3" aria-label="Dari tanggal" />
               <span className="text-fg-subtle">–</span>
-              <input type="date" value={draft.to} min={draft.from} onChange={(e) => setDraft({ ...draft, to: e.target.value })} className="h-full bg-transparent px-3 font-semibold outline-none" aria-label="Sampai tanggal" />
+              <input type="date" value={draft.to} min={draft.from} onChange={(e) => setDraft({ ...draft, to: e.target.value })} className="h-full min-w-0 flex-1 bg-transparent px-2 font-semibold outline-none sm:px-3" aria-label="Sampai tanggal" />
             </div>
-            <div className="no-scrollbar flex gap-1.5 overflow-x-auto">
+            <div className="no-scrollbar flex max-w-full gap-1.5 overflow-x-auto">
               {PRESETS.map((p) => {
                 const r = rangeFor(p.id, draft);
                 const active = r.from === value.from && r.to === value.to;

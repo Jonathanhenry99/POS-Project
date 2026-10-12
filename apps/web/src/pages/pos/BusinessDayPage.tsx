@@ -8,7 +8,7 @@ import { Badge, Button, Card, ErrorNote, Field, MoneyInput, Modal, Segmented, Te
 import { errorMessage } from '../../lib/api';
 import type { LocalBusinessDay } from '../../lib/idb';
 import { businessDayDetails, closeBusinessDay, closeShift, currentShiftSummary, ensureBusinessDay, listBusinessDays, listShifts, refreshShiftHistory, useOrdersVersion } from '../../lib/pos';
-import { useApp } from '../../lib/state';
+import { useApp, useBlindCash } from '../../lib/state';
 import { printBusinessDay, printShift } from '../../printing/service';
 import { useCart, useSaved } from './cart';
 import { SummaryTable } from './ShiftPage';
@@ -24,6 +24,7 @@ export function BusinessDayPage() {
   const navigate = useNavigate();
   const saved = useSaved();
   const cart = useCart();
+  const blind = useBlindCash();
   const [tab, setTab] = useState<Tab>('current');
   const [from, setFrom] = useState(() => businessDate(new Date().toISOString(), timezone));
   const [to, setTo] = useState(from);
@@ -74,7 +75,7 @@ export function BusinessDayPage() {
             <Card title={activeDay ? `Hari usaha ${activeDay.businessDate}` : 'Belum ada hari usaha'} icon={<CalendarDays className="size-5" />}>
               {activeDay && summary ? <>
                 <p className="mb-3 text-sm text-fg-muted">Buka {formatDateTime(activeDay.openedAt, timezone)} oleh {activeDay.openedByName}</p>
-                <DaySummary summary={summary} />
+                <DaySummary summary={summary} blind={blind} />
                 <p className="mt-3 text-xs text-fg-muted">Angka shift yang sudah ditutup dikunci saat penutupan. Void sesudahnya tetap terlihat di Riwayat transaksi.</p>
               </> : <p className="text-fg-muted">Buka shift dari layar Kasir untuk memulai hari usaha baru.</p>}
             </Card>
@@ -110,13 +111,13 @@ export function BusinessDayPage() {
           {!dateValid && <ErrorNote>Isi rentang tanggal yang valid.</ErrorNote>}
           {dateValid && tab === 'shifts' && visibleShifts.map((s) => <Card key={s.id} title={s.openedByName} action={s.closedAt ? <Button variant="outline" size="sm" icon={<Printer className="size-4" />} onClick={() => void printShift(s)}>Cetak rekap</Button> : <Badge tone="green">Berjalan</Badge>}>
             <p className="mb-2 text-sm text-fg-muted">{formatDateTime(s.openedAt, timezone)}{s.closedAt && ` – ${formatDateTime(s.closedAt, timezone)}`} · {s.sync === 'synced' ? 'Tersinkron' : s.sync === 'failed' ? 'Sinkron gagal' : 'Menunggu sinkron'}</p>
-            {s.summary && <SummaryTable summary={s.summary} openingCash={s.openingCash} />}
+            {s.summary && <SummaryTable summary={s.summary} openingCash={s.openingCash} blind={blind && !s.closedAt} />}
             {s.countedCash !== null && s.summary && <p className="mt-2 font-semibold">Kas dihitung {formatRupiah(s.countedCash)} · Selisih {formatRupiah(s.countedCash - s.summary.expectedCash)}</p>}
             {s.closingNote && <p className="mt-2 text-sm">Catatan: {s.closingNote}</p>}
           </Card>)}
           {dateValid && tab === 'days' && visibleDays.map((day) => <Card key={day.id} title={`Hari ${day.businessDate}`} action={<Badge tone={day.sync === 'failed' ? 'red' : day.sync === 'synced' ? 'green' : 'amber'}>{day.closedAt ? day.sync === 'synced' ? 'Ditutup & tersinkron' : day.sync === 'failed' ? 'Sinkron gagal' : 'Ditutup lokal · antre' : 'Berjalan'}</Badge>}>
             <p className="mb-2 text-sm text-fg-muted">Buka {formatDateTime(day.openedAt, timezone)}{day.closedAt && ` · Tutup ${formatDateTime(day.closedAt, timezone)} oleh ${day.closedByName}`}</p>
-            {day.summary && <DaySummary summary={day.summary} />}
+            {day.summary && <DaySummary summary={day.summary} blind={blind && !day.closedAt} />}
             <ErrorNote>{day.syncError}</ErrorNote>
             {day.closingNote && <p className="mt-2 text-sm">Catatan: {day.closingNote}</p>}
             {day.closedAt && <Button className="mt-3" variant="outline" icon={<Printer className="size-5" />} onClick={() => void printBusinessDay(day)}>Cetak rekap hari</Button>}
@@ -125,16 +126,17 @@ export function BusinessDayPage() {
         </>}
         <PrintStatusCard />
       </div>
-      {closeMode && <DayClosingSheet mode={closeMode} drafts={draftCount} onClose={() => setCloseMode(null)} onFinished={load} />}
+      {closeMode && <DayClosingSheet mode={closeMode} blind={blind} drafts={draftCount} onClose={() => setCloseMode(null)} onFinished={load} />}
     </div>
   );
 }
 
-function DaySummary({ summary: s }: { summary: BusinessDaySummary }) {
+function DaySummary({ summary: s, blind = false }: { summary: BusinessDaySummary; blind?: boolean }) {
   const row = (label: string, value: number, bold = false) => <div className={cx('flex justify-between gap-3 py-1', bold && 'font-bold')}><span>{label}</span><span className="tabular">{formatNumber(value)}</span></div>;
   return <div className="text-sm">
     {row('Jumlah shift', s.shiftCount)}{row('Transaksi lunas', s.orderCount)}{row('Penjualan kotor', s.grossSales)}
     {row('Diskon', -s.discountTotal)}{row('Service', s.serviceTotal)}{row('Pajak', s.taxTotal)}{row('Total penjualan', s.netSales, true)}
+    {blind ? <p className="mt-2 rounded-xl bg-surface-2 p-3 text-fg-muted">Rincian tunai dan kas laci tampil setelah shift ditutup.</p> : <>
     <div className="my-2 border-t border-line" />
     {PAYMENT_METHODS.map((m) => <div key={m}>{row(PAYMENT_LABEL[m], s.byMethod[m])}</div>)}
     {row(`Void (${s.voidCount})`, s.voidAmount)}
@@ -144,10 +146,11 @@ function DaySummary({ summary: s }: { summary: BusinessDaySummary }) {
     {s.lastCountedCash !== null && row('Kas dihitung shift terakhir', s.lastCountedCash)}
     {row('Selisih seluruh shift', s.cashDifference, true)}
     <p className="mt-2 text-xs text-fg-muted">Modal pergantian shift tidak dijumlah sebagai pendapatan. Nilai laci berasal dari shift terakhir.</p>
+    </>}
   </div>;
 }
 
-function DayClosingSheet({ mode, drafts, onClose, onFinished }: { mode: 'shift' | 'day'; drafts: number; onClose: () => void; onFinished: () => Promise<void> }) {
+function DayClosingSheet({ mode, blind, drafts, onClose, onFinished }: { mode: 'shift' | 'day'; blind: boolean; drafts: number; onClose: () => void; onFinished: () => Promise<void> }) {
   const [expected, setExpected] = useState<number | null>(null);
   const [counted, setCounted] = useState<number | null>(null);
   const [note, setNote] = useState('');
@@ -157,19 +160,25 @@ function DayClosingSheet({ mode, drafts, onClose, onFinished }: { mode: 'shift' 
   useEffect(() => { void currentShiftSummary().then((s) => setExpected(s?.expectedCash ?? null)); }, []);
   const submit = async () => {
     if (counted === null || expected === null) return;
-    if (!savedShift && counted !== expected && !await confirmDialog({ title: 'Ada selisih kas', message: `Selisih ${formatRupiah(counted - expected)}. Tetap tutup?`, confirmLabel: 'Tetap tutup', danger: true })) return;
+    // Buta: selisih tidak ditampilkan sebelum hitungan terkunci.
+    if (!savedShift && blind && !await confirmDialog({ title: mode === 'day' ? 'Tutup shift & hari?' : 'Akhiri shift?', message: `Uang yang Anda hitung: ${formatRupiah(counted)}. Setelah ditutup, hitungan tidak bisa diubah.`, confirmLabel: 'Tutup' })) return;
+    if (!savedShift && !blind && counted !== expected && !await confirmDialog({ title: 'Ada selisih kas', message: `Selisih ${formatRupiah(counted - expected)}. Tetap tutup?`, confirmLabel: 'Tetap tutup', danger: true })) return;
     setBusy(true); setError('');
     try {
       const closed = savedShift ?? await closeShift(counted, note, mode);
       setSavedShift(closed);
       if (mode === 'day') { const day = await closeBusinessDay(note); void printBusinessDay(day); }
       else void printShift(closed);
-      await onFinished(); onClose(); toast(mode === 'day' ? 'Hari ditutup lokal; status sinkron tersedia di rekap.' : 'Shift diakhiri. Hari usaha tetap berjalan.');
+      const diff = closed.countedCash !== null && closed.summary ? closed.countedCash - closed.summary.expectedCash : 0;
+      const result = diff === 0 ? 'Kas pas.' : `Selisih kas ${formatRupiah(diff)}.`;
+      await onFinished(); onClose(); toast(`${mode === 'day' ? 'Hari ditutup.' : 'Shift diakhiri.'} ${result}`, diff === 0 ? 'success' : 'info');
     } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
   return <Modal open onClose={onClose} dismissable={!busy} title={mode === 'day' ? 'Tutup toko / hari' : 'Akhiri shift'} footer={<Button className="flex-1" size="lg" loading={busy} disabled={counted === null || expected === null} onClick={submit}>{savedShift ? 'Lanjutkan tutup hari' : mode === 'day' ? 'Tutup shift terakhir & hari' : 'Akhiri shift & cetak'}</Button>}>
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-fg-muted">Uang di laci seharusnya</p><p className="text-2xl font-bold tabular">{expected === null ? 'Menghitung…' : formatRupiah(expected)}</p>
+      {blind
+        ? <p className="rounded-xl bg-surface-2 p-3 text-sm text-fg-muted">Hitung semua uang tunai di laci, lalu ketik jumlahnya apa adanya. Hasil perbandingan tampil setelah ditutup.</p>
+        : <><p className="text-sm text-fg-muted">Uang di laci seharusnya</p><p className="text-2xl font-bold tabular">{expected === null ? 'Menghitung…' : formatRupiah(expected)}</p></>}
       <Field label="Uang tunai yang dihitung">{(id) => <MoneyInput id={id} value={counted ?? 0} onChange={setCounted} disabled={!!savedShift} autoFocus />}</Field>
       <Button variant="soft" disabled={!!savedShift} onClick={() => setCounted(0)}>Kas dihitung Rp0</Button>
       <Field label="Catatan (opsional)">{(id) => <TextInput id={id} value={note} onChange={(e) => setNote(e.target.value.slice(0, 300))} disabled={!!savedShift} />}</Field>

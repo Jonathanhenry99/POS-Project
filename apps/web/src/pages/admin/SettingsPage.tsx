@@ -143,6 +143,12 @@ export function SettingsPage() {
                 label="Void butuh PIN owner"
                 description="Bila mati, kasir bisa membatalkan transaksi dengan alasan (tetap tercatat dan terlihat di laporan)."
               />
+              <Toggle
+                checked={form.policy.blindCashClose ?? true}
+                onChange={(v) => set('policy', 'blindCashClose', v)}
+                label="Tutup kasir buta"
+                description="Kasir menghitung uang laci tanpa melihat angka “seharusnya”. Selisih baru tampil setelah kasir ditutup dan tidak bisa diubah."
+              />
               <Field label="Batas diskon kasir tanpa PIN owner (%)" hint="100 = bebas.">
                 {(id) => <TextInput id={id} inputMode="numeric" value={String(form.policy.maxCashierDiscountPct)} onChange={(e) => set('policy', 'maxCashierDiscountPct', Math.min(100, num(e.target.value)))} />}
               </Field>

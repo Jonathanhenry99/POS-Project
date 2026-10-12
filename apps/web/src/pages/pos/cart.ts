@@ -1,5 +1,5 @@
 // Keranjang belanja + pesanan tersimpan. Disimpan di localStorage agar tidak hilang bila aplikasi ditutup sistem.
-import type { Discount, OrderItemOption, OrderType, Product } from '@mourden/shared';
+import { computeTotals, priceLine, type CashierEvent, type Discount, type OrderItemOption, type OrderType, type Product } from '@mourden/shared';
 import { uuid } from '../../lib/id';
 import type { CartLine } from '../../lib/pos';
 import { createStore, useStore } from '../../lib/store';
@@ -15,6 +15,8 @@ export interface CartState {
   tableName: string;
   pax: number;
   checkoutId: string | null;
+  /** Berapa kali tagihan (sebelum bayar) pesanan ini dicetak. Dipakai untuk melaporkan penghapusan sesudahnya. */
+  billPrints: number;
 }
 
 export interface SavedOrder extends CartState {
@@ -25,7 +27,7 @@ export interface SavedOrder extends CartState {
 
 const KEY = 'mourden.cart';
 const SAVED_KEY = 'mourden.saved';
-const EMPTY: CartState = { lines: [], discount: null, customerName: '', orderType: 'dine_in', savedId: null, tableName: '', pax: 0, checkoutId: null };
+const EMPTY: CartState = { lines: [], discount: null, customerName: '', orderType: 'dine_in', savedId: null, tableName: '', pax: 0, checkoutId: null, billPrints: 0 };
 const SESSION_KEY = 'mourden.order-session';
 interface CartEvent { at: string; action: string; reason: string; actor?: string }
 interface OrderSession { cart: CartState; saved: SavedOrder[]; events: CartEvent[] }
@@ -85,6 +87,51 @@ window.addEventListener('storage', (e) => {
 
 function setCart(patch: Partial<CartState>) { commit({ ...cartStore.get(), ...patch }); }
 
+// ---------- Jejak aktivitas berisiko (dikirim ke server oleh lib/activity) ----------
+
+type Report = Omit<CashierEvent, 'id' | 'at'>;
+let reporter: ((e: Report) => void) | null = null;
+/** Dipasang saat aplikasi mulai. Modul keranjang sendiri tetap tanpa akses jaringan/IndexedDB. */
+export function setCartReporter(fn: ((e: Report) => void) | null) { reporter = fn; }
+
+const lineValue = (l: CartLine) => priceLine(l.basePrice, l.options, l.qty).lineTotal;
+function orderFacts(o: Pick<CartState, 'lines' | 'discount' | 'customerName' | 'tableName' | 'checkoutId' | 'billPrints'>, fallbackLabel = 'Pesanan') {
+  const items = o.lines.map((l) => ({ lineTotal: lineValue(l) }));
+  const pricing = appStore.get().data?.settings.pricing;
+  return {
+    orderRef: o.checkoutId ?? '',
+    label: o.customerName.trim() || o.tableName || fallbackLabel,
+    amount: pricing ? computeTotals(items, o.discount, pricing).total : items.reduce((n, i) => n + i.lineTotal, 0),
+    itemCount: o.lines.reduce((n, l) => n + l.qty, 0),
+    billPrints: o.billPrints ?? 0,
+  };
+}
+
+/** Dipanggil setelah tagihan berhasil dikirim ke printer. */
+export function noteBillPrinted() {
+  const cart = cartStore.get();
+  if (!cart.lines.length) return;
+  const next = { ...cart, billPrints: (cart.billPrints ?? 0) + 1 };
+  commit(next);
+  reporter?.({ type: 'bill_printed', ...orderFacts(cartStore.get()), reason: '', detail: '' });
+}
+
+/** Kasir mengosongkan pesanan (ikon tempat sampah). Dilaporkan bila pesanan pernah disimpan atau tagihannya sudah dicetak. */
+export function discardCart(reason = '') {
+  const cart = cartStore.get();
+  const facts = orderFacts(cart, 'Keranjang');
+  const risky = cart.lines.length > 0 && (facts.billPrints > 0 || !!cart.savedId);
+  clearCart();
+  if (risky) reporter?.({ type: 'order_deleted', ...facts, reason, detail: 'Dikosongkan dari keranjang' });
+}
+
+/** Item dikurangi/dihapus setelah tagihan dicetak: pelanggan bisa sudah membayar sesuai tagihan lama. */
+function reportReduction(before: CartState, line: CartLine, newQty: number, reason: string) {
+  if (!(before.billPrints > 0) || newQty >= line.qty) return;
+  const unit = priceLine(line.basePrice, line.options, 1).lineTotal;
+  reporter?.({ type: 'item_removed', ...orderFacts(before), amount: unit * (line.qty - newQty), itemCount: line.qty - newQty, reason, detail: `${line.name}: ${line.qty} → ${newQty}` });
+}
+
 const signature = (productId: string, options: OrderItemOption[], note: string) =>
   `${productId}|${options.map((o) => o.optionId).sort().join(',')}|${note.trim().toLowerCase()}`;
 
@@ -105,11 +152,17 @@ export function addToCart(product: Product, options: OrderItemOption[], qty: num
 
 export function updateLine(key: string, patch: Partial<CartLine>) {
   if (patch.qty !== undefined && (!Number.isInteger(patch.qty) || patch.qty < 0 || patch.qty > 999)) throw new Error('Jumlah item harus 0–999');
-  setCart({ lines: cartStore.get().lines.map((l) => (l.key === key ? { ...l, ...patch } : l)).filter((l) => l.qty > 0) });
+  const before = cartStore.get();
+  const line = before.lines.find((l) => l.key === key);
+  setCart({ lines: before.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)).filter((l) => l.qty > 0) });
+  if (line && patch.qty !== undefined) reportReduction(before, line, patch.qty, '');
 }
 
 export function removeLine(key: string) {
-  setCart({ lines: cartStore.get().lines.filter((l) => l.key !== key) });
+  const before = cartStore.get();
+  const line = before.lines.find((l) => l.key === key);
+  setCart({ lines: before.lines.filter((l) => l.key !== key) });
+  if (line) reportReduction(before, line, 0, '');
 }
 
 export function setDiscount(discount: Discount | null) {
@@ -163,12 +216,16 @@ export function openSaved(id: string) {
 
 export function deleteSaved(id: string, reason = '') {
   const cart = cartStore.get();
-  commit({ ...cart, savedId: cart.savedId === id ? null : cart.savedId }, savedStore.get().list.filter((o) => o.id !== id), { action: `Hapus pesanan ${id}`, reason });
+  const target = savedStore.get().list.find((o) => o.id === id);
+  commit({ ...cart, savedId: cart.savedId === id ? null : cart.savedId }, savedStore.get().list.filter((o) => o.id !== id), { action: `Hapus pesanan ${target?.label ?? id}`, reason });
+  if (target) reporter?.({ type: 'order_deleted', ...orderFacts(target, target.label), label: target.label, reason, detail: 'Pesanan tersimpan dibatalkan' });
 }
 
 export function cancelLine(key: string, reason: string) {
   const cart = cartStore.get();
-  commit({ ...cart, lines: cart.lines.filter((l) => l.key !== key) }, undefined, { action: `Hapus item ${cart.lines.find((l) => l.key === key)?.name ?? key}`, reason });
+  const line = cart.lines.find((l) => l.key === key);
+  commit({ ...cart, lines: cart.lines.filter((l) => l.key !== key) }, undefined, { action: `Hapus item ${line?.name ?? key}`, reason });
+  if (line) reportReduction(cart, line, 0, reason);
 }
 
 /** Pemindahan qty dari keranjang ke pesanan tersimpan; tidak mencatat pembayaran atau mengurangi stok. */

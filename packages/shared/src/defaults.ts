@@ -36,6 +36,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     voidRequiresOwnerPin: false,
     maxCashierDiscountPct: 100,
     maxDevices: 1,
+    blindCashClose: true,
   },
   pos: { tables: [], notes: [], cancellationReasons: [], productStations: {} },
   brand: { logo: '' },
