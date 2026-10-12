@@ -6,7 +6,7 @@ export interface ArchiveCursor { at: string; id: string }
 export async function fetchOrderArchive(query: { from: string; to: string; q: string; status: string; payment: string }, cursor: ArchiveCursor | null = null) {
   const params = new URLSearchParams(query);
   if (cursor) { params.set('cursorAt', cursor.at); params.set('cursorId', cursor.id); }
-  const result = await api<{ orders: Order[]; next: ArchiveCursor | null }>(`/tablet/orders?${params}`);
+  const result = await api<{ orders: Order[]; next: ArchiveCursor | null }>(`/tablet/orders?${params}`, { asDevice: true });
   const d = await db();
   const tx = d.transaction(['orders', 'outbox'], 'readwrite');
   const jobs = await tx.objectStore('outbox').getAll();

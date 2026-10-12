@@ -1,10 +1,12 @@
-import { Boxes, CloudOff, Eye, History, LayoutDashboard, Lock, LogOut, Printer, Receipt, RefreshCw, Wallet } from 'lucide-react';
+import { Boxes, CloudOff, Eye, History, LayoutDashboard, Lock, LogOut, Printer, Radio, Receipt, RefreshCw, Wallet } from 'lucide-react';
 import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { can, formatNumber, userLabel } from '@mourden/shared';
 import { Spinner, StatusDot, cx } from '../components/ui';
 import { listOrders, useOrdersVersion } from '../lib/pos';
-import { exitPreview } from '../lib/preview';
+import { exitPreview, setPreviewLive } from '../lib/preview';
+import { confirmDialog, toast } from '../components/feedback';
+import { errorMessage } from '../lib/api';
 import { logout } from '../lib/session';
 import { appStore, useApp } from '../lib/state';
 import { usePrintStatus } from '../printing/service';
@@ -17,7 +19,29 @@ const OWNER_IDLE_LOCK_MS = 10 * 60_000;
 export function TabletShell() {
   const user = useApp((s) => s.user)!;
   const preview = useApp((s) => s.preview);
+  const live = useApp((s) => s.previewLive);
   const navigate = useNavigate();
+  const [switching, setSwitching] = useState(false);
+  const toggleLive = async () => {
+    if (
+      !live &&
+      !(await confirmDialog({
+        title: 'Aktifkan uji langsung?',
+        message: 'Transaksi, shift, void, dan komplimen dari layar kasir ini akan BENAR-BENAR tersimpan ke server: muncul di dashboard dan laporan, dan memotong stok. Nomor struknya berawalan huruf perangkat uji. Cetak tetap hanya ditampilkan di layar.',
+        confirmLabel: 'Aktifkan uji langsung',
+      }))
+    )
+      return;
+    setSwitching(true);
+    try {
+      await setPreviewLive(!live);
+      toast(live ? 'Kembali ke simulasi: transaksi tidak disimpan.' : 'Uji langsung aktif: transaksi tersimpan ke server.', live ? 'info' : 'success');
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   // Owner yang lupa keluar di tablet otomatis terkunci setelah 10 menit tidak ada aktivitas.
   // Tidak berlaku di pratinjau (perangkat owner sendiri, sesi owner tetap dijaga oleh login online).
@@ -47,20 +71,27 @@ export function TabletShell() {
           <StoreBlock />
           <div className="ml-auto flex items-center gap-2">
             {preview && (
-              <span className="flex h-11 items-center gap-1.5 rounded-xl bg-amber-100 px-3 text-sm font-bold text-amber-900 ring-1 ring-amber-300" title="Transaksi tidak disimpan ke server dan tidak dicetak">
-                <Eye className="size-4" /> <span className="hidden sm:inline">Mode pratinjau</span>
-              </span>
+              <button
+                onClick={() => void toggleLive()}
+                disabled={switching}
+                aria-pressed={live}
+                className={cx('press flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-bold ring-1', live ? 'bg-emerald-100 text-emerald-900 ring-emerald-400' : 'bg-amber-100 text-amber-900 ring-amber-300')}
+                title={live ? 'Uji langsung: transaksi tersimpan ke server. Ketuk untuk kembali ke simulasi.' : 'Simulasi: transaksi tidak disimpan. Ketuk untuk mengaktifkan uji langsung.'}
+              >
+                {live ? <Radio className="size-4" /> : <Eye className="size-4" />}
+                <span className="hidden sm:inline">{switching ? 'Mengganti…' : live ? 'Uji langsung · tersimpan' : 'Simulasi · ketuk untuk uji langsung'}</span>
+              </button>
             )}
             <AppModeButton />
             <ShiftChip />
             <Clock />
-            {!preview && <SyncPill />}
+            {(!preview || live) && <SyncPill />}
             <PrinterPill />
             {preview ? (
               <button
                 onClick={() => void exitPreview().then(() => navigate('/admin', { replace: true }))}
                 className="press flex h-11 items-center gap-2 rounded-xl bg-white/12 px-3 text-sm font-semibold hover:bg-white/20"
-                title="Keluar dari pratinjau kasir (data simulasi dihapus)"
+                title={live ? 'Keluar dari uji langsung (data yang sudah tersimpan tetap ada)' : 'Keluar dari pratinjau kasir (data simulasi dihapus)'}
               >
                 <LogOut className="size-5" /> <span className="hidden md:inline">Keluar pratinjau</span>
               </button>

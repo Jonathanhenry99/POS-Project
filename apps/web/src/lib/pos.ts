@@ -405,7 +405,7 @@ export async function listBusinessDays() {
 
 /** Tambahan arsip online; tidak menimpa snapshot lokal yang masih pending/gagal. */
 export async function refreshShiftHistory(from: string, to: string) {
-  const data = await api<{ shifts: Shift[]; days: BusinessDay[]; limited: boolean }>(`/tablet/shift-history?from=${from}&to=${to}`);
+  const data = await api<{ shifts: Shift[]; days: BusinessDay[]; limited: boolean }>(`/tablet/shift-history?from=${from}&to=${to}`, { asDevice: true });
   const d = await db();
   const tx = d.transaction(['shifts', 'businessDays'], 'readwrite');
   for (const shift of data.shifts) {

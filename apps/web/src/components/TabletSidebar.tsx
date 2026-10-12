@@ -30,7 +30,7 @@ const sections: { label: string; items: { to: string; label: string; icon: Lucid
 
 export function TabletSidebar() {
   const user = useApp((s) => s.user)!;
-  const preview = useApp((s) => s.preview);
+  const preview = useApp((s) => s.preview && !s.previewLive);
   const storeName = useApp((s) => s.data?.settings.store.name ?? 'POS');
   const [collapsed, setCollapsed, hoverEvents] = useSidebarPreference(PREF_KEY, typeof window !== 'undefined' && window.innerWidth < 1366);
   return <Sidebar {...hoverEvents} openWidth={224} aria-label="Navigasi utama" collapsed={collapsed} className={cx('flex', collapsed ? 'w-[72px]' : 'w-56')}>

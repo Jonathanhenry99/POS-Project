@@ -13,6 +13,11 @@ export interface AppState {
   mode: AppMode;
   /** Owner mencoba layar kasir dari HP/laptop: data lokal terpisah, tidak pernah dikirim ke server atau printer. */
   preview: boolean;
+  /**
+   * Uji langsung: pratinjau kasir yang BENAR-BENAR menyimpan ke server lewat perangkat uji owner
+   * (untuk menguji alur nyata dari HP/laptop). Cetak tetap hanya ditampilkan di layar.
+   */
+  previewLive: boolean;
   device: DeviceInfo | null;
   data: BootstrapData | null;
   user: PublicUser | null;
@@ -27,6 +32,7 @@ export const appStore = createStore<AppState>({
   ready: false,
   mode: 'online',
   preview: false,
+  previewLive: false,
   device: null,
   data: null,
   user: null,

@@ -64,7 +64,7 @@ authRouter.post('/devices/pair', async (req, res) => {
   const device = await tx(async (c) => {
     // Batasi jumlah tablet kasir aktif (default 1) agar kasir hanya bisa berjualan dari tablet yang ditentukan.
     await c.query('select pg_advisory_xact_lock(724502)');
-    const { rows: active } = await c.query<{ name: string }>('select name from devices where revoked_at is null order by created_at');
+    const { rows: active } = await c.query<{ name: string }>('select name from devices where revoked_at is null and not is_test order by created_at');
     if (active.length >= maxDevices) {
       throw new HttpError(
         409,
@@ -86,9 +86,34 @@ authRouter.post('/devices/pair', async (req, res) => {
   res.status(201).json({ device, token });
 });
 
+/**
+ * Perangkat uji owner: dipakai mode "Uji langsung" di pratinjau kasir (HP/laptop owner) supaya transaksi uji
+ * benar-benar tersimpan. Hanya owner yang sedang login, tidak memakan jatah tablet kasir, dan tokennya
+ * diganti setiap kali diminta (sesi uji lama otomatis tidak berlaku).
+ */
+authRouter.post('/devices/test', need('admin'), async (req, res) => {
+  const { token, hash } = newDeviceToken();
+  const device = await tx(async (c) => {
+    await c.query('select pg_advisory_xact_lock(724502)');
+    const existing = await c.query('update devices set token_hash = $1, revoked_at = null where is_test returning id, name, code', [hash]);
+    if (existing.rows[0]) return existing.rows[0];
+    const { rows: used } = await c.query<{ code: string }>('select code from devices');
+    const taken = new Set(used.map((r) => r.code));
+    // Awalan nomor struk "U" (uji) bila masih bebas, supaya transaksi uji mudah dikenali.
+    const code = ['U', 'T', 'X', 'Z'].find((x) => !taken.has(x)) ?? `U${taken.size + 1}`;
+    const { rows } = await c.query(
+      "insert into devices (name, code, token_hash, created_by, is_test) values ('Uji owner', $1, $2, $3, true) returning id, name, code",
+      [code, hash, req.auth.user!.id],
+    );
+    await audit(c, req.auth.user!.id, 'pair', 'device', rows[0].id, { name: 'Uji owner', test: true });
+    return rows[0];
+  });
+  res.status(201).json({ device, token });
+});
+
 authRouter.get('/devices', need('admin'), async (_req, res) => {
   const { rows } = await pool.query(
-    `select id, name, code, created_at as "createdAt", last_seen_at as "lastSeenAt", revoked_at as "revokedAt"
+    `select id, name, code, is_test as "isTest", created_at as "createdAt", last_seen_at as "lastSeenAt", revoked_at as "revokedAt"
      from devices order by created_at desc`,
   );
   res.json(rows);

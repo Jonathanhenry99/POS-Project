@@ -138,6 +138,20 @@ describe('autentikasi', () => {
     catalog = res.body.catalog;
   });
 
+  it('perangkat uji owner: hanya owner, tidak memakan jatah tablet, token lama hangus saat diminta ulang', async () => {
+    await request(app).post('/api/devices/test').set(asDevice('kasir')).expect(403);
+    const before = (await request(app).get('/api/devices').set(asOwner())).body.filter((d: { revokedAt: string | null; isTest: boolean }) => !d.revokedAt && !d.isTest).length;
+    const a = (await request(app).post('/api/devices/test').set(asOwner()).expect(201)).body;
+    const b = (await request(app).post('/api/devices/test').set(asOwner()).expect(201)).body;
+    expect(b.device.id).toBe(a.device.id); expect(b.token).not.toBe(a.token);
+    const owner = (await request(app).get('/api/users').set(asOwner())).body.find((u: { role: string }) => u.role === 'owner');
+    await request(app).get('/api/sync/bootstrap').set({ Authorization: `Device ${a.token}`, 'X-Operator': owner.id }).expect(401);
+    await request(app).get('/api/sync/bootstrap').set({ Authorization: `Device ${b.token}`, 'X-Operator': owner.id }).expect(200);
+    const list = (await request(app).get('/api/devices').set(asOwner())).body;
+    expect(list.filter((d: { isTest: boolean }) => d.isTest)).toHaveLength(1);
+    expect(list.filter((d: { revokedAt: string | null; isTest: boolean }) => !d.revokedAt && !d.isTest).length).toBe(before);
+  });
+
   it('token perangkat palsu ditolak', async () => {
     const res = await request(app).get('/api/sync/bootstrap').set({ Authorization: 'Device palsu' });
     expect(res.status).toBe(401);

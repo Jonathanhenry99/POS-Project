@@ -57,6 +57,8 @@ interface MourdenDB extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<MourdenDB>> | null = null;
 export const MAIN_DB = 'mourden-pos';
 export const PREVIEW_DB = 'mourden-pos-preview';
+/** Data lokal mode "Uji langsung" (shift & antrean kirim perangkat uji). Tidak dihapus saat keluar. */
+export const LIVE_TEST_DB = 'mourden-pos-uji';
 let dbName = MAIN_DB;
 
 /** Pindah database lokal (mode pratinjau memakai database sendiri agar data tablet asli tidak tersentuh). */

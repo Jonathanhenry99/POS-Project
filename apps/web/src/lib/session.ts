@@ -52,7 +52,8 @@ export async function initApp() {
   const session = readJson<{ token: string; user: PublicUser }>(SESSION_KEY);
   appStore.set({ mode: 'online', token: session?.token ?? null, user: session?.user ?? null });
   // Muat ulang saat pratinjau kasir: lanjutkan pratinjau (butuh koneksi untuk mengambil menu).
-  if (session && previewRequested()) await enterPreview().catch(() => exitPreview());
+  const resume = session ? previewRequested() : null;
+  if (resume) await enterPreview({ live: resume === 'live' }).catch(() => exitPreview());
   appStore.set({ ready: true });
   if (session) {
     // Perbarui data pengguna (peran bisa berubah); 401 otomatis mengeluarkan.

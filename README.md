@@ -138,6 +138,11 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - **Hitungan buta**: angka stok sistem tidak dikirim ke akun barista/kitchen (bukan hanya disembunyikan di layar).
 - **Selisih Bahan** (Inventori → Selisih Bahan): per bahan, pemakaian tercatat (terjual + komplimen), terbuang yang dicatat, dan selisih opname, dinilai wajar/abnormal terhadap toleransi (bawaan di Pengaturan, khusus per bahan di Stok Bahan).
 
+## Menguji dari HP/laptop owner
+
+- **Pratinjau kasir** (tombol di back office): layar kasir dengan menu asli. Bawaan **simulasi**: tidak ada yang tersimpan, cetak hanya tampil di layar.
+- **Uji langsung** (ketuk penanda "Simulasi" di header kasir pratinjau): transaksi, shift, void, komplimen benar-benar tersimpan lewat perangkat uji owner (`devices.is_test`, tidak memakan jatah tablet). Nomor struk berawalan `U` + 2 karakter unik per browser. Cetak tetap hanya di layar; PIN penerima komplimen tidak diminta (hash PIN tidak dikirim ke sesi HP).
+
 ## Tahap berikutnya
 
 - Alert stok berbasis AI: prediksi kebutuhan dari pola penjualan dan opname. Data pergerakan stok sudah tersedia.

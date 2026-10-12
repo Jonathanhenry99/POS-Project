@@ -5,9 +5,9 @@ import { makePrintJob, storePrintJobs } from '../printing/queue';
 import { previewPrintStore, sendPrintJob } from '../printing/service';
 import { DEFAULT_PRINTER_CONFIG } from '../printing/types';
 import { authHeaders } from './api';
-import { MAIN_DB, PREVIEW_DB, db, useDatabase } from './idb';
+import { LIVE_TEST_DB, MAIN_DB, PREVIEW_DB, db, deleteDatabase, useDatabase } from './idb';
 import { checkout, openShift } from './pos';
-import { enterPreview, exitPreview } from './preview';
+import { enterPreview, exitPreview, setPreviewLive } from './preview';
 import { appStore } from './state';
 import { flushOutbox } from './sync';
 
@@ -24,15 +24,23 @@ const catalog: Catalog = {
   ],
   optionGroups: [],
 };
-const fetchMock = vi.fn(async (url: string) => {
-  const body = url === '/api/settings' ? DEFAULT_SETTINGS : url === '/api/admin/catalog' ? catalog : url === '/api/ingredients' ? [] : null;
+const READS = ['/api/settings', '/api/admin/catalog', '/api/ingredients', '/api/users'];
+const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+  const body =
+    url === '/api/settings' ? DEFAULT_SETTINGS
+    : url === '/api/admin/catalog' ? catalog
+    : url === '/api/ingredients' ? []
+    : url === '/api/users' ? [owner, { ...owner, id: '99999999-9999-4999-8999-999999999999', name: 'Budi', username: 'budi', role: 'barista' }]
+    : url === '/api/devices/test' ? { device: { id: 'dev-uji', name: 'Uji owner', code: 'U' }, token: 'token-uji' }
+    : url.startsWith('/api/orders/') || url.startsWith('/api/shifts/') || url.startsWith('/api/business-days/') ? { ok: true }
+    : null;
   return new Response(JSON.stringify(body ?? { error: 'tidak boleh dipanggil' }), { status: body ? 200 : 500 });
 });
 
 beforeEach(async () => {
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockClear();
-  appStore.set({ mode: 'online', preview: false, device: null, data: null, user: owner, token: 'jwt-owner', activeShift: null });
+  appStore.set({ mode: 'online', preview: false, previewLive: false, device: null, data: null, user: owner, token: 'jwt-owner', activeShift: null });
 });
 afterEach(async () => {
   await exitPreview();
@@ -51,7 +59,7 @@ it('pratinjau: menu aktif dari server, transaksi lokal tidak pernah dikirim, dat
   expect(order.number.startsWith('P')).toBe(true);
   await flushOutbox();
   const calls = fetchMock.mock.calls.map(([url]) => url);
-  expect(calls.filter((u) => !['/api/settings', '/api/admin/catalog', '/api/ingredients'].includes(u))).toEqual([]);
+  expect(calls.filter((u) => !READS.includes(u))).toEqual([]);
   expect(await (await db()).count('outbox')).toBeGreaterThan(0);
 
   await exitPreview();
@@ -77,4 +85,37 @@ it('pratinjau hanya untuk owner yang login online', async () => {
   appStore.set({ user: { ...owner, role: 'kasir' } });
   await expect(enterPreview()).rejects.toThrow('owner');
   expect(appStore.get().preview).toBe(false);
+});
+
+it('uji langsung: transaksi dikirim dengan token perangkat uji, admin tetap memakai sesi owner, data tidak dihapus saat keluar', async () => {
+  await useDatabase(LIVE_TEST_DB); await useDatabase(MAIN_DB); await deleteDatabase(LIVE_TEST_DB);
+  await enterPreview();
+  await setPreviewLive(true);
+  expect(appStore.get()).toMatchObject({ preview: true, previewLive: true, mode: 'tablet', device: { token: 'token-uji' } });
+  // Kode perangkat uji + 2 karakter unik per browser, supaya nomor struk tidak bentrok antar-browser.
+  expect(appStore.get().device!.code).toMatch(/^U[A-Z2-9]{2}$/);
+  // Karyawan lain ikut dimuat untuk menguji komplimen.
+  expect(appStore.get().data!.users.map((u) => u.name)).toEqual(['Owner', 'Budi']);
+  expect(authHeaders()).toEqual({ Authorization: 'Bearer jwt-owner' });
+  expect(authHeaders(owner.id, true)).toEqual({ Authorization: 'Device token-uji', 'X-Operator': owner.id });
+
+  await openShift(50000);
+  const order = await checkout({ lines: [{ key: 'l1', productId: 'p1', name: 'Latte', basePrice: 25000, options: [], qty: 1, note: '' }], discount: null, customerName: '', orderType: 'take_away', method: 'cash', tendered: 50000, reference: '' });
+  expect(order.number.startsWith('U')).toBe(true);
+  await flushOutbox();
+  const sent = fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/orders/'));
+  expect(sent).toHaveLength(1);
+  expect((sent[0][1]!.headers as Record<string, string>).Authorization).toBe('Device token-uji');
+  expect(await (await db()).count('outbox')).toBe(0);
+
+  await exitPreview();
+  expect(appStore.get()).toMatchObject({ preview: false, previewLive: false, mode: 'online' });
+  // Masuk lagi: shift & transaksi uji masih ada.
+  await enterPreview({ live: true });
+  expect(appStore.get().activeShift).not.toBeNull();
+  expect(await (await db()).count('orders')).toBe(1);
+  // Kembali ke simulasi: perangkat pratinjau, tanpa pengiriman.
+  await setPreviewLive(false);
+  expect(appStore.get()).toMatchObject({ previewLive: false, device: { code: 'P' } });
+  expect(authHeaders(owner.id, true)).toEqual({ Authorization: 'Bearer jwt-owner' });
 });

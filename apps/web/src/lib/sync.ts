@@ -54,8 +54,8 @@ let flushing: Promise<void> | null = null;
 
 /** Kirim antrean berurutan. Berhenti saat jaringan/server bermasalah agar urutan tetap terjaga. */
 export function flushOutbox(): Promise<void> {
-  // Mode pratinjau: antrean tetap lokal, tidak pernah dikirim ke server.
-  if (appStore.get().mode !== 'tablet' || appStore.get().preview) return Promise.resolve();
+  // Mode pratinjau (simulasi): antrean tetap lokal, tidak pernah dikirim. "Uji langsung" mengirim seperti tablet.
+  if (appStore.get().mode !== 'tablet' || (appStore.get().preview && !appStore.get().previewLive)) return Promise.resolve();
   flushing ??= (async () => {
     appStore.set((s) => ({ ...s, sync: { ...s.sync, syncing: true } }));
     try {
@@ -64,7 +64,7 @@ export function flushOutbox(): Promise<void> {
         const item = await d.getFromIndex('outbox', 'byStatus', 'pending');
         if (!item) break;
         try {
-          await api(item.path, { method: item.method, body: item.body, operatorId: item.operatorId });
+          await api(item.path, { method: item.method, body: item.body, operatorId: item.operatorId, asDevice: true });
           await d.delete('outbox', item.seq!);
           await markRef(item, 'synced');
           appStore.set((s) => ({ ...s, online: true, sync: { ...s.sync, lastSyncAt: new Date().toISOString(), lastError: '' } }));
@@ -107,7 +107,7 @@ let started = false;
 
 /** Loop sinkron: saat online kembali, saat aplikasi dibuka lagi, dan berkala. */
 export function startSyncLoop() {
-  if (started) return;
+  if (started || typeof window === 'undefined') return;
   started = true;
   const kick = () => {
     void flushOutbox();

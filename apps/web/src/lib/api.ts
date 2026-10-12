@@ -13,10 +13,11 @@ export class ApiError extends Error {
   }
 }
 
-export function authHeaders(operatorId?: string): Record<string, string> {
+export function authHeaders(operatorId?: string, asDevice = false): Record<string, string> {
   const s = appStore.get();
-  // Pratinjau memakai sesi owner, bukan token perangkat (perangkat pratinjau tidak terdaftar di server).
-  if (s.preview) return s.token ? { Authorization: `Bearer ${s.token}` } : {};
+  // Pratinjau memakai sesi owner. Hanya di "Uji langsung", permintaan khusus tablet (transaksi, shift,
+  // arsip) memakai token perangkat uji; halaman admin tetap memakai sesi owner.
+  if (s.preview && !(asDevice && s.previewLive && s.device?.token)) return s.token ? { Authorization: `Bearer ${s.token}` } : {};
   if (s.mode === 'tablet' && s.device) {
     const h: Record<string, string> = { Authorization: `Device ${s.device.token}` };
     const op = operatorId ?? s.user?.id;
@@ -33,7 +34,7 @@ export function setUnauthorizedHandler(fn: () => void) {
 
 export async function api<T = unknown>(
   path: string,
-  opts: { method?: string; body?: unknown; operatorId?: string; timeoutMs?: number; raw?: boolean } = {},
+  opts: { method?: string; body?: unknown; operatorId?: string; timeoutMs?: number; raw?: boolean; asDevice?: boolean } = {},
 ): Promise<T> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 15_000);
@@ -42,7 +43,7 @@ export async function api<T = unknown>(
     res = await fetch(`/api${path}`, {
       method: opts.method ?? 'GET',
       headers: {
-        ...authHeaders(opts.operatorId),
+        ...authHeaders(opts.operatorId, opts.asDevice),
         ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
