@@ -140,7 +140,7 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 
 ## Tutup kasir & menu habis
 
-- **Tutup kasir** (Shift & kas, atau Ganti Shift / Hari): satu lembar berisi hitung uang tunai, angka struk settlement EDC (QRIS, debit/kredit), dan foto bukti (struk settlement, uang tunai). Foto dikompres di tablet dan ikut antrean offline. Owner melihat pencocokan fisik/struk vs sistem dan fotonya di Transaksi → Tutup Kasir; selisih settlement masuk Perlu Ditinjau. "Wajib bukti saat tutup kasir" diatur di Pengaturan → Kebijakan kasir.
+- **Tutup kasir** (menu Ganti Shift / Hari: Akhiri shift atau Tutup toko): satu lembar berisi hitung uang tunai, angka struk settlement EDC (QRIS, debit/kredit), dan foto bukti (struk settlement, uang tunai). Foto dikompres di tablet dan ikut antrean offline. Owner melihat pencocokan fisik/struk vs sistem dan fotonya di Transaksi → Tutup Kasir; selisih settlement masuk Perlu Ditinjau. "Wajib bukti saat tutup kasir" diatur di Pengaturan → Kebijakan kasir.
 - **Menu habis**: tombol di toolbar kasir membuka daftar menu dengan sakelar; menu yang habis berlabel HABIS dan tidak bisa dipesan (tekan-lama kartu menu tetap berfungsi sebagai jalan pintas).
 - **Opname** dikerjakan dari HP barista/kitchen (login web), bukan dari tablet kasir.
 

@@ -44,13 +44,13 @@ Bayar & Cetak menyimpan order lokal dan outbox terlebih dahulu; kegagalan printe
 
 Detail tetap menyediakan pratinjau/cetak ulang dan void sesuai izin existing. Void transaksi lunas memakai alasan kategori Void, kebijakan PIN owner, antrean sinkron, serta pengembalian stok existing. Rekap shift/hari yang sudah ditutup tetap memakai snapshot penutupannya; void sesudah penutupan tidak mengubah snapshot lama diam-diam.
 
-## Shift & kas
-
-Menu existing untuk membuka shift, memasukkan modal awal, Kas Masuk/Kas Keluar dengan catatan, melihat kas seharusnya, menghitung kas fisik, menutup shift dan mencetak rekap tetap tersedia. Uang tunai memengaruhi laci; QRIS/kartu masuk total penjualan tetapi tidak menambah kas fisik. Mengunci layar/ganti operator bukan menutup shift.
-
 ## Ganti Shift / Hari
 
-**Rekapitulasi penjualan** menampilkan hari usaha aktif terminal ini, beberapa shift yang tergabung, jumlah transaksi/void, penjualan, metode pembayaran, kas masuk/keluar, kas terakhir dan selisih. Modal perpindahan shift tidak dijumlah sebagai penjualan atau modal usaha baru berkali-kali.
+Satu menu untuk semua urusan shift, kas dan penutupan (menu "Shift & kas" yang dulu terpisah sudah digabung ke sini; tautan lama `/shift` otomatis diarahkan). Shift dibuka dari layar Kasir dengan memasukkan modal awal. Mengunci layar/ganti operator bukan menutup shift.
+
+**Shift ini** menampilkan kasir dan jam mulai shift, penjualan shift, rincian kas (kas awal, pembayaran tunai, kas masuk, pengeluaran, total kas akhir seharusnya) dan daftar Kas Masuk/Kas Keluar dengan tombol Catat. Uang tunai memengaruhi laci; QRIS/kartu masuk total penjualan tetapi tidak menambah kas fisik. Bila hitung kas buta aktif, angka kas seharusnya baru tampil setelah shift ditutup. Tanpa shift aktif, tab ini menampilkan rekap shift terakhir.
+
+**Rekap hari ini** menampilkan hari usaha aktif terminal ini, beberapa shift yang tergabung, jumlah transaksi/void, penjualan, metode pembayaran, kas masuk/keluar, kas terakhir dan selisih. Modal perpindahan shift tidak dijumlah sebagai penjualan atau modal usaha baru berkali-kali.
 
 **Akhiri Shift** untuk serah terima kasir: isi kas fisik, periksa selisih, konfirmasi dan simpan catatan penutupan. Hari usaha tetap aktif; shift berikutnya bergabung pada hari tersebut. Pesanan aktif/tersimpan tidak otomatis dibatalkan.
 

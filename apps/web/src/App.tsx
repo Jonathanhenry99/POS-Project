@@ -15,7 +15,6 @@ import { TabletShell } from './pages/TabletShell';
 import { PosPage } from './pages/pos/PosPage';
 // Semua chunk tetap di-precache PWA. Pemisahan ini mengurangi beban awal tablet saat membuka kasir.
 const HistoryPage = lazy(() => import('./pages/pos/HistoryPage').then((m) => ({ default: m.HistoryPage })));
-const ShiftPage = lazy(() => import('./pages/pos/ShiftPage').then((m) => ({ default: m.ShiftPage })));
 const BusinessDayPage = lazy(() => import('./pages/pos/BusinessDayPage').then((m) => ({ default: m.BusinessDayPage })));
 const TablesPage = lazy(() => import('./pages/pos/TablesPage').then((m) => ({ default: m.TablesPage })));
 const PrinterPage = lazy(() => import('./pages/settings/PrinterPage').then((m) => ({ default: m.PrinterPage })));
@@ -99,7 +98,8 @@ export function App() {
           <Route path="/kasir" element={<Guard perm="pos.sell"><PosPage /></Guard>} />
           <Route path="/riwayat" element={<Guard perm="pos.sell"><HistoryPage /></Guard>} />
           <Route path="/meja" element={<Guard perm="pos.sell"><TablesPage /></Guard>} />
-          <Route path="/shift" element={<Guard perm="pos.shift"><ShiftPage /></Guard>} />
+          {/* "Shift & kas" sudah digabung ke Ganti Shift / Hari; tautan lama tetap berfungsi. */}
+          <Route path="/shift" element={<Navigate to="/hari" replace />} />
           <Route path="/hari" element={<Guard perm="pos.shift"><BusinessDayPage /></Guard>} />
           <Route path="/printer" element={<PrinterPage />} />
           <Route path="/antrean-cetak" element={<PrintQueuePage />} />

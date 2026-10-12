@@ -1,21 +1,22 @@
-import { Banknote, CalendarDays, CreditCard, Lock, Percent, Printer, QrCode, Receipt, RefreshCw, TrendingUp, Undo2 } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Banknote, CalendarDays, CreditCard, Lock, Percent, Printer, QrCode, Receipt, RefreshCw, TrendingUp, Undo2, UserRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { businessDate, formatDateTime, formatNumber, formatRupiah, PAYMENT_LABEL, PAYMENT_METHODS, type BusinessDaySummary, type Shift } from '@mourden/shared';
+import { businessDate, formatDateTime, formatNumber, formatRupiah, PAYMENT_LABEL, PAYMENT_METHODS, type BusinessDaySummary, type Shift, type ShiftSummary } from '@mourden/shared';
 import { PrintStatusCard } from '../../components/PrintStatusCard';
 import { confirmDialog, toast } from '../../components/feedback';
 import { Badge, Button, Card, ErrorNote, Field, MoneyInput, Modal, Segmented, TextInput, cx } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import type { LocalBusinessDay } from '../../lib/idb';
-import { businessDayDetails, closeBusinessDay, closeShift, currentShiftSummary, ensureBusinessDay, listBusinessDays, listShifts, refreshShiftHistory, useOrdersVersion } from '../../lib/pos';
+import { businessDayDetails, closeBusinessDay, currentShiftSummary, ensureBusinessDay, lastClosedShift, listBusinessDays, listShifts, refreshShiftHistory, useOrdersVersion } from '../../lib/pos';
 import { useApp, useBlindCash } from '../../lib/state';
 import { printBusinessDay, printShift } from '../../printing/service';
 import { useCart, useSaved } from './cart';
-import { SummaryTable } from './ShiftPage';
+import { CashMovementSheet, ClosedShiftCard, SummaryTable } from './ShiftParts';
 import { ClosingSheet } from './ClosingSheet';
 import { Reconciliation } from '../../components/Reconciliation';
 
-type Tab = 'current' | 'shifts' | 'days';
+// Mengikuti menu "Ganti Shift / Hari" di ESB: rincian shift + akhiri shift/tutup toko, rekap hari, lalu riwayat.
+type Tab = 'shift' | 'current' | 'shifts' | 'days';
 
 export function BusinessDayPage() {
   const shift = useApp((s) => s.activeShift);
@@ -27,7 +28,10 @@ export function BusinessDayPage() {
   const saved = useSaved();
   const cart = useCart();
   const blind = useBlindCash();
-  const [tab, setTab] = useState<Tab>('current');
+  const [tab, setTab] = useState<Tab>('shift');
+  const [shiftSummary, setShiftSummary] = useState<ShiftSummary | null>(null);
+  const [lastClosed, setLastClosed] = useState<Shift | null>(null);
+  const [cashSheet, setCashSheet] = useState(false);
   const [from, setFrom] = useState(() => businessDate(new Date().toISOString(), timezone));
   const [to, setTo] = useState(from);
   const [days, setDays] = useState<LocalBusinessDay[]>([]);
@@ -42,6 +46,8 @@ export function BusinessDayPage() {
     const [allDays, allShifts] = await Promise.all([listBusinessDays(), listShifts()]);
     setDays(allDays); setShifts(allShifts); setActiveDay(day);
     setSummary(day ? (await businessDayDetails(day)).summary : null);
+    setShiftSummary(await currentShiftSummary());
+    setLastClosed(await lastClosedShift());
   }, []);
   useEffect(() => { void load().catch((e) => setError(errorMessage(e))); }, [load, shift, version, sync.pending, sync.failed]);
   const dateValid = !!from && !!to && from <= to;
@@ -70,9 +76,9 @@ export function BusinessDayPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Ganti Shift / Hari</h1>
           <p className="text-sm text-fg-muted">{device?.name} · Hari usaha berlaku untuk tablet ini. Mengunci layar kasir tidak menutup shift.</p>
         </div>
-        <Segmented value={tab} onChange={setTab} options={[{ value: 'current', label: 'Hari ini' }, { value: 'shifts', label: 'Riwayat shift' }, { value: 'days', label: 'Riwayat hari' }]} />
+        <Segmented value={tab} onChange={setTab} options={[{ value: 'shift', label: 'Shift ini' }, { value: 'current', label: 'Rekap hari ini' }, { value: 'shifts', label: 'Riwayat shift' }, { value: 'days', label: 'Riwayat hari' }]} />
         <ErrorNote>{error}</ErrorNote>
-        {tab === 'current' ? (
+        {tab === 'shift' || tab === 'current' ? (
           <div className="flex flex-col gap-4">
             <section className="tile flex flex-wrap items-center gap-4 p-4">
               <span className="icon-chip"><CalendarDays className="size-[18px]" /></span>
@@ -87,7 +93,7 @@ export function BusinessDayPage() {
               </span>
             </section>
 
-            {activeDay && summary && (
+            {tab === 'current' && activeDay && summary && (
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <DayStat icon={<TrendingUp className="size-[18px]" />} label="Total penjualan" value={formatRupiah(summary.netSales)} />
                 <DayStat icon={<Receipt className="size-[18px]" />} label="Transaksi lunas" value={formatNumber(summary.orderCount)} />
@@ -98,7 +104,9 @@ export function BusinessDayPage() {
 
             <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
               <div className="flex min-w-0 flex-col gap-4">
-                {activeDay && summary && (
+                {tab === 'shift' && <ShiftNow shift={shift} summary={shiftSummary} lastClosed={lastClosed} blind={blind} timezone={timezone} onCash={() => setCashSheet(true)} />}
+                {tab === 'current' && !activeDay && <p className="tile p-4 text-sm text-fg-muted">Belum ada hari usaha yang berjalan. Buka shift dari layar Kasir untuk memulainya.</p>}
+                {tab === 'current' && activeDay && summary && (
                   <>
                     <section className="tile p-5">
                       <h3 className="mb-2 font-semibold">Penjualan</h3>
@@ -167,7 +175,7 @@ export function BusinessDayPage() {
                     {activeDay && <Button variant="outline" loading={busy} onClick={finishWithoutShift}>Tutup toko (shift terakhir sudah diakhiri)</Button>}
                   </>
                 )}
-                <Button variant="ghost" onClick={() => navigate('/shift')}>Catat kas masuk / keluar</Button>
+                {shift && tab === 'current' && <Button variant="ghost" onClick={() => setCashSheet(true)}>Catat kas masuk / keluar</Button>}
                 {(sync.pending > 0 || sync.failed > 0) && <Button variant="soft" onClick={() => navigate('/sinkron')}>Buka sinkronisasi</Button>}
               </section>
             </div>
@@ -201,6 +209,7 @@ export function BusinessDayPage() {
         </>}
         <PrintStatusCard />
       </div>
+      {cashSheet && <CashMovementSheet onClose={() => setCashSheet(false)} />}
       {closeMode && <ClosingSheet mode={closeMode} drafts={draftCount} onClose={() => setCloseMode(null)} onFinished={load} />}
     </div>
   );
@@ -236,6 +245,60 @@ function Check({ ok, text }: { ok: boolean; text: string }) {
       <span className={cx('mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-[11px] font-bold', ok ? 'bg-success/15 text-success' : 'bg-warning/20 text-[#8a5a00]')}>{ok ? '✓' : '!'}</span>
       <span className={ok ? 'text-fg-muted' : 'font-medium'}>{text}</span>
     </li>
+  );
+}
+
+/** Tab "Shift ini": padanan layar Akhiri Shift di ESB (kasir, mulai shift, kas awal, tunai, pengeluaran, total kas akhir). */
+function ShiftNow({ shift, summary, lastClosed, blind, timezone, onCash }: { shift: Shift | null; summary: ShiftSummary | null; lastClosed: Shift | null; blind: boolean; timezone: string; onCash: () => void }) {
+  if (!shift) {
+    return (
+      <>
+        <section className="tile p-5">
+          <h3 className="font-semibold">Tidak ada shift aktif</h3>
+          <p className="mt-1 text-sm text-fg-muted">Buka shift dari layar Kasir untuk mulai berjualan. Rekap shift terakhir ada di bawah, dan semua shift sebelumnya di tab Riwayat shift.</p>
+        </section>
+        {lastClosed && <ClosedShiftCard shift={lastClosed} tz={timezone} />}
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <DayStat icon={<UserRound className="size-[18px]" />} label={`Kasir · mulai ${formatDateTime(shift.openedAt, timezone)}`} value={shift.openedByName} />
+        <DayStat icon={<TrendingUp className="size-[18px]" />} label="Penjualan shift ini" value={formatRupiah(summary?.netSales ?? 0)} />
+      </div>
+      <section className="tile p-5">
+        <h3 className="font-semibold">Rincian shift</h3>
+        {summary ? <SummaryTable summary={summary} openingCash={shift.openingCash} blind={blind} /> : <div className="skeleton mt-3 h-32" />}
+      </section>
+      <section className="tile p-5">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">Kas masuk / keluar</h3>
+            <p className="text-sm text-fg-muted">Pengeluaran outlet dan uang yang ditambahkan ke laci di luar penjualan.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={onCash}>
+            Catat
+          </Button>
+        </div>
+        {!shift.cashMovements.length ? (
+          <p className="tile-soft p-3 text-sm text-fg-muted">Belum ada. Contoh: beli es batu, setor uang ke owner, tambah uang kembalian.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {shift.cashMovements.map((m) => (
+              <li key={m.id} className="tile-soft flex items-center gap-2.5 px-3 py-2.5 text-sm">
+                {m.type === 'in' ? <ArrowDownCircle className="size-5 shrink-0 text-success" /> : <ArrowUpCircle className="size-5 shrink-0 text-danger" />}
+                <span className="min-w-0 flex-1 truncate">{m.note || (m.type === 'in' ? 'Kas masuk' : 'Kas keluar')}</span>
+                <span className={cx('font-semibold tabular', m.type === 'in' ? 'text-success' : 'text-danger')}>
+                  {m.type === 'in' ? '+' : '−'}
+                  {formatNumber(m.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
   );
 }
 
