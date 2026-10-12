@@ -42,7 +42,7 @@ export async function getCatalog(db: Db, includeInactive = false): Promise<Catal
   };
 }
 
-const ingredientCols = `i.id, i.name, i.unit, i.station, i.min_stock as "minStock", i.cost_per_unit as "costPerUnit", i.active, i.tolerance_pct as "tolerancePct"`;
+const ingredientCols = `i.id, i.name, i.unit, i.station, i.min_stock as "minStock", i.cost_per_unit as "costPerUnit", i.active, i.tolerance_pct as "tolerancePct", i.pack_size as "packSize", i.container_weight as "containerWeight"`;
 
 export async function getIngredients(db: Db, includeInactive = false): Promise<Ingredient[]> {
   const { rows } = await db.query(

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { can, defaultStation, formatNumber, formatRupiah, formatTime, ROLE_LABEL, STATION_LABEL, type StockLevel, type Station } from '@mourden/shared';
+import { can, defaultStation, formatNumber, formatRupiah, formatTime, ROLE_LABEL, STATION_LABEL, type StockLevel, type Station, countFromBreakdown, usesPackaging, type CountResult } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
 import { Badge, Button, Empty, ErrorNote, Field, Modal, MoneyInput, Skeleton, TextInput, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
@@ -138,6 +138,8 @@ function Opname() {
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [error, setError] = useState('');
   const [counts, setCounts] = useState<Record<string, string>>({});
+  // Bahan dengan kemasan: jumlah segel + berat timbangan (dengan wadah) + jumlah wadah.
+  const [parts, setParts] = useState<Record<string, Part>>({});
   const [note, setNote] = useState('');
   const [showNote, setShowNote] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -155,28 +157,50 @@ function Opname() {
       .then((s) => {
         setSheet(s);
         try {
-          setCounts(JSON.parse(localStorage.getItem(`mourden.opname.${station}.${s.businessDate}`) ?? '{}'));
+          // Draf lama hanya berisi angka per bahan; draf baru { counts, parts }.
+          const draft = JSON.parse(localStorage.getItem(`mourden.opname.${station}.${s.businessDate}`) ?? '{}');
+          const isNew = draft && typeof draft === 'object' && 'counts' in draft;
+          setCounts(isNew ? draft.counts ?? {} : draft);
+          setParts(isNew ? draft.parts ?? {} : {});
         } catch {
           setCounts({});
+          setParts({});
         }
       })
       .catch((e) => setError(errorMessage(e)));
   }, [station, reload]);
 
-  const setCount = (id: string, v: string) => {
-    const clean = v.replace(',', '.').replace(/[^\d.]/g, '');
-    const next = { ...counts, [id]: clean };
-    setCounts(next);
-    if (draftKey) {
-      try {
-        localStorage.setItem(draftKey, JSON.stringify(next));
-      } catch {
-        /* abaikan */
-      }
+  const saveDraft = (nextCounts: Record<string, string>, nextParts: Record<string, Part>) => {
+    if (!draftKey) return;
+    try {
+      localStorage.setItem(draftKey, JSON.stringify({ counts: nextCounts, parts: nextParts }));
+    } catch {
+      /* abaikan */
     }
   };
+  const clean = (v: string) => v.replace(',', '.').replace(/[^\d.]/g, '');
+  const setCount = (id: string, v: string) => {
+    const next = { ...counts, [id]: clean(v) };
+    setCounts(next);
+    saveDraft(next, parts);
+  };
+  const setPart = (id: string, key: keyof Part, v: string) => {
+    const next = { ...parts, [id]: { ...EMPTY_PART, ...parts[id], [key]: clean(v) } };
+    setParts(next);
+    saveDraft(counts, next);
+  };
 
-  const isFilled = (id: string) => counts[id] !== undefined && counts[id] !== '';
+  const packed = (i: StockLevel) => usesPackaging(packagingOf(i));
+  const breakdownOf = (i: StockLevel) => {
+    const p = parts[i.id] ?? EMPTY_PART;
+    const gross = parseFloat(p.gross) || 0;
+    return { sealed: parseFloat(p.sealed) || 0, gross, containers: gross > 0 ? Math.max(1, Math.round(parseFloat(p.containers) || 1)) : 0 };
+  };
+  const isFilled = (id: string) => {
+    const item = sheet?.items.find((x) => x.id === id);
+    if (item && packed(item)) return !!parts[id] && (parts[id].sealed !== '' || parts[id].gross !== '');
+    return counts[id] !== undefined && counts[id] !== '';
+  };
   const items = sheet?.items ?? [];
   const filled = items.filter((i) => isFilled(i.id));
   const progress = items.length ? filled.length / items.length : 0;
@@ -189,6 +213,11 @@ function Opname() {
 
   const submit = async () => {
     if (!sheet) return;
+    const invalid = filled.find((i) => packed(i) && countFromBreakdown(breakdownOf(i), packagingOf(i)).error);
+    if (invalid) {
+      setError(`${invalid.name}: ${countFromBreakdown(breakdownOf(invalid), packagingOf(invalid)).error}`);
+      return;
+    }
     const missing = sheet.items.length - filled.length;
     const ok = await confirmDialog({
       title: 'Simpan hasil opname?',
@@ -203,11 +232,20 @@ function Opname() {
     try {
       const res = await api<OpnameResult>(`/opname/${uuid()}`, {
         method: 'PUT',
-        body: { station, note, items: filled.map((i) => ({ ingredientId: i.id, countedQty: parseFloat(counts[i.id]) })) },
+        body: {
+          station,
+          note,
+          items: filled.map((i) =>
+            packed(i)
+              ? { ingredientId: i.id, countedQty: countFromBreakdown(breakdownOf(i), packagingOf(i)).qty, breakdown: breakdownOf(i) }
+              : { ingredientId: i.id, countedQty: parseFloat(counts[i.id]) },
+          ),
+        },
       });
       if (draftKey) localStorage.removeItem(draftKey);
       setResult(res);
       setCounts({});
+      setParts({});
       setNote('');
       toast('Opname tersimpan');
     } catch (e) {
@@ -311,6 +349,7 @@ function Opname() {
       <ul className="flex flex-col gap-2">
         {visible.map((i, idx) => {
           const done = isFilled(i.id);
+          if (packed(i)) return <PackedItem key={i.id} item={i} part={parts[i.id] ?? EMPTY_PART} result={countFromBreakdown(breakdownOf(i), packagingOf(i))} done={done} isOwner={isOwner} onChange={(k, v) => setPart(i.id, k, v)} />;
           return (
             <li
               key={i.id}
@@ -368,6 +407,67 @@ function Opname() {
         </div>
       )}
     </div>
+  );
+}
+
+interface Part {
+  sealed: string;
+  gross: string;
+  containers: string;
+}
+const EMPTY_PART: Part = { sealed: '', gross: '', containers: '' };
+const packagingOf = (i: StockLevel) => ({ packSize: i.packSize ?? 0, containerWeight: i.containerWeight ?? 0 });
+
+/**
+ * Bahan berkemasan: barista mengisi jumlah kemasan segel dan berat timbangan bahan terbuka BERSAMA wadahnya.
+ * Perkalian isi bersih dan pemotongan berat wadah dilakukan sistem.
+ */
+function PackedItem({ item: i, part, result, done, isOwner, onChange }: { item: StockLevel; part: Part; result: CountResult; done: boolean; isOwner: boolean; onChange: (key: keyof Part, value: string) => void }) {
+  const cfg = packagingOf(i);
+  const sealed = parseFloat(part.sealed) || 0;
+  const gross = parseFloat(part.gross) || 0;
+  const formula = [sealed > 0 && cfg.packSize > 0 ? `${formatNumber(sealed)} × ${formatNumber(cfg.packSize)}` : '', gross > 0 ? (result.tare > 0 ? `(${formatNumber(gross)} − ${formatNumber(result.tare)} wadah)` : formatNumber(gross)) : ''].filter(Boolean).join(' + ');
+  return (
+    <li className={cx('animate-rise flex flex-col gap-3 rounded-2xl border-2 bg-surface p-3 transition-colors', result.error && done ? 'border-danger/50' : done ? 'border-success/50 bg-success/5' : 'border-transparent shadow-card')}>
+      <div className="flex items-center gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl text-sm font-extrabold text-white" style={{ background: done && !result.error ? 'var(--success)' : STATION_HUE[i.station] }}>
+          {done && !result.error ? <Check className="size-5" strokeWidth={3} /> : initials(i.name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="leading-tight font-semibold">{i.name}</p>
+          <p className="mt-0.5 text-xs text-fg-muted">
+            {cfg.packSize > 0 && <>1 kemasan = {formatNumber(cfg.packSize)} {i.unit}</>}
+            {cfg.packSize > 0 && cfg.containerWeight > 0 && ' · '}
+            {cfg.containerWeight > 0 && <>wadah {formatNumber(cfg.containerWeight)} {i.unit}</>}
+            {isOwner && <> · sistem {formatNumber(i.stock)}</>}
+          </p>
+        </div>
+        {done && !result.error && (
+          <p className="shrink-0 text-right">
+            <span className="block text-lg leading-tight font-extrabold tabular">{formatNumber(result.qty)}</span>
+            <span className="text-xs font-semibold text-fg-subtle">{i.unit} bersih</span>
+          </p>
+        )}
+      </div>
+      <div className={cx('grid gap-2', cfg.packSize > 0 && cfg.containerWeight > 0 ? 'grid-cols-[1.1fr_1.3fr_0.7fr]' : cfg.containerWeight > 0 ? 'grid-cols-[1.6fr_1fr]' : 'grid-cols-2')}>
+        {cfg.packSize > 0 && <PartInput label="Masih segel" suffix="pak" value={part.sealed} onChange={(v) => onChange('sealed', v)} name={`Kemasan segel ${i.name}`} />}
+        <PartInput label={cfg.containerWeight > 0 ? 'Terbuka + wadah' : 'Yang terbuka'} suffix={i.unit} value={part.gross} onChange={(v) => onChange('gross', v)} name={`Berat terbuka ${i.name}`} />
+        {cfg.containerWeight > 0 && <PartInput label="Jml wadah" suffix="" placeholder="1" value={part.containers} onChange={(v) => onChange('containers', v)} name={`Jumlah wadah ${i.name}`} />}
+      </div>
+      {done && (result.error ? <p className="text-sm font-semibold text-danger">{result.error}</p> : formula && <p className="text-xs text-fg-muted tabular">{formula} = <b className="text-fg">{formatNumber(result.qty)} {i.unit}</b></p>)}
+    </li>
+  );
+}
+
+function PartInput({ label, suffix, value, onChange, name, placeholder = '0' }: { label: string; suffix: string; value: string; onChange: (v: string) => void; name: string; placeholder?: string }) {
+  return (
+    <label className="min-w-0">
+      <span className="mb-1 block truncate text-xs font-semibold text-fg-muted">{label}</span>
+      <span className="flex h-12 items-center rounded-xl border border-line bg-surface-2 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/15">
+        <input inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={name} className="h-full min-w-0 flex-1 bg-transparent pl-3 text-right text-lg font-bold outline-none tabular placeholder:font-normal placeholder:text-fg-subtle" />
+        <span className={cx('text-xs font-semibold text-fg-subtle', suffix ? 'px-2' : 'pr-3')}>{suffix}</span>
+      </span>
+    </label>
   );
 }
 

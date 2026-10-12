@@ -134,6 +134,8 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - **Tutup kasir buta** (Pengaturan → Kebijakan kasir, aktif secara bawaan): kasir menghitung uang laci tanpa melihat angka "seharusnya"; selisih baru tampil setelah terkunci.
 - Opname harian hanya menangkap penjualan yang tidak diinput bila **Resep & HPP** sudah diisi.
 - **Komplimen karyawan**: dicatat kasir dari layar pembayaran dengan menu asli, PIN penerima, dan jatah harian (lebih dari jatah butuh PIN owner). Nilainya Rp 0, bahannya tetap terpotong lewat resep, dan dilaporkan terpisah dari penjualan/diskon (Laporan → Komplimen Karyawan: siapa mengambil apa).
+- **Opname dengan kemasan** (Stok Bahan → ubah bahan): isi bersih per kemasan segel dan berat wadah kosong. Barista mengisi jumlah segel + berat timbangan bahan terbuka bersama wadahnya; sistem menghitung bersihnya (segel × isi + timbangan − wadah). Bahan cair: 1 gr = 1 ml.
+- **Hitungan buta**: angka stok sistem tidak dikirim ke akun barista/kitchen (bukan hanya disembunyikan di layar).
 - **Selisih Bahan** (Inventori → Selisih Bahan): per bahan, pemakaian tercatat (terjual + komplimen), terbuang yang dicatat, dan selisih opname, dinilai wajar/abnormal terhadap toleransi (bawaan di Pengaturan, khusus per bahan di Stok Bahan).
 
 ## Tahap berikutnya

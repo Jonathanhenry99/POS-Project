@@ -283,7 +283,13 @@ describe('stok & opname', () => {
   });
 
   it('opname mencatat selisih dan menyamakan stok sistem dengan hitungan fisik', async () => {
-    const sheet = (await request(app).get('/api/opname/sheet?station=bar').set({ Authorization: `Bearer ${baristaToken}` })).body;
+    // Hitungan buta: lembar barista tidak memuat angka stok sistem sama sekali; owner tetap melihatnya.
+    const blind = (await request(app).get('/api/opname/sheet?station=bar').set({ Authorization: `Bearer ${baristaToken}` })).body;
+    expect(blind.items.length).toBeGreaterThan(0);
+    expect(blind.items.every((i: { stock: unknown; avgDailyUsage: unknown; daysLeft: unknown }) => i.stock === null && i.avgDailyUsage === null && i.daysLeft === null)).toBe(true);
+    const blindList = (await request(app).get('/api/ingredients?station=bar').set({ Authorization: `Bearer ${baristaToken}` })).body;
+    expect(blindList.every((i: { stock: unknown; status: string }) => i.stock === null && typeof i.status === 'string')).toBe(true);
+    const sheet = (await request(app).get('/api/opname/sheet?station=bar').set(asOwner())).body;
     expect(sheet.items.every((i: { station: string }) => i.station === 'bar')).toBe(true);
     const beans = sheet.items.find((i: { name: string }) => i.name === 'Biji Kopi Arabika');
     const lemon = sheet.items.find((i: { name: string }) => i.name === 'Lemon');
@@ -307,6 +313,23 @@ describe('stok & opname', () => {
     const again = await request(app).put(`/api/opname/${id}`).set({ Authorization: `Bearer ${baristaToken}` }).send(body);
     expect(again.status).toBe(200);
     expect(await stockOf('Biji Kopi Arabika')).toBe(beans.stock - 40);
+  });
+
+  it('opname dengan kemasan: segel x isi bersih + (timbangan - berat wadah), dihitung server dan rinciannya tersimpan', async () => {
+    const auth = { Authorization: `Bearer ${baristaToken}` };
+    const list = (await request(app).get('/api/opname/sheet?station=bar').set(asOwner())).body.items;
+    const susu = list.find((i: { name: string }) => i.name === 'Susu Segar');
+    await request(app).patch(`/api/ingredients/${susu.id}`).set(asOwner()).send({ packSize: 946, containerWeight: 30 }).expect(200);
+    const cfg = (await request(app).get('/api/opname/sheet?station=bar').set(auth)).body.items.find((i: { id: string }) => i.id === susu.id);
+    expect(cfg).toMatchObject({ packSize: 946, containerWeight: 30 });
+    // Berat timbangan lebih kecil dari berat wadah ditolak, tidak ada yang tersimpan.
+    await request(app).put(`/api/opname/${randomUUID()}`).set(auth).send({ station: 'bar', items: [{ ingredientId: susu.id, countedQty: 0, breakdown: { sealed: 0, gross: 20, containers: 1 } }] }).expect(400);
+    // Angka kiriman (1) diabaikan: server menghitung 10 x 946 + (280 - 30) = 9.710.
+    const id = randomUUID();
+    const res = await request(app).put(`/api/opname/${id}`).set(auth).send({ station: 'bar', items: [{ ingredientId: susu.id, countedQty: 1, breakdown: { sealed: 10, gross: 280, containers: 1 } }] }).expect(201);
+    expect(res.body.items[0]).toMatchObject({ countedQty: 9710, detail: { sealed: 10, gross: 280, containers: 1, packSize: 946, containerWeight: 30, sealedQty: 9460, openQty: 250, tare: 30 } });
+    expect(await stockOf('Susu Segar')).toBe(9710);
+    await request(app).patch(`/api/ingredients/${susu.id}`).set({ Authorization: `Bearer ${baristaToken}` }).send({ packSize: 1 }).expect(403);
   });
 
   it('kasir tidak bisa melakukan opname', async () => {

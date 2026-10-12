@@ -1,7 +1,7 @@
 // Bahan baku, pergerakan stok (masuk/terbuang/koreksi), dan stock opname harian.
 import { Router } from 'express';
 import { z } from 'zod';
-import { businessDate, can } from '@mourden/shared';
+import { businessDate, can, countFromBreakdown } from '@mourden/shared';
 import { need } from '../auth';
 import { audit, pool, tx } from '../db';
 import { badRequest, dateRangeQuery, forbidden, notFound, parse } from '../http';
@@ -20,8 +20,17 @@ inventoryRouter.get('/ingredients', need('stock.record'), async (req, res) => {
     res.json(await getIngredients(pool, true));
     return;
   }
-  res.json(await getStockLevels(pool, { station: q.station }));
+  const levels = await getStockLevels(pool, { station: q.station });
+  res.json(can(req.auth.user!.role, 'admin') ? levels : levels.map(hideSystemStock));
 });
+
+/**
+ * Hitungan buta: angka stok sistem tidak dikirim ke barista/kitchen sama sekali
+ * (bukan hanya disembunyikan di layar). Status aman/menipis/habis tetap dikirim untuk label.
+ */
+function hideSystemStock<T extends { stock: number; avgDailyUsage: number; daysLeft: number | null }>(level: T): T {
+  return { ...level, stock: null, avgDailyUsage: null, daysLeft: null } as unknown as T;
+}
 
 const ingredientBody = z.object({
   name: z.string().trim().min(1).max(80),
@@ -29,6 +38,8 @@ const ingredientBody = z.object({
   station,
   minStock: z.number().min(0).max(1e9),
   tolerancePct: z.number().min(0).max(100).nullable().optional(),
+  packSize: z.number().min(0).max(1e6).default(0),
+  containerWeight: z.number().min(0).max(1e6).default(0),
   costPerUnit: z.number().min(0).max(1e9),
   active: z.boolean().default(true),
   /** Stok awal saat bahan dibuat (dicatat sebagai koreksi). */
@@ -39,8 +50,8 @@ inventoryRouter.post('/ingredients', need('admin'), async (req, res) => {
   const b = parse(ingredientBody, req.body);
   const id = await tx(async (c) => {
     const { rows } = await c.query(
-      'insert into ingredients (name, unit, station, min_stock, cost_per_unit, active, tolerance_pct) values ($1,$2,$3,$4,$5,$6,$7) returning id',
-      [b.name, b.unit, b.station, b.minStock, b.costPerUnit, b.active, b.tolerancePct ?? null],
+      'insert into ingredients (name, unit, station, min_stock, cost_per_unit, active, tolerance_pct, pack_size, container_weight) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id',
+      [b.name, b.unit, b.station, b.minStock, b.costPerUnit, b.active, b.tolerancePct ?? null, b.packSize, b.containerWeight],
     );
     if (b.initialStock) {
       await c.query(
@@ -56,7 +67,7 @@ inventoryRouter.post('/ingredients', need('admin'), async (req, res) => {
 
 inventoryRouter.patch('/ingredients/:id', need('admin'), async (req, res) => {
   const b = parse(ingredientBody.omit({ initialStock: true }).partial(), req.body);
-  const cols: Record<string, string> = { name: 'name', unit: 'unit', station: 'station', minStock: 'min_stock', costPerUnit: 'cost_per_unit', active: 'active', tolerancePct: 'tolerance_pct' };
+  const cols: Record<string, string> = { name: 'name', unit: 'unit', station: 'station', minStock: 'min_stock', costPerUnit: 'cost_per_unit', active: 'active', tolerancePct: 'tolerance_pct', packSize: 'pack_size', containerWeight: 'container_weight' };
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const [k, col] of Object.entries(cols)) {
@@ -152,13 +163,23 @@ inventoryRouter.get('/opname/sheet', need('stock.opname'), async (req, res) => {
       [q.station, today],
     ),
   ]);
-  res.json({ station: q.station, businessDate: today, items: levels, doneToday: last.rows[0] ?? null });
+  res.json({ station: q.station, businessDate: today, items: can(req.auth.user!.role, 'admin') ? levels : levels.map(hideSystemStock), doneToday: last.rows[0] ?? null });
 });
 
 const opnameBody = z.object({
   station,
   note: z.string().max(300).default(''),
-  items: z.array(z.object({ ingredientId: uuid, countedQty: z.number().min(0).max(1e9) })).min(1).max(500),
+  items: z
+    .array(
+      z.object({
+        ingredientId: uuid,
+        countedQty: z.number().min(0).max(1e9),
+        /** Hitung dengan kemasan: server menghitung ulang jumlah bersih dari rincian ini. */
+        breakdown: z.object({ sealed: z.number().min(0).max(1e6), gross: z.number().min(0).max(1e9), containers: z.number().int().min(0).max(1000) }).optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
 });
 
 /**
@@ -184,10 +205,20 @@ inventoryRouter.put('/opname/:id', need('stock.opname'), async (req, res) => {
     for (const item of b.items) {
       const level = levels.get(item.ingredientId);
       if (!level) throw badRequest('Bahan tidak ditemukan atau tidak aktif');
-      const diff = round3(item.countedQty - level.stock);
+      // Dengan rincian kemasan, jumlah bersih dihitung server dari isi/berat wadah yang tersimpan (bukan angka kiriman).
+      let counted = item.countedQty;
+      let detail: Record<string, number> | null = null;
+      if (item.breakdown) {
+        const cfg = { packSize: level.packSize ?? 0, containerWeight: level.containerWeight ?? 0 };
+        const r = countFromBreakdown(item.breakdown, cfg);
+        if (r.error) throw badRequest(`${level.name}: ${r.error}`);
+        counted = r.qty;
+        detail = { ...item.breakdown, ...cfg, sealedQty: r.sealedQty, openQty: r.openQty, tare: r.tare };
+      }
+      const diff = round3(counted - level.stock);
       await c.query(
-        `insert into opname_items (opname_id, ingredient_id, system_qty, counted_qty, diff, unit_cost) values ($1,$2,$3,$4,$5,$6)`,
-        [id, item.ingredientId, level.stock, item.countedQty, diff, level.costPerUnit],
+        `insert into opname_items (opname_id, ingredient_id, system_qty, counted_qty, diff, unit_cost, detail) values ($1,$2,$3,$4,$5,$6,$7)`,
+        [id, item.ingredientId, level.stock, counted, diff, level.costPerUnit, detail ? JSON.stringify(detail) : null],
       );
       if (diff !== 0) {
         await c.query(
@@ -211,7 +242,7 @@ async function opnameDetail(id: string) {
   if (!head[0]) throw notFound();
   const { rows: items } = await pool.query(
     `select oi.ingredient_id as "ingredientId", i.name, i.unit, oi.system_qty as "systemQty", oi.counted_qty as "countedQty",
-       oi.diff, (oi.diff * oi.unit_cost)::float8 as "diffValue"
+       oi.diff, (oi.diff * oi.unit_cost)::float8 as "diffValue", oi.detail
      from opname_items oi join ingredients i on i.id = oi.ingredient_id where oi.opname_id = $1 order by i.name`,
     [id],
   );

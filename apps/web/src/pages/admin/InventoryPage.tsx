@@ -146,6 +146,8 @@ function IngredientForm({ item, onClose, onSaved }: { item: StockLevel | null; o
     minStock: String(item?.minStock ?? ''),
     costPerUnit: String(item?.costPerUnit ?? ''),
     tolerancePct: item?.tolerancePct === null || item?.tolerancePct === undefined ? '' : String(item.tolerancePct),
+    packSize: item?.packSize ? String(item.packSize) : '',
+    containerWeight: item?.containerWeight ? String(item.containerWeight) : '',
     active: item?.active ?? true,
     initialStock: '',
   });
@@ -157,7 +159,7 @@ function IngredientForm({ item, onClose, onSaved }: { item: StockLevel | null; o
   const submit = async () => {
     setBusy(true);
     try {
-      const body = { name: form.name, unit: form.unit, station: form.station, minStock: num(form.minStock), costPerUnit: num(form.costPerUnit), active: form.active, tolerancePct: form.tolerancePct.trim() === '' ? null : Math.max(0, Math.min(100, num(form.tolerancePct))) };
+      const body = { name: form.name, unit: form.unit, station: form.station, minStock: num(form.minStock), costPerUnit: num(form.costPerUnit), active: form.active, tolerancePct: form.tolerancePct.trim() === '' ? null : Math.max(0, Math.min(100, num(form.tolerancePct))), packSize: Math.max(0, num(form.packSize)), containerWeight: Math.max(0, num(form.containerWeight)) };
       if (item) await api(`/ingredients/${item.id}`, { method: 'PATCH', body });
       else await api('/ingredients', { method: 'POST', body: { ...body, initialStock: num(form.initialStock) || undefined } });
       toast('Bahan disimpan');
@@ -196,6 +198,18 @@ function IngredientForm({ item, onClose, onSaved }: { item: StockLevel | null; o
         <Field label={`Harga per ${form.unit || 'satuan'} (Rp)`} hint="Untuk menghitung HPP.">
           {(id) => <TextInput id={id} inputMode="decimal" value={form.costPerUnit} onChange={(e) => set('costPerUnit', e.target.value)} />}
         </Field>
+        <div className="col-span-2 rounded-2xl bg-surface-2 p-3">
+          <p className="font-semibold">Opname dengan kemasan (opsional)</p>
+          <p className="mb-3 text-sm text-fg-muted">Barista cukup mengisi jumlah kemasan segel dan menimbang bahan terbuka bersama wadahnya. Perkalian dan pemotongan berat wadah dilakukan sistem. Bahan cair: 1 gr dianggap 1 {form.unit || 'ml'}.</p>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label={`Isi bersih per kemasan (${form.unit || 'satuan'})`} hint="Mis. susu 946. Kosongkan bila tidak dihitung per kemasan.">
+              {(id) => <TextInput id={id} inputMode="decimal" placeholder="Tidak dipakai" value={form.packSize} onChange={(e) => set('packSize', e.target.value)} />}
+            </Field>
+            <Field label={`Berat wadah kosong (${form.unit || 'satuan'})`} hint="Mis. karton susu 30, toples beans 350.">
+              {(id) => <TextInput id={id} inputMode="decimal" placeholder="Tidak dipotong" value={form.containerWeight} onChange={(e) => set('containerWeight', e.target.value)} />}
+            </Field>
+          </div>
+        </div>
         <div className="col-span-2">
           <Field label="Toleransi selisih (%)" hint="Kosongkan untuk ikut toleransi bawaan. Contoh: 0 untuk cup/kemasan (harus pas), 5 untuk susu atau sirup.">
             {(id) => <TextInput id={id} inputMode="decimal" placeholder="Ikut bawaan" value={form.tolerancePct} onChange={(e) => set('tolerancePct', e.target.value)} />}
@@ -335,7 +349,7 @@ interface OpnameRow {
 }
 
 interface OpnameDetail {
-  items: { ingredientId: string; name: string; unit: string; systemQty: number; countedQty: number; diff: number; diffValue: number }[];
+  items: { ingredientId: string; name: string; unit: string; systemQty: number; countedQty: number; diff: number; diffValue: number; detail: { sealed: number; gross: number; containers: number; packSize: number; tare: number } | null }[];
 }
 
 function OpnameHistory() {
@@ -383,7 +397,14 @@ function OpnameHistory() {
               <tbody className="divide-y divide-line">
                 {detail.data.items.map((i) => (
                   <tr key={i.ingredientId}>
-                    <td className="py-2">{i.name}</td>
+                    <td className="py-2">
+                      {i.name}
+                      {i.detail && (
+                        <span className="block text-xs text-fg-subtle tabular">
+                          {[i.detail.sealed > 0 ? `${formatNumber(i.detail.sealed)} segel × ${formatNumber(i.detail.packSize)}` : '', i.detail.gross > 0 ? (i.detail.tare > 0 ? `timbang ${formatNumber(i.detail.gross)} − wadah ${formatNumber(i.detail.tare)}` : `terbuka ${formatNumber(i.detail.gross)}`) : ''].filter(Boolean).join(' + ')}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 text-right tabular">{formatNumber(i.systemQty)}</td>
                     <td className="py-2 text-right tabular">{formatNumber(i.countedQty)}</td>
                     <td className={cx('py-2 text-right font-semibold tabular', i.diff < 0 ? 'text-danger' : i.diff > 0 ? 'text-success' : 'text-fg-subtle')}>

@@ -161,6 +161,10 @@ export interface Ingredient {
   active: boolean;
   /** Toleransi selisih khusus bahan ini (%). null/kosong = ikut bawaan. */
   tolerancePct?: number | null;
+  /** Isi bersih per kemasan segel (satuan bahan). 0 = tidak dipakai. */
+  packSize?: number;
+  /** Berat wadah/kemasan kosong (satuan bahan), dipotong otomatis saat opname. 0 = tidak dipakai. */
+  containerWeight?: number;
 }
 
 export interface Catalog {
