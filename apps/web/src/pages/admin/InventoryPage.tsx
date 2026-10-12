@@ -145,6 +145,7 @@ function IngredientForm({ item, onClose, onSaved }: { item: StockLevel | null; o
     station: item?.station ?? ('bar' as Station),
     minStock: String(item?.minStock ?? ''),
     costPerUnit: String(item?.costPerUnit ?? ''),
+    tolerancePct: item?.tolerancePct === null || item?.tolerancePct === undefined ? '' : String(item.tolerancePct),
     active: item?.active ?? true,
     initialStock: '',
   });
@@ -156,7 +157,7 @@ function IngredientForm({ item, onClose, onSaved }: { item: StockLevel | null; o
   const submit = async () => {
     setBusy(true);
     try {
-      const body = { name: form.name, unit: form.unit, station: form.station, minStock: num(form.minStock), costPerUnit: num(form.costPerUnit), active: form.active };
+      const body = { name: form.name, unit: form.unit, station: form.station, minStock: num(form.minStock), costPerUnit: num(form.costPerUnit), active: form.active, tolerancePct: form.tolerancePct.trim() === '' ? null : Math.max(0, Math.min(100, num(form.tolerancePct))) };
       if (item) await api(`/ingredients/${item.id}`, { method: 'PATCH', body });
       else await api('/ingredients', { method: 'POST', body: { ...body, initialStock: num(form.initialStock) || undefined } });
       toast('Bahan disimpan');
@@ -195,6 +196,11 @@ function IngredientForm({ item, onClose, onSaved }: { item: StockLevel | null; o
         <Field label={`Harga per ${form.unit || 'satuan'} (Rp)`} hint="Untuk menghitung HPP.">
           {(id) => <TextInput id={id} inputMode="decimal" value={form.costPerUnit} onChange={(e) => set('costPerUnit', e.target.value)} />}
         </Field>
+        <div className="col-span-2">
+          <Field label="Toleransi selisih (%)" hint="Kosongkan untuk ikut toleransi bawaan. Contoh: 0 untuk cup/kemasan (harus pas), 5 untuk susu atau sirup.">
+            {(id) => <TextInput id={id} inputMode="decimal" placeholder="Ikut bawaan" value={form.tolerancePct} onChange={(e) => set('tolerancePct', e.target.value)} />}
+          </Field>
+        </div>
         {!item && (
           <Field label={`Stok awal (${form.unit})`}>
             {(id) => <TextInput id={id} inputMode="decimal" value={form.initialStock} onChange={(e) => set('initialStock', e.target.value)} />}

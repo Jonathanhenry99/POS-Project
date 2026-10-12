@@ -42,6 +42,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   brand: { logo: '' },
   receipt: DEFAULT_RECEIPT_SETTINGS,
   goals: { monthlySales: 0 },
+  comp: { enabled: true, perDay: 1, maxUnitPrice: 0 },
+  stock: { tolerancePct: 3 },
 };
 
 /** Menggabungkan pengaturan tersimpan dengan default, supaya kunci baru selalu terisi. */
@@ -54,5 +56,7 @@ export function mergeSettings(partial: Partial<{ [K in keyof AppSettings]: Parti
     brand: { ...DEFAULT_SETTINGS.brand!, ...partial?.brand },
     receipt: { ...DEFAULT_RECEIPT_SETTINGS, ...partial?.receipt },
     goals: { ...DEFAULT_SETTINGS.goals!, ...partial?.goals },
+    comp: { ...DEFAULT_SETTINGS.comp!, ...partial?.comp },
+    stock: { ...DEFAULT_SETTINGS.stock!, ...partial?.stock },
   };
 }

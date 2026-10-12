@@ -4,8 +4,10 @@ import {
   computeShiftSummary,
   computeBusinessDaySummary,
   computeTotals,
+  formatRupiah,
   priceLine,
   type Discount,
+  type OrderComp,
   type OrderItem,
   type OrderItemOption,
   type OrderType,
@@ -79,6 +81,18 @@ export interface CheckoutInput {
   /** Uang diterima (tunai). */
   tendered: number;
   reference: string;
+  /** Komplimen karyawan: transaksi dicatat Rp 0 atas nama penerima; bahan tetap terpotong lewat resep. */
+  comp?: { employeeId: string; approvedById: string | null };
+}
+
+/** Jumlah item komplimen yang sudah diambil seorang karyawan pada hari usaha ini (dari data tablet). */
+export async function compUsedToday(employeeId: string): Promise<number> {
+  const tz = appStore.get().data?.settings.store.timezone ?? 'Asia/Jakarta';
+  const today = businessDate(new Date().toISOString(), tz);
+  const recent = await (await db()).getAllFromIndex('orders', 'byCreatedAt', IDBKeyRange.lowerBound(new Date(Date.now() - 36 * 3600_000).toISOString()));
+  return recent
+    .filter((o) => o.status === 'paid' && o.comp?.employeeId === employeeId && businessDate(o.createdAt, tz) === today)
+    .reduce((n, o) => n + o.items.reduce((q, i) => q + i.qty, 0), 0);
 }
 
 /**
@@ -89,9 +103,28 @@ export async function checkout(input: CheckoutInput): Promise<LocalOrder> {
   const { device, data, user, shift } = requireContext();
   if (!input.lines.length) throw new Error('Keranjang masih kosong');
   const pricing = data.settings.pricing;
-  const { items, ...totals } = cartTotals(input.lines, input.discount, pricing);
-  const tendered = input.method === 'cash' ? input.tendered : totals.total;
-  if (input.method === 'cash' && tendered < totals.total) throw new Error('Uang diterima kurang dari total');
+  // Komplimen karyawan = diskon 100% atas nama penerima, dibatasi jatah harian.
+  let discount = input.discount;
+  let method = input.method;
+  let comp: OrderComp | null = null;
+  if (input.comp) {
+    const cfg = data.settings.comp ?? { enabled: true, perDay: 1, maxUnitPrice: 0 };
+    const employee = data.users.find((u) => u.id === input.comp!.employeeId);
+    if (!cfg.enabled) throw new Error('Komplimen karyawan dinonaktifkan owner');
+    if (!employee) throw new Error('Karyawan penerima tidak ditemukan');
+    const qty = input.lines.reduce((n, l) => n + l.qty, 0);
+    const used = await compUsedToday(employee.id);
+    const approved = !!input.comp.approvedById;
+    if (used + qty > cfg.perDay && !approved) throw new Error(`Jatah komplimen ${employee.name} ${cfg.perDay} item per hari (sudah ${used}). Butuh PIN owner.`);
+    if (cfg.maxUnitPrice > 0 && !approved && cartItems(input.lines).some((i) => i.unitPrice > cfg.maxUnitPrice)) throw new Error(`Menu di atas ${formatRupiah(cfg.maxUnitPrice)} butuh PIN owner untuk komplimen.`);
+    discount = { type: 'percent', value: 100, reason: `Komplimen ${employee.name}` };
+    method = 'cash';
+    comp = { employeeId: employee.id, employeeName: employee.name, approvedById: input.comp.approvedById };
+  }
+  const { items, ...totals } = cartTotals(input.lines, discount, pricing);
+  if (comp && totals.total !== 0) throw new Error('Komplimen harus bernilai Rp 0');
+  const tendered = comp ? 0 : method === 'cash' ? input.tendered : totals.total;
+  if (method === 'cash' && tendered < totals.total) throw new Error('Uang diterima kurang dari total');
 
   const now = new Date().toISOString();
   const date = businessDate(now, data.settings.store.timezone);
@@ -123,13 +156,13 @@ export async function checkout(input: CheckoutInput): Promise<LocalOrder> {
     tableName: input.orderType === 'dine_in' ? input.tableName?.trim().slice(0, 40) ?? '' : '',
     pax: input.pax ?? 0,
     items,
-    discount: input.discount && totals.discountAmount > 0 ? input.discount : null,
+    discount: discount && totals.discountAmount > 0 ? discount : null,
     servicePct: pricing.serviceEnabled ? pricing.servicePct : 0,
     taxPct: pricing.taxEnabled ? pricing.taxPct : 0,
     taxLabel: pricing.taxLabel,
     ...totals,
     payment: {
-      method: input.method,
+      method,
       amount: totals.total,
       tendered,
       change: tendered - totals.total,
@@ -141,6 +174,7 @@ export async function checkout(input: CheckoutInput): Promise<LocalOrder> {
     voidedById: null,
     voidedByName: '',
     voidApprovedById: null,
+    ...(comp ? { comp } : {}),
     sync: 'pending',
     syncError: '',
   };

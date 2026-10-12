@@ -115,6 +115,10 @@ export function saleReceipt(
   const doc = new Doc(w);
   header(doc, store, opts);
 
+  if (order.comp && !opts.bill) {
+    doc.text('KOMPLIMEN KARYAWAN', { align: 'center', bold: true });
+    doc.wrapped(`Untuk: ${order.comp.employeeName}`, { align: 'center' });
+  }
   if (opts.bill) doc.text('TAGIHAN - BELUM DIBAYAR', { align: 'center', bold: true });
   else if (order.status === 'void') doc.text('*** DIBATALKAN ***', { align: 'center', bold: true });
   else if (opts.reprint) doc.text('*** CETAK ULANG ***', { align: 'center', bold: true });
@@ -154,7 +158,9 @@ export function saleReceipt(
     doc.wrapped('Silakan lakukan pembayaran di kasir.', { align: 'center' });
     return doc.finish(layout);
   }
-  if (p.method === 'cash') {
+  if (order.comp) {
+    doc.wrapped('Tidak dibayar. Tercatat sebagai jatah karyawan.');
+  } else if (p.method === 'cash') {
     doc.cols(PAYMENT_LABEL.cash, formatRupiah(p.tendered));
     doc.cols('Kembali', formatRupiah(p.change));
   } else {
@@ -220,6 +226,7 @@ export function shiftReceipt(shift: Shift, store: StoreSettings, layout: Receipt
     doc.cols(`  ${PAYMENT_LABEL.qris}`, formatNumber(s.byMethod.qris));
     doc.cols(`  ${PAYMENT_LABEL.card}`, formatNumber(s.byMethod.card));
     if (s.voidCount) doc.cols(`Void (${s.voidCount})`, formatNumber(s.voidAmount));
+    if (s.compCount) doc.cols(`Komplimen (${s.compCount})`, formatNumber(s.compValue ?? 0));
     doc.rule();
     doc.text('Kas', { bold: true });
     doc.cols('  Modal awal', formatNumber(shift.openingCash));

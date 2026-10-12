@@ -67,6 +67,7 @@ const orderSchema = z.object({
   voidedById: uuid.nullable(),
   voidedByName: z.string().max(60),
   voidApprovedById: uuid.nullable(),
+  comp: z.object({ employeeId: uuid, employeeName: z.string().min(1).max(60), approvedById: uuid.nullable() }).nullable().optional(),
 });
 
 const voidSchema = z.object({
@@ -86,6 +87,12 @@ ordersRouter.put('/orders/:id', needDevice, need('pos.sell'), async (req, res) =
   if (order.id !== req.params.id) throw badRequest('ID tidak cocok');
   const problems = validateOrderMath(order);
   if (problems.length) throw badRequest(`Perhitungan transaksi tidak valid: ${problems.join(', ')}`, problems);
+  // Komplimen karyawan: harus benar-benar Rp 0 (diskon 100%) dan atas nama pengguna aktif.
+  if (order.comp) {
+    if (order.total !== 0 || order.discountAmount !== order.subtotal) throw badRequest('Komplimen karyawan harus bernilai Rp 0');
+    const { rowCount: known } = await pool.query('select 1 from users where id = $1', [order.comp.employeeId]);
+    if (!known) throw badRequest('Karyawan penerima komplimen tidak dikenal');
+  }
 
   const tz = await getTimezone(pool);
   const result = await tx(async (c) => {
@@ -93,8 +100,9 @@ ordersRouter.put('/orders/:id', needDevice, need('pos.sell'), async (req, res) =
       `insert into orders (
          id, number, device_id, shift_id, cashier_id, cashier_name, created_at, business_date, customer_name,
          discount, subtotal, discount_amount, service_pct, service_amount, tax_pct, tax_label, tax_amount,
-         rounding_amount, total, payment_method, payment_amount, tendered, change, payment_reference, order_type, table_name, pax
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+         rounding_amount, total, payment_method, payment_amount, tendered, change, payment_reference, order_type, table_name, pax,
+         comp_employee_id, comp_employee_name, comp_approved_by
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
        on conflict (id) do nothing`,
       [
         order.id,
@@ -124,6 +132,9 @@ ordersRouter.put('/orders/:id', needDevice, need('pos.sell'), async (req, res) =
         order.orderType,
         order.tableName ?? '',
         order.pax ?? 0,
+        order.comp?.employeeId ?? null,
+        order.comp?.employeeName ?? '',
+        order.comp?.approvedById ?? null,
       ],
     );
     if (!rowCount) return 'exists' as const;
@@ -261,7 +272,8 @@ const orderSelect = `
     json_build_object('method', payment_method, 'amount', payment_amount, 'tendered', tendered, 'change', change,
       'reference', payment_reference) as payment,
     status, void_reason as "voidReason", voided_at as "voidedAt", voided_by as "voidedById", voided_by_name as "voidedByName",
-    void_approved_by as "voidApprovedById"
+    void_approved_by as "voidApprovedById",
+    case when comp_employee_id is null then null else json_build_object('employeeId', comp_employee_id, 'employeeName', comp_employee_name, 'approvedById', comp_approved_by) end as comp
   from orders`;
 
 async function withItems(orders: Record<string, unknown>[]) {

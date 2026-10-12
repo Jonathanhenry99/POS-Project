@@ -71,6 +71,20 @@ export interface ReceiptSettings {
   showItemCount: boolean;
 }
 
+/** Komplimen karyawan: minuman/makanan jatah staf, dicatat sebagai transaksi Rp 0 atas nama penerima. */
+export interface CompSettings {
+  enabled: boolean;
+  /** Jatah item per karyawan per hari. Lebih dari ini butuh PIN owner. */
+  perDay: number;
+  /** Harga satuan tertinggi yang boleh dikomplimenkan (0 = bebas). */
+  maxUnitPrice: number;
+}
+
+export interface StockSettings {
+  /** Toleransi selisih bahan bawaan (% dari pemakaian) sebelum dianggap abnormal. */
+  tolerancePct: number;
+}
+
 export interface GoalsSettings {
   /** Target penjualan bersih per bulan (rupiah). 0 = belum diatur. */
   monthlySales: number;
@@ -86,6 +100,8 @@ export interface AppSettings {
   brand?: BrandSettings;
   receipt?: ReceiptSettings;
   goals?: GoalsSettings;
+  comp?: CompSettings;
+  stock?: StockSettings;
 }
 
 export interface PosSettings {
@@ -143,6 +159,8 @@ export interface Ingredient {
   minStock: number;
   costPerUnit: number;
   active: boolean;
+  /** Toleransi selisih khusus bahan ini (%). null/kosong = ikut bawaan. */
+  tolerancePct?: number | null;
 }
 
 export interface Catalog {
@@ -239,6 +257,15 @@ export interface Order extends Totals {
   voidedById: string | null;
   voidedByName: string;
   voidApprovedById: string | null;
+  /** Terisi bila transaksi ini komplimen karyawan (total Rp 0, diskon 100%). */
+  comp?: OrderComp | null;
+}
+
+export interface OrderComp {
+  employeeId: string;
+  employeeName: string;
+  /** Owner yang menyetujui bila melebihi jatah harian. */
+  approvedById: string | null;
 }
 
 // ---------- Shift / tutup kasir ----------
@@ -265,6 +292,9 @@ export interface ShiftSummary {
   cashIn: number;
   cashOut: number;
   expectedCash: number;
+  /** Komplimen karyawan dihitung terpisah dari penjualan & diskon. Opsional: rekap lama belum punya. */
+  compCount?: number;
+  compValue?: number;
 }
 
 export interface Shift {

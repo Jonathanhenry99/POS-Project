@@ -1,4 +1,4 @@
-import { Save, Tablet, Target } from 'lucide-react';
+import { Gift, Save, Tablet, Target } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { computeTotals, formatDateTime, formatNumber, type AppSettings, type PricingSettings } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
@@ -123,6 +123,30 @@ export function SettingsPage() {
           </Card>
 
           <ReceiptSettingsCard form={form} onChange={setForm} />
+
+          <Card title="Komplimen karyawan & toleransi selisih" icon={<Gift className="size-4" />}>
+            <div className="flex flex-col gap-4">
+              <Toggle
+                checked={form.comp?.enabled ?? true}
+                onChange={(v) => setForm((f) => (f ? { ...f, comp: { ...{ enabled: true, perDay: 1, maxUnitPrice: 0 }, ...f.comp, enabled: v } } : f))}
+                label="Izinkan komplimen karyawan"
+                description="Dicatat kasir dari layar pembayaran dengan menu asli dan PIN penerima. Bahan terpotong dari stok, nilainya Rp 0."
+              />
+              {(form.comp?.enabled ?? true) && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Jatah per orang per hari (item)" hint="Lebih dari ini butuh PIN owner.">
+                    {(id) => <TextInput id={id} inputMode="numeric" value={String(form.comp?.perDay ?? 1)} onChange={(e) => setForm((f) => (f ? { ...f, comp: { ...{ enabled: true, perDay: 1, maxUnitPrice: 0 }, ...f.comp, perDay: Math.max(0, Math.min(50, Math.round(num(e.target.value)))) } } : f))} />}
+                  </Field>
+                  <Field label="Harga menu tertinggi" hint="0 = semua menu boleh.">
+                    {(id) => <MoneyInput id={id} value={form.comp?.maxUnitPrice ?? 0} onChange={(n) => setForm((f) => (f ? { ...f, comp: { ...{ enabled: true, perDay: 1, maxUnitPrice: 0 }, ...f.comp, maxUnitPrice: n } } : f))} />}
+                  </Field>
+                </div>
+              )}
+              <Field label="Toleransi selisih bahan bawaan (%)" hint="Bahan yang hilang tanpa catatan sampai persen ini dari pemakaian dianggap wajar. Toleransi khusus per bahan diatur di Stok Bahan.">
+                {(id) => <TextInput id={id} inputMode="decimal" value={String(form.stock?.tolerancePct ?? 3)} onChange={(e) => setForm((f) => (f ? { ...f, stock: { tolerancePct: Math.max(0, Math.min(100, num(e.target.value))) } } : f))} />}
+              </Field>
+            </div>
+          </Card>
 
           <Card title="Target penjualan" icon={<Target className="size-4" />}>
             <Field label="Target penjualan bersih per bulan" hint="Dashboard menampilkan capaian, proyeksi akhir bulan, dan kebutuhan per hari. Kosongkan (0) bila tidak dipakai.">

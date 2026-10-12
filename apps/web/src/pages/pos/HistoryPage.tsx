@@ -118,6 +118,7 @@ export function HistoryPage() {
                   <p className="flex items-center gap-2 font-semibold">
                     {o.number}
                     {o.status === 'void' && <Badge tone="red">VOID</Badge>}
+                    {o.comp && <Badge tone="amber">Komplimen</Badge>}
                     {o.sync !== 'synced' && (
                       <span title={o.sync === 'failed' ? `Gagal sinkron: ${o.syncError}` : 'Belum terkirim ke server'}>
                         <CloudOff className={cx('size-4', o.sync === 'failed' ? 'text-danger' : 'text-warning')} />
@@ -126,7 +127,7 @@ export function HistoryPage() {
                   </p>
                   <p className="truncate text-sm text-fg-muted">
                     {scope !== 'shift' ? businessDate(o.createdAt, tz) + ' ' : ''}
-                    {formatTime(o.createdAt, tz)} · {PAYMENT_LABEL[o.payment.method]}
+                    {formatTime(o.createdAt, tz)} · {o.comp ? `untuk ${o.comp.employeeName}` : PAYMENT_LABEL[o.payment.method]}
                     {o.customerName && ` · ${o.customerName}`}
                   </p>
                 </div>

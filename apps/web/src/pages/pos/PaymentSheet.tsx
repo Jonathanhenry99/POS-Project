@@ -1,12 +1,14 @@
-import { Banknote, CreditCard, Printer, QrCode } from 'lucide-react';
+import { Banknote, CreditCard, Gift, Printer, QrCode } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { cashSuggestions, formatNumber, formatRupiah, ORDER_TYPE_LABEL, PAYMENT_LABEL, type PaymentMethod } from '@mourden/shared';
+import { cashSuggestions, formatNumber, formatRupiah, ORDER_TYPE_LABEL, PAYMENT_LABEL, priceLine, type PaymentMethod } from '@mourden/shared';
 import { Button, ErrorNote, Modal, NumPad, applyNumKey, cx, inputClass } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import type { LocalOrder } from '../../lib/idb';
 import { checkout } from '../../lib/pos';
 import { printOrder, usePrinterConfig } from '../../printing/service';
 import { clearCart, markPaidDraft, useCart } from './cart';
+import { CompSheet } from './CompSheet';
+import { useApp } from '../../lib/state';
 import { toast } from '../../components/feedback';
 
 const METHODS: { id: PaymentMethod; icon: typeof Banknote; hint: string }[] = [
@@ -24,6 +26,9 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const paying = useRef(false);
+  const compEnabled = useApp((s) => s.data?.settings.comp?.enabled ?? true);
+  const [comp, setComp] = useState(false);
+  const lineUnits = cart.lines.map((l) => priceLine(l.basePrice, l.options, l.qty));
 
   const tendered = parseInt(raw || '0', 10);
   const change = tendered - total;
@@ -35,6 +40,21 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
    * Cetak dipanggil di dalam sentuhan yang sama (syarat Chrome untuk membuka RawBT).
    * Bila cetak gagal, transaksi tetap tersimpan dan bisa dicetak ulang.
    */
+  /** Komplimen karyawan: sama seperti bayar, tetapi Rp 0 atas nama penerima (jatah & PIN dicek di CompSheet/checkout). */
+  const payComp = async (c: { employeeId: string; approvedById: string | null }) => {
+    if (paying.current) return;
+    paying.current = true;
+    try {
+      const order = await checkout({ lines: cart.lines, discount: null, customerName: cart.customerName, orderType: cart.orderType, tableName: cart.tableName, pax: cart.pax, checkoutId: cart.checkoutId, method: 'cash', tendered: 0, reference: '', comp: c });
+      if (printer.autoPrint) void printOrder(order);
+      markPaidDraft(order.id);
+      try { clearCart(); } catch (e) { toast(`Komplimen tersimpan. ${errorMessage(e)} Kosongkan keranjang setelah penyimpanan tersedia.`, 'error'); }
+      onPaid(order);
+    } finally {
+      paying.current = false;
+    }
+  };
+
   const pay = async () => {
     if (paying.current) return;
     paying.current = true;
@@ -142,10 +162,15 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
             </>
           )}
           <ErrorNote>{error}</ErrorNote>
+          {compEnabled && (
+            <button onClick={() => setComp(true)} disabled={busy} className="press mt-auto flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-line-strong text-sm font-semibold text-fg-muted hover:border-primary/50 hover:text-fg">
+              <Gift className="size-5" /> Komplimen karyawan (tidak dibayar)
+            </button>
+          )}
           <Button
             size="xl"
             variant="success"
-            className="mt-auto w-full"
+            className={cx('w-full', !compEnabled && 'mt-auto')}
             loading={busy}
             disabled={!valid}
             icon={printer.autoPrint ? <Printer className="size-6" /> : undefined}
@@ -155,6 +180,7 @@ export function PaymentSheet({ total, onClose, onPaid }: { total: number; onClos
           </Button>
         </div>
       </div>
+      {comp && <CompSheet qty={items} value={lineUnits.reduce((n, l) => n + l.lineTotal, 0)} maxUnit={Math.max(0, ...lineUnits.map((l) => l.unitPrice))} onClose={() => setComp(false)} onConfirm={payComp} />}
     </Modal>
   );
 }

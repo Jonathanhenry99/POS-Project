@@ -6,6 +6,7 @@ import { toast } from '../../components/feedback';
 import { Badge, Button, Card, Empty, ErrorNote, Skeleton, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { CashierReport, MenuMatrixReport } from './AnalysisReports';
+import { CompReport, VarianceReport } from './StockControlReports';
 import { AreaChart, ColumnChart, Composition, Heatmap, KpiTile } from './charts';
 import { addDays, formatDateLabel, storeTimezone, today, useApi } from './hooks';
 import { daysBetween, downloadOrdersCsv, netRevenue, useSummary, type Range, type Summary } from './reportData';
@@ -131,6 +132,8 @@ export function ReportsPage() {
           <Route path="menu" element={<MenuReport s={s} />} />
           <Route path="analisa-menu" element={<MenuMatrixReport range={range} />} />
           <Route path="kasir" element={<CashierReport s={s} />} />
+          <Route path="komplimen" element={<CompReport range={range} />} />
+          <Route path="selisih-bahan" element={<VarianceReport range={range} />} />
           <Route path="pembayaran" element={<PaymentReport s={s} />} />
           <Route path="void" element={<VoidReport s={s} range={range} />} />
           <Route path="laba" element={<ProfitReport s={s} prev={summary.prev} />} />

@@ -5,7 +5,7 @@ import { buildReview, businessDate, type CashierEvent } from '@mourden/shared';
 import { need, needDevice } from '../auth';
 import { pool } from '../db';
 import { badRequest, dateRangeQuery, parse } from '../http';
-import { getTimezone } from '../repo';
+import { getSettings, getTimezone } from '../repo';
 
 export const reviewRouter = Router();
 
@@ -39,7 +39,8 @@ reviewRouter.get('/reports/review', need('admin'), async (req, res) => {
   const q = parse(dateRangeQuery, req.query);
   const tz = await getTimezone(pool);
   const range = [q.from, q.to];
-  const [events, voids, discounts, freeItems, drawers, shifts, marks] = await Promise.all([
+  const perDay = (await getSettings(pool)).comp?.perDay ?? 1;
+  const [events, voids, discounts, freeItems, drawers, shifts, marks, comps] = await Promise.all([
     pool.query(
       `select id, at, type, order_ref as "orderRef", label, amount, item_count as "itemCount", bill_prints as "billPrints", reason, detail, user_name as "userName"
        from cashier_events where business_date between $1 and $2`,
@@ -53,13 +54,13 @@ reviewRouter.get('/reports/review', need('admin'), async (req, res) => {
     ),
     pool.query(
       `select id, number, cashier_name as "cashierName", created_at as at, subtotal, discount_amount as "discountAmount", coalesce(discount->>'reason', '') as reason
-       from orders where status = 'paid' and discount_amount > 0 and business_date between $1 and $2`,
+       from orders where status = 'paid' and discount_amount > 0 and comp_employee_id is null and business_date between $1 and $2`,
       range,
     ),
     pool.query(
       `select oi.id, o.number, o.cashier_name as "cashierName", o.created_at as at, oi.name, oi.qty
        from order_items oi join orders o on o.id = oi.order_id
-       where o.status = 'paid' and oi.unit_price = 0 and o.business_date between $1 and $2`,
+       where o.status = 'paid' and oi.unit_price = 0 and o.comp_employee_id is null and o.business_date between $1 and $2`,
       range,
     ),
     pool.query(
@@ -73,6 +74,18 @@ reviewRouter.get('/reports/review', need('admin'), async (req, res) => {
       [...range, tz],
     ),
     pool.query<{ key: string }>('select key from review_marks'),
+    // Komplimen yang membuat total harian seorang karyawan melewati jatahnya (urut waktu; yang masih dalam jatah tidak ditandai).
+    pool.query(
+      `select * from (
+         select o.id, o.number, o.created_at as at, o.cashier_name as "cashierName", o.comp_employee_name as "employeeName",
+           o.subtotal as value, o.comp_approved_by is not null as approved, q.qty,
+           (sum(q.qty) over (partition by o.comp_employee_id, o.business_date order by o.created_at, o.id))::int as "dayQty"
+         from orders o
+         join lateral (select coalesce(sum(qty), 0)::int as qty from order_items where order_id = o.id) q on true
+         where o.status = 'paid' and o.comp_employee_id is not null and o.business_date between $1 and $2
+       ) c where c."dayQty" > $3`,
+      [...range, perDay],
+    ),
   ]);
   const iso = <T extends Record<string, unknown>>(rows: T[], ...keys: string[]) => rows.map((r) => ({ ...r, ...Object.fromEntries(keys.map((k) => [k, new Date(r[k] as string).toISOString()])) }));
   const items = buildReview({
@@ -82,6 +95,7 @@ reviewRouter.get('/reports/review', need('admin'), async (req, res) => {
     freeItems: iso(freeItems.rows, 'at') as never,
     drawers: iso(drawers.rows, 'at') as never,
     shifts: iso(shifts.rows, 'closedAt') as never,
+    comps: iso(comps.rows.map((c) => ({ ...c, perDay })), 'at') as never,
     reviewed: new Set(marks.rows.map((m) => m.key)),
   });
   const open = items.filter((i) => !i.reviewed);

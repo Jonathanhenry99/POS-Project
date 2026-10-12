@@ -397,6 +397,48 @@ describe('laporan & admin', () => {
     await request(app).put('/api/settings').set(asOwner()).send({ policy: { blindCashClose: true } }).expect(200);
   });
 
+  it('komplimen karyawan: Rp 0 atas nama penerima, bahan tetap terpotong, terpisah dari penjualan, melebihi jatah masuk tinjauan', async () => {
+    const range = 'from=2000-01-01&to=2100-01-01';
+    const before = (await request(app).get(`/api/reports/summary?${range}`).set(asOwner())).body;
+    const beans = await stockOf('Biji Kopi Arabika');
+    const compOrder = (extra: Partial<Order> = {}) => {
+      const base = makeOrder('Americano', ['Hot'], 1);
+      const discount = { type: 'percent' as const, value: 100, reason: 'Komplimen Barista' };
+      const totals = computeTotals(base.items, discount, mergeSettings({}).pricing);
+      return { ...base, discount, ...totals, payment: { method: 'cash' as const, amount: 0, tendered: 0, change: 0, reference: '' }, comp: { employeeId: userId('barista'), employeeName: 'Barista', approvedById: null }, ...extra };
+    };
+    const first = compOrder();
+    expect(first.total).toBe(0);
+    await request(app).put(`/api/orders/${first.id}`).set(asDevice('kasir')).send(first).expect(201);
+    // Komplimen yang masih bernilai uang ditolak.
+    const paid = { ...makeOrder('Americano', ['Hot'], 1), comp: { employeeId: userId('barista'), employeeName: 'Barista', approvedById: null } };
+    await request(app).put(`/api/orders/${paid.id}`).set(asDevice('kasir')).send(paid).expect(400);
+    expect(await stockOf('Biji Kopi Arabika')).toBeLessThan(beans);
+    const after = (await request(app).get(`/api/reports/summary?${range}`).set(asOwner())).body;
+    expect(after.orderCount).toBe(before.orderCount); expect(after.grossSales).toBe(before.grossSales); expect(after.discountTotal).toBe(before.discountTotal);
+    // Komplimen kedua di hari yang sama melebihi jatah bawaan (1 per hari).
+    const second = compOrder();
+    await request(app).put(`/api/orders/${second.id}`).set(asDevice('kasir')).send(second).expect(201);
+    const comps = (await request(app).get(`/api/reports/comps?${range}`).set(asOwner()).expect(200)).body;
+    expect(comps.totals).toMatchObject({ orders: 2, qty: 2 }); expect(comps.totals.cost).toBeGreaterThan(0);
+    expect(comps.byEmployee[0]).toMatchObject({ name: 'Barista', qty: 2, overDays: 1 });
+    expect(comps.byEmployee[0].items[0]).toMatchObject({ name: 'Americano', qty: 2 });
+    // Hanya pengambilan kedua yang melewati jatah; yang pertama tetap sesuai.
+    expect(comps.list.map((c: { id: string; overQuota: boolean }) => [c.id, c.overQuota])).toEqual([[second.id, true], [first.id, false]]);
+    const review = (await request(app).get(`/api/reports/review?${range}`).set(asOwner())).body;
+    const flagged = review.items.filter((i: { kind: string }) => i.kind === 'comp');
+    expect(flagged).toHaveLength(1); expect(flagged[0]).toMatchObject({ key: `comp:${second.id}`, severity: 'high' });
+    expect(review.items.some((i: { kind: string; detail: string }) => i.kind === 'discount' && i.detail.includes(first.number))).toBe(false);
+    const variance = (await request(app).get(`/api/reports/stock-variance?${range}`).set(asOwner()).expect(200)).body;
+    const kopi = variance.rows.find((r: { name: string }) => r.name === 'Biji Kopi Arabika');
+    expect(kopi.compQty).toBeGreaterThan(0); expect(kopi.usageQty).toBeCloseTo(kopi.soldQty + kopi.compQty);
+    expect(variance.defaultTolerancePct).toBe(3);
+    await request(app).get(`/api/reports/stock-variance?${range}`).set(asDevice('kasir')).expect(403);
+    const saved = await request(app).put('/api/settings').set(asOwner()).send({ comp: { perDay: 2 }, stock: { tolerancePct: 5 } }).expect(200);
+    expect(saved.body.comp).toEqual({ enabled: true, perDay: 2, maxUnitPrice: 0 });
+    expect((await request(app).get(`/api/reports/review?${range}`).set(asOwner())).body.items.some((i: { kind: string }) => i.kind === 'comp')).toBe(false);
+  });
+
   it('kasir tidak bisa membuka laporan atau mengubah menu', async () => {
     expect((await request(app).get('/api/reports/summary?from=2026-01-01&to=2026-01-02').set(asDevice('kasir'))).status).toBe(403);
     expect((await request(app).post('/api/categories').set(asDevice('kasir')).send({ name: 'X' })).status).toBe(403);

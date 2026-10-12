@@ -120,6 +120,7 @@ export function SummaryTable({ summary: s, openingCash, blind = false }: { summa
         </span>
       </div>
       {row('Total penjualan', s.netSales, true)}
+      {(s.compCount ?? 0) > 0 && row(`Komplimen karyawan (${s.compCount}x, tidak dibayar)`, s.compValue ?? 0)}
       <div className="my-2 border-t border-line" />
       {blind ? (
         <>

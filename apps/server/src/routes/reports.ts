@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ORDER_TYPE_LABEL, PAYMENT_LABEL, analyzeMenu, businessDate, type MenuSalesRow, type OrderType, type PaymentMethod } from '@mourden/shared';
+import { ORDER_TYPE_LABEL, PAYMENT_LABEL, analyzeMenu, analyzeVariance, businessDate, type MenuSalesRow, type OrderType, type PaymentMethod, type VarianceInput } from '@mourden/shared';
 import { need } from '../auth';
 import { pool } from '../db';
 import { dateRangeQuery, parse } from '../http';
@@ -12,7 +12,8 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
   const q = parse(dateRangeQuery, req.query);
   const tz = await getTimezone(pool);
   const range = [q.from, q.to];
-  const paid = "business_date between $1 and $2 and status = 'paid'";
+  // Komplimen karyawan (comp_employee_id terisi) bukan penjualan: dilaporkan terpisah di /reports/comps.
+  const paid = "business_date between $1 and $2 and status = 'paid' and comp_employee_id is null";
 
   const [totals, voids, byMethod, byHour, byDay, top, byCategory, cogs, heatmap, slow, byType, byCashier, items, recent] = await Promise.all([
     pool.query(
@@ -48,7 +49,7 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
     pool.query(
       `select oi.product_id as "productId", oi.name, sum(oi.qty)::int as qty, sum(oi.line_total)::int as amount
        from order_items oi join orders o on o.id = oi.order_id
-       where o.business_date between $1 and $2 and o.status = 'paid'
+       where o.business_date between $1 and $2 and o.status = 'paid' and o.comp_employee_id is null
        group by oi.product_id, oi.name order by qty desc, amount desc limit 15`,
       range,
     ),
@@ -56,7 +57,7 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
       `select coalesce(c.name, 'Lainnya') as name, sum(oi.qty)::int as qty, sum(oi.line_total)::int as amount
        from order_items oi join orders o on o.id = oi.order_id
        left join products p on p.id = oi.product_id left join categories c on c.id = p.category_id
-       where o.business_date between $1 and $2 and o.status = 'paid'
+       where o.business_date between $1 and $2 and o.status = 'paid' and o.comp_employee_id is null
        group by 1 order by amount desc`,
       range,
     ),
@@ -64,7 +65,7 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
     pool.query(
       `select coalesce(-sum(m.qty * m.unit_cost), 0)::float8 as cogs
        from stock_movements m join orders o on o.id = m.ref_id
-       where m.ref_type = 'order' and m.type in ('sale', 'void') and o.business_date between $1 and $2`,
+       where m.ref_type = 'order' and m.type in ('sale', 'void') and o.comp_employee_id is null and o.business_date between $1 and $2`,
       range,
     ),
     // Peta keramaian: hari (1=Senin..7=Minggu) x jam.
@@ -79,7 +80,7 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
       `select p.id, p.name from products p
        where p.active and not exists (
          select 1 from order_items oi join orders o on o.id = oi.order_id
-         where oi.product_id = p.id and o.business_date between $1 and $2 and o.status = 'paid'
+         where oi.product_id = p.id and o.business_date between $1 and $2 and o.status = 'paid' and o.comp_employee_id is null
        ) order by p.name limit 20`,
       range,
     ),
@@ -91,9 +92,10 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
     // Kinerja kasir: penjualan, diskon yang diberikan, dan jumlah void per nama kasir.
     pool.query(
       `select cashier_name as name,
-         count(*) filter (where status = 'paid')::int as count,
-         coalesce(sum(total) filter (where status = 'paid'), 0)::int as amount,
-         coalesce(sum(discount_amount) filter (where status = 'paid'), 0)::int as "discountAmount",
+         count(*) filter (where status = 'paid' and comp_employee_id is null)::int as count,
+         coalesce(sum(total) filter (where status = 'paid' and comp_employee_id is null), 0)::int as amount,
+         coalesce(sum(discount_amount) filter (where status = 'paid' and comp_employee_id is null), 0)::int as "discountAmount",
+         count(*) filter (where status = 'paid' and comp_employee_id is not null)::int as "compCount",
          count(*) filter (where status = 'void')::int as "voidCount"
        from orders where business_date between $1 and $2 group by 1 order by amount desc`,
       range,
@@ -101,12 +103,12 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
     pool.query(
       `select coalesce(sum(oi.qty), 0)::int as "itemCount"
        from order_items oi join orders o on o.id = oi.order_id
-       where o.business_date between $1 and $2 and o.status = 'paid'`,
+       where o.business_date between $1 and $2 and o.status = 'paid' and o.comp_employee_id is null`,
       range,
     ),
     pool.query(
       `select o.id, o.number, o.created_at as "createdAt", o.total, o.payment_method as method, o.cashier_name as "cashierName",
-         o.status, o.customer_name as "customerName", o.order_type as "orderType", o.table_name as "tableName",
+         o.status, o.customer_name as "customerName", o.order_type as "orderType", o.table_name as "tableName", o.comp_employee_name as "compName",
          (select coalesce(sum(qty), 0)::int from order_items where order_id = o.id) as "itemCount"
        from orders o where o.business_date between $1 and $2 order by o.created_at desc limit 8`,
       range,
@@ -155,7 +157,7 @@ reportsRouter.get('/reports/menu-matrix', need('admin'), async (req, res) => {
      left join (
        select oi.product_id, sum(oi.qty) as qty, sum(oi.line_total) as amount
        from order_items oi join orders o on o.id = oi.order_id
-       where o.business_date between $1 and $2 and o.status = 'paid' group by 1
+       where o.business_date between $1 and $2 and o.status = 'paid' and o.comp_employee_id is null group by 1
      ) s on s.product_id = p.id
      left join (
        select ri.product_id, sum(ri.qty * i.cost_per_unit) as cost, count(*) as lines
@@ -166,6 +168,98 @@ reportsRouter.get('/reports/menu-matrix', need('admin'), async (req, res) => {
     [q.from, q.to],
   );
   res.json(analyzeMenu(rows));
+});
+
+/** Komplimen karyawan: siapa mengambil apa, nilai jual dan HPP-nya, serta hari yang melebihi jatah. */
+reportsRouter.get('/reports/comps', need('admin'), async (req, res) => {
+  const q = parse(dateRangeQuery, req.query);
+  const settings = await getSettings(pool);
+  const perDay = settings.comp?.perDay ?? 1;
+  const range = [q.from, q.to];
+  const where = "o.business_date between $1 and $2 and o.status = 'paid' and o.comp_employee_id is not null";
+  const [orders, items, cost] = await Promise.all([
+    pool.query(
+      `select o.id, o.number, o.created_at as at, o.business_date as "businessDate", o.cashier_name as "cashierName",
+         o.comp_employee_id as "employeeId", o.comp_employee_name as "employeeName", o.comp_approved_by is not null as approved,
+         o.subtotal as value, coalesce(sum(oi.qty), 0)::int as qty,
+         string_agg(oi.qty || 'x ' || oi.name, ', ' order by oi.sort) as items
+       from orders o join order_items oi on oi.order_id = o.id where ${where}
+       group by o.id order by o.created_at desc limit 500`,
+      range,
+    ),
+    pool.query(
+      `select o.comp_employee_id as "employeeId", o.comp_employee_name as "employeeName", oi.name, sum(oi.qty)::int as qty, sum(oi.line_total)::int as value
+       from orders o join order_items oi on oi.order_id = o.id where ${where}
+       group by 1, 2, 3 order by 2, qty desc`,
+      range,
+    ),
+    pool.query(
+      `select coalesce(-sum(m.qty * m.unit_cost), 0)::float8 as cost
+       from stock_movements m join orders o on o.id = m.ref_id
+       where m.ref_type = 'order' and m.type in ('sale', 'void') and ${where}`,
+      range,
+    ),
+  ]);
+  // Jatah dihitung per karyawan per hari usaha. Hanya pengambilan yang membuat total hari itu
+  // melewati jatah yang ditandai (pengambilan pertama yang masih dalam jatah tetap "sesuai").
+  const perDayQty = new Map<string, number>();
+  const over = new Set<string>();
+  for (const o of [...orders.rows].reverse()) {
+    const key = `${o.employeeId}|${o.businessDate}`;
+    const total = (perDayQty.get(key) ?? 0) + o.qty;
+    perDayQty.set(key, total);
+    if (total > perDay) over.add(o.id);
+  }
+  const byEmployee = new Map<string, { employeeId: string; name: string; orders: number; qty: number; value: number; days: Set<string>; overDays: number; items: { name: string; qty: number; value: number }[] }>();
+  for (const o of orders.rows) {
+    const e = byEmployee.get(o.employeeId) ?? { employeeId: o.employeeId, name: o.employeeName, orders: 0, qty: 0, value: 0, days: new Set<string>(), overDays: 0, items: [] };
+    e.orders++;
+    e.qty += o.qty;
+    e.value += o.value;
+    e.days.add(o.businessDate);
+    byEmployee.set(o.employeeId, e);
+  }
+  for (const [key, qty] of perDayQty) if (qty > perDay) byEmployee.get(key.split('|')[0])!.overDays++;
+  for (const i of items.rows) byEmployee.get(i.employeeId)?.items.push({ name: i.name, qty: i.qty, value: i.value });
+  res.json({
+    perDay,
+    enabled: settings.comp?.enabled ?? true,
+    totals: { orders: orders.rows.length, qty: orders.rows.reduce((n, o) => n + o.qty, 0), value: orders.rows.reduce((n, o) => n + o.value, 0), cost: Math.round(cost.rows[0].cost) },
+    byEmployee: [...byEmployee.values()].map((e) => ({ ...e, days: e.days.size })).sort((a, b) => b.qty - a.qty),
+    list: orders.rows.map((o) => ({ ...o, overQuota: over.has(o.id) })),
+  });
+});
+
+/**
+ * Selisih bahan: pemakaian tercatat (penjualan + komplimen, menurut resep), terbuang yang dicatat,
+ * dan selisih opname (hitung fisik - sistem) per bahan, dinilai terhadap toleransi.
+ */
+reportsRouter.get('/reports/stock-variance', need('admin'), async (req, res) => {
+  const q = parse(dateRangeQuery, req.query);
+  const settings = await getSettings(pool);
+  const { rows } = await pool.query<VarianceInput>(
+    `select i.id as "ingredientId", i.name, i.unit, i.station, i.cost_per_unit as "costPerUnit", i.tolerance_pct as "tolerancePct",
+       coalesce(u.sold, 0)::float8 as "soldQty", coalesce(u.comp, 0)::float8 as "compQty", coalesce(u.waste, 0)::float8 as "wasteQty",
+       coalesce(op.diff, 0)::float8 as "opnameDiff", coalesce(op.n, 0)::int as "opnameCount"
+     from ingredients i
+     left join (
+       select m.ingredient_id,
+         -sum(m.qty) filter (where m.type in ('sale', 'void') and o.comp_employee_id is null) as sold,
+         -sum(m.qty) filter (where m.type in ('sale', 'void') and o.comp_employee_id is not null) as comp,
+         -sum(m.qty) filter (where m.type = 'waste') as waste
+       from stock_movements m left join orders o on m.ref_type = 'order' and o.id = m.ref_id
+       where (m.created_at at time zone $3)::date between $1 and $2
+       group by 1
+     ) u on u.ingredient_id = i.id
+     left join (
+       select oi.ingredient_id, sum(oi.diff) as diff, count(*) as n
+       from opname_items oi join opnames o on o.id = oi.opname_id
+       where o.business_date between $1 and $2 group by 1
+     ) op on op.ingredient_id = i.id
+     where i.active`,
+    [q.from, q.to, settings.store.timezone],
+  );
+  res.json(analyzeVariance(rows, settings.stock?.tolerancePct ?? 3));
 });
 
 /** Denyut bulan berjalan: capaian terhadap target penjualan + tren 14 hari (penjualan bersih = subtotal - diskon). */

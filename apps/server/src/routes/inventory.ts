@@ -28,6 +28,7 @@ const ingredientBody = z.object({
   unit: z.string().trim().min(1).max(12),
   station,
   minStock: z.number().min(0).max(1e9),
+  tolerancePct: z.number().min(0).max(100).nullable().optional(),
   costPerUnit: z.number().min(0).max(1e9),
   active: z.boolean().default(true),
   /** Stok awal saat bahan dibuat (dicatat sebagai koreksi). */
@@ -38,8 +39,8 @@ inventoryRouter.post('/ingredients', need('admin'), async (req, res) => {
   const b = parse(ingredientBody, req.body);
   const id = await tx(async (c) => {
     const { rows } = await c.query(
-      'insert into ingredients (name, unit, station, min_stock, cost_per_unit, active) values ($1,$2,$3,$4,$5,$6) returning id',
-      [b.name, b.unit, b.station, b.minStock, b.costPerUnit, b.active],
+      'insert into ingredients (name, unit, station, min_stock, cost_per_unit, active, tolerance_pct) values ($1,$2,$3,$4,$5,$6,$7) returning id',
+      [b.name, b.unit, b.station, b.minStock, b.costPerUnit, b.active, b.tolerancePct ?? null],
     );
     if (b.initialStock) {
       await c.query(
@@ -55,7 +56,7 @@ inventoryRouter.post('/ingredients', need('admin'), async (req, res) => {
 
 inventoryRouter.patch('/ingredients/:id', need('admin'), async (req, res) => {
   const b = parse(ingredientBody.omit({ initialStock: true }).partial(), req.body);
-  const cols: Record<string, string> = { name: 'name', unit: 'unit', station: 'station', minStock: 'min_stock', costPerUnit: 'cost_per_unit', active: 'active' };
+  const cols: Record<string, string> = { name: 'name', unit: 'unit', station: 'station', minStock: 'min_stock', costPerUnit: 'cost_per_unit', active: 'active', tolerancePct: 'tolerance_pct' };
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const [k, col] of Object.entries(cols)) {

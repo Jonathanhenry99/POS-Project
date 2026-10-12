@@ -21,7 +21,7 @@ export interface CashierEvent {
 }
 
 export type ReviewSeverity = 'high' | 'medium' | 'low';
-export type ReviewKind = 'order_deleted' | 'item_removed' | 'bill_reprint' | 'void' | 'discount' | 'free_item' | 'drawer' | 'cash_diff';
+export type ReviewKind = 'order_deleted' | 'item_removed' | 'bill_reprint' | 'void' | 'discount' | 'free_item' | 'drawer' | 'cash_diff' | 'comp';
 
 export interface ReviewItem {
   key: string;
@@ -44,6 +44,7 @@ export const REVIEW_KIND_LABEL: Record<ReviewKind, string> = {
   free_item: 'Menu Rp 0',
   drawer: 'Laci dibuka',
   cash_diff: 'Selisih kas',
+  comp: 'Komplimen',
 };
 
 /** Diskon mulai persen ini dari subtotal masuk daftar tinjau. */
@@ -58,6 +59,8 @@ export interface ReviewSource {
   freeItems: { id: string; number: string; cashierName: string; at: string; name: string; qty: number }[];
   drawers: { id: string; at: string; userName: string }[];
   shifts: { id: string; closedAt: string; closedByName: string; expectedCash: number; countedCash: number }[];
+  /** Komplimen yang melebihi jatah harian (disetujui owner, atau lolos tanpa persetujuan). */
+  comps?: { id: string; number: string; at: string; cashierName: string; employeeName: string; qty: number; value: number; approved: boolean; dayQty: number; perDay: number }[];
   reviewed: Set<string>;
 }
 
@@ -127,6 +130,18 @@ export function buildReview(src: ReviewSource): ReviewItem[] {
       title: diff < 0 ? `Kas kurang ${rp(-diff)}` : `Kas lebih ${rp(diff)}`,
       detail: `Tutup shift · dihitung ${rp(s.countedCash)} · seharusnya ${rp(s.expectedCash)}`,
       amount: diff,
+    });
+  }
+  for (const c of src.comps ?? []) {
+    out.push({
+      key: `comp:${c.id}`,
+      kind: 'comp',
+      severity: c.approved ? 'medium' : 'high',
+      at: c.at,
+      actor: c.cashierName,
+      title: c.approved ? `Komplimen ${c.employeeName} melebihi jatah (disetujui owner)` : `Komplimen ${c.employeeName} melebihi jatah tanpa persetujuan`,
+      detail: `Struk ${c.number} · ${c.qty} item · menjadi ${c.dayQty} item hari itu, jatah ${c.perDay}`,
+      amount: c.value,
     });
   }
   const rank: Record<ReviewSeverity, number> = { high: 0, medium: 1, low: 2 };

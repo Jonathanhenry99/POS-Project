@@ -134,6 +134,12 @@ export function computeShiftSummary(shift: Pick<Shift, 'openingCash' | 'cashMove
       s.voidAmount += o.total;
       continue;
     }
+    // Komplimen karyawan bukan penjualan dan bukan diskon: dicatat terpisah.
+    if (o.comp) {
+      s.compCount = (s.compCount ?? 0) + 1;
+      s.compValue = (s.compValue ?? 0) + o.subtotal;
+      continue;
+    }
     s.orderCount++;
     s.grossSales += o.subtotal;
     s.discountTotal += o.discountAmount;

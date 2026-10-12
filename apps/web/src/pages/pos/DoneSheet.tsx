@@ -26,11 +26,18 @@ export function DoneSheet({ order, onClose }: { order: LocalOrder; onClose: () =
     <Modal open size="md" onClose={onClose}>
       <div className="flex flex-col items-center gap-2 pt-3 text-center">
         <SuccessMark />
-        <p className="mt-2 text-xl font-extrabold tracking-tight">Pembayaran berhasil</p>
+        <p className="mt-2 text-xl font-extrabold tracking-tight">{order.comp ? 'Komplimen tercatat' : 'Pembayaran berhasil'}</p>
         <p className="text-fg-muted">
           {order.number} · {ORDER_TYPE_LABEL[order.orderType]} · {PAYMENT_LABEL[order.payment.method]} · {formatRupiah(order.total)}
         </p>
-        {order.payment.method === 'cash' && (
+        {order.comp && (
+          <div className="animate-rise mt-3 w-full rounded-3xl border border-line bg-surface-2 p-4">
+            <p className="text-sm text-fg-muted">Atas nama</p>
+            <p className="text-2xl font-extrabold">{order.comp.employeeName}</p>
+            <p className="text-sm text-fg-muted">Tidak dibayar · nilai menu {formatRupiah(order.subtotal)} · bahan terpotong dari stok</p>
+          </div>
+        )}
+        {order.payment.method === 'cash' && !order.comp && (
           <div className="animate-rise mt-3 w-full rounded-3xl border border-success/30 bg-success/8 p-4">
             <p className="text-sm font-semibold text-success">Kembalian</p>
             <p className="text-[44px] leading-tight font-extrabold text-success tabular">{formatRupiah(order.payment.change)}</p>
