@@ -136,6 +136,7 @@ const settingsBody = z.object({
     showItemNotes: z.boolean(),
     showItemCount: z.boolean(),
   }).partial(),
+  goals: z.object({ monthlySales: z.number().int().min(0).max(100_000_000_000) }).partial(),
 }).partial();
 
 adminRouter.put('/settings', need('admin'), async (req, res) => {
@@ -148,9 +149,10 @@ adminRouter.put('/settings', need('admin'), async (req, res) => {
     pos: { ...current.pos!, ...body.pos },
     brand: { ...current.brand!, ...body.brand },
     receipt: { ...current.receipt!, ...body.receipt },
+    goals: { ...current.goals!, ...body.goals },
   });
   await tx(async (c) => {
-    for (const key of ['store', 'pricing', 'policy', 'pos', 'brand', 'receipt'] as const) {
+    for (const key of ['store', 'pricing', 'policy', 'pos', 'brand', 'receipt', 'goals'] as const) {
       await c.query(
         `insert into settings (key, value) values ($1, $2)
          on conflict (key) do update set value = excluded.value, updated_at = now()`,

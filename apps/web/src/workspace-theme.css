@@ -1,84 +1,124 @@
-/* Scoped to non-cashier routes. Never move these tokens to :root: the cashier
+/* Tema "Pulse" untuk semua halaman non-kasir (back office, stok, perangkat, login).
+   Kanvas sage lembut, kartu putih bersudut besar, tinta gelap, aksen lime, sorotan oranye, ungu untuk seri kedua.
+   Scoped to non-cashier routes. Never move these tokens to :root: the cashier
    catalog, cart and payment dialogs must retain their existing design. */
+/* Token baru yang juga dipakai sidebar & header di rute kasir. Nama-nama ini tidak dipakai layar kasir,
+   jadi katalog, keranjang dan dialog pembayaran tetap seperti semula. */
+:root {
+  --ink: #131816;
+  --panel: #f5f8f5;
+  --lime: #c8f465;
+  --lime-strong: #b2e63f;
+  --lime-ink: #1c3306;
+  --violet: #7c5ce0;
+  --violet-soft: #ece8fc;
+}
+
 .workspace-theme {
-  --bg: #f7f7fa;
+  --bg: #eaf1ea;
   --surface: #ffffff;
-  --surface-2: #f5f4f8;
-  --surface-3: #eae8ef;
-  --line: #e7e5ed;
-  --line-strong: #d0cbdc;
-  --fg: #302d3d;
-  --fg-muted: #676173;
-  --fg-subtle: #797283;
-  --primary: #7058a3;
-  --primary-strong: #594286;
-  --accent: #a87943;
-  --success: #07815c;
-  --chart-1: #8065b0;
-  --chart-2: #5d958b;
-  --chart-3: #b69366;
-  --glow: 0 4px 12px -5px rgb(112 88 163 / 25%);
-  --shadow-card: 0 1px 2px rgb(48 45 61 / 2%), 0 8px 24px -18px rgb(48 45 61 / 16%);
-  background: radial-gradient(ellipse at 100% 0, #f0edf7 0, transparent 45%), var(--bg);
+  --surface-2: #f3f6f3;
+  --surface-3: #e6ece7;
+  --line: #e3e9e4;
+  --line-strong: #c8d2ca;
+  --fg: #101513;
+  --fg-muted: #55605a;
+  --fg-subtle: #66716b;
+  --primary: #0f6e4e;
+  --primary-strong: #0a5540;
+  --accent: #e8650f;
+  --success: #0b8457;
+  /* Urutan seri tetap: oranye, ungu, zamrud (lolos pemeriksaan buta warna & kontras). */
+  --chart-1: #e8650f;
+  --chart-2: #7c5ce0;
+  --chart-3: #0e8f6a;
+  --glow: 0 10px 24px -14px rgb(16 21 19 / 55%);
+  --shadow-card: 0 1px 0 rgb(16 21 19 / 2%), 0 14px 32px -26px rgb(16 21 19 / 22%);
+  background: radial-gradient(900px 480px at 100% -10%, #dff3d2 0, transparent 60%), radial-gradient(700px 420px at -5% 105%, #e6e2fb 0, transparent 55%), var(--bg);
   color: var(--fg);
 }
 
+/* Tombol utama: tinta gelap (aksen warna dipakai hemat, seperti dashboard profesional). */
 .workspace-theme .bg-grad-primary {
-  background-image: linear-gradient(115deg, #8067af, #6a5298);
+  background-image: linear-gradient(135deg, #252d29, var(--ink));
 }
 .workspace-theme .bg-grad-primary:disabled { background-image: none; }
 .workspace-theme .bg-grad-header {
-  background-image: linear-gradient(120deg, #66547f, #8975a1);
+  background-image: linear-gradient(120deg, #17201c, #24352d 60%, #1d2a3a);
+}
+.workspace-theme .bg-grad-accent {
+  background-image: linear-gradient(135deg, #f58431, var(--accent));
 }
 .workspace-theme .bg-grid { background-size: 48px 48px; opacity: .2; }
-.workspace-theme .rounded-3xl { border-radius: 20px; }
+.workspace-theme .rounded-3xl { border-radius: 24px; }
 .workspace-theme :is(button, a, input, select, textarea):focus-visible,
 .pos-header :is(button, a):focus-visible {
-  outline: 3px solid #a48acb;
+  outline: 3px solid #7fcf55;
   outline-offset: 3px;
 }
-.workspace-theme :is(input, select, textarea) { box-shadow: 0 1px 2px rgb(24 43 61 / 3%); }
 .workspace-theme :is(th) {
   color: var(--fg-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .045em;
 }
+.workspace-theme ::selection { background: #d4f58f; }
 
-/* Sidebar bersama: bentuk referensi yang sederhana, aksen cerah dalam area kecil. */
+/* ---------- Komponen tema ---------- */
+/* Pil aktif lime (navigasi, filter periode). Teks selalu tinta gelap agar kontras. */
+.pill { display: inline-flex; height: 40px; align-items: center; gap: 8px; padding: 0 16px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--fg-muted); white-space: nowrap; transition: background-color 150ms, color 150ms; }
+.pill:hover { color: var(--fg); background: rgb(16 21 19 / 5%); }
+.pill[aria-pressed='true'], .pill[aria-current='page'], .pill-active { background: var(--lime); color: var(--lime-ink); }
+.pill-group { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-card); }
+.chip-up { display: inline-flex; align-items: center; gap: 2px; padding: 3px 9px; border-radius: 999px; background: var(--lime); color: var(--lime-ink); font-size: 12px; font-weight: 700; }
+.btn-soft { display: inline-flex; height: 44px; align-items: center; gap: 8px; padding: 0 18px; border-radius: 999px; background: var(--surface); font-size: 14px; font-weight: 600; box-shadow: var(--shadow-card); transition: transform 120ms, box-shadow 150ms; }
+.btn-soft:hover { box-shadow: 0 0 0 1px var(--line-strong), var(--shadow-card); }
+.btn-soft:active { transform: scale(.97); }
+.icon-chip { display: grid; width: 38px; height: 38px; flex-shrink: 0; place-items: center; border-radius: 50%; background: var(--surface-2); color: var(--fg); }
+.tile { border-radius: 24px; background: var(--surface); box-shadow: var(--shadow-card); }
+.tile-soft { border-radius: 18px; background: var(--surface-2); }
+/* Batang "arsir" untuk nilai yang tidak sedang disorot. */
+.bar-hatch { background: repeating-linear-gradient(135deg, #e9eeea 0 3px, #f5f8f5 3px 7px); }
+.live-dot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: #18a86b; }
+.live-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: #18a86b; animation: ping-soft 1.8s cubic-bezier(0, 0, .2, 1) infinite; }
+
+/* ---------- Sidebar bersama ---------- */
 .mourden-sidebar {
-  color: #414344;
-  background: linear-gradient(165deg, #fff0e3 0, #f7f5f2 145px, #f3f5f4 55%, #eaf7f2 100%);
-  border-right: 1px solid #e2e6e3;
+  color: #3d4742;
+  background: var(--panel);
+  border-right: 1px solid #dfe6e0;
   transition: width 180ms ease;
 }
+/* Back office desktop: sidebar menyatu dengan kanvas; laci menu HP tetap berlatar panel. */
+.admin-workspace .mourden-sidebar:not(.shadow-card) { background: transparent; border-right: 0; }
 .sidebar-brand { display: flex; flex-shrink: 0; align-items: center; gap: 12px; padding: 12px 16px; }
-.sidebar-section-label { padding: 12px 12px 8px; color: #777c7a; font-size: 10px; font-weight: 600; letter-spacing: .07em; }
-.sidebar-section-divider { height: 1px; width: 20px; margin: 12px auto 8px; background: #dce3df; }
+.sidebar-section-label { padding: 14px 12px 8px; color: #6a756f; font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+.sidebar-section-divider { height: 1px; width: 20px; margin: 12px auto 8px; background: #cfd9d1; }
 .sidebar-link {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 48px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  color: #505653;
+  min-height: 46px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  color: #46514b;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 550;
   line-height: 1.45;
   text-align: left;
   transition: background-color 150ms, color 150ms;
 }
 .sidebar-link > svg { stroke-width: 1.8; }
-.sidebar-link:hover { background: #ffffffb3; color: #202b26; }
-.sidebar-link[aria-current='page'], .sidebar-group-active {
-  background: #dcf4e9;
-  color: #22614e;
+.sidebar-link:hover { background: #ffffffb8; color: var(--fg); }
+.sidebar-link[aria-current='page'] {
+  background: var(--lime);
+  color: var(--lime-ink);
+  font-weight: 650;
 }
-.sidebar-link[aria-current='page'] > svg { color: #159f77; }
-.sidebar-submenu .sidebar-link { min-height: 44px; font-size: 12px; }
-.sidebar-submenu .sidebar-link[aria-current='page'] { background: #e9e4fa; color: #65528c; }
-.sidebar-footer { background: #ffffff38; }
+.sidebar-group-active { background: #ffffffb8; color: var(--fg); }
+.sidebar-submenu .sidebar-link { min-height: 42px; font-size: 13px; }
+.sidebar-submenu .sidebar-link[aria-current='page'] { background: var(--ink); color: #fff; }
+.sidebar-footer { border-top: 1px solid #d5ded7; }
 .sidebar-profile { display: flex; min-height: 64px; align-items: center; gap: 12px; padding: 12px; }
 .sidebar-avatar {
   display: grid;
@@ -87,49 +127,36 @@
   flex-shrink: 0;
   place-items: center;
   border-radius: 50%;
-  background: #ffdfad;
-  color: #80511d;
+  background: var(--ink);
+  color: var(--lime);
   font-size: 12px;
   font-weight: 700;
-  box-shadow: 0 0 0 3px #fff9;
 }
 .mourden-sidebar[data-collapsed='true'] :is(.sidebar-brand, .sidebar-link, .sidebar-profile) { justify-content: center; padding-inline: 0; }
-.mourden-sidebar :is(a, button):focus-visible { outline: 2px solid #26a980; outline-offset: -2px; }
-.admin-workspace { background: #f4f5f4; }
+.mourden-sidebar :is(a, button):focus-visible { outline: 2px solid #5bb135; outline-offset: -2px; }
+
+/* ---------- Kerangka back office: panel mengambang di atas kanvas ---------- */
+.admin-workspace { background: transparent; }
 @media (min-width: 1024px) {
-  .admin-main { border-radius: 24px 0 0 0; background: var(--bg); }
-  .admin-main > .admin-topbar { border-top-left-radius: 24px; }
+  .admin-main { margin: 12px 12px 12px 0; border-radius: 30px; background: var(--panel); box-shadow: 0 0 0 1px rgb(255 255 255 / 70%) inset, 0 30px 60px -50px rgb(16 21 19 / 35%); overflow: hidden; }
 }
-.admin-topbar {
-  background: rgb(255 255 255 / 94%);
-  border-bottom: 1px solid var(--line);
-}
-.admin-content > div > div { padding: 24px; }
-.admin-page-heading { margin-bottom: 24px; padding-top: 4px; }
-.admin-page-heading h1 { font-size: clamp(24px, 2.4vw, 32px); line-height: 1.25; }
+.admin-topbar { background: transparent; }
+.admin-content > div > div { padding: 8px 24px 28px; }
+.admin-page-heading { margin-bottom: 22px; padding-top: 4px; }
+.admin-page-heading h1 { font-size: clamp(24px, 2.4vw, 30px); line-height: 1.2; font-weight: 700; letter-spacing: -.02em; }
 .admin-page-heading p { margin-top: 6px; font-size: 14px; }
-.admin-page-heading h1::before {
-  content: '';
-  display: block;
-  width: 28px;
-  height: 3px;
-  margin-bottom: 12px;
-  border-radius: 3px;
-  background: var(--primary);
-}
-.catalog-summary { background: linear-gradient(125deg, #fff, #faf9fc); }
+.catalog-summary { background: var(--surface); }
 .catalog-row { min-height: 88px; transition: background-color 150ms; }
 .catalog-product-mark {
-  background: linear-gradient(140deg, #f1edf8, #f5f3f7);
-  border: 1px solid #e8e2f1;
-  color: #7058a3;
+  background: var(--violet-soft);
+  color: #5a3fc0;
 }
 
 /* Cashier header retains its 56px height. Sidebar styling is isolated above. */
 .pos-header {
-  color: #302d3d;
-  background: linear-gradient(110deg, #fff 20%, #f4f0f9 72%, #f8f4ee);
-  box-shadow: inset 0 -1px #e3ddeb;
+  color: #101513;
+  background: linear-gradient(110deg, #fff 20%, #f1f8ea 72%, #f3f0fb);
+  box-shadow: inset 0 -1px #dfe6e0;
 }
 .pos-header::before {
   content: '';
@@ -138,22 +165,22 @@
   right: 12%;
   width: 24%;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #baa7d3, #d9c9af, transparent);
+  background: linear-gradient(90deg, transparent, #b2e63f, #b9a8f0, transparent);
   pointer-events: none;
 }
 .pos-header :is(button, a) { flex-shrink: 0; }
-.pos-header .bg-white\/12 { background-color: rgb(255 255 255 / 75%); box-shadow: inset 0 0 0 1px #e3ddeb; }
-.pos-header :is(.text-white\/70, .text-white\/75, .text-white\/80) { color: #736a80; }
-.pos-header .text-white\/40 { color: #93899e; }
+.pos-header .bg-white\/12 { background-color: rgb(255 255 255 / 80%); box-shadow: inset 0 0 0 1px #dfe6e0; }
+.pos-header :is(.text-white\/70, .text-white\/75, .text-white\/80) { color: #5c6761; }
+.pos-header .text-white\/40 { color: #8a948e; }
 .pos-header .text-teal-200 { color: #08715f; }
 .pos-header .text-amber-200 { color: #936316; }
-.pos-header :is(button, a):hover { box-shadow: inset 0 0 0 1px #b9a7d2; }
+.pos-header :is(button, a):hover { box-shadow: inset 0 0 0 1px #a9cf8a; }
 .pos-header a.bg-danger { color: #fff; }
-.pos-header .bg-white { background-color: #e7f8f2; color: #086b50; }
+.pos-header .bg-white { background-color: #e4f7c9; color: #23490a; }
 
 @media (max-width: 639px) {
-  .admin-content > div > div { padding: 16px; }
-  .admin-page-heading { margin-bottom: 20px; }
+  .admin-content > div > div { padding: 4px 16px 20px; }
+  .admin-page-heading { margin-bottom: 18px; }
   .catalog-row { min-height: 80px; }
   .pos-header > div { gap: 4px; padding-inline: 8px; }
   .pos-header > div > div:last-child { gap: 4px; }

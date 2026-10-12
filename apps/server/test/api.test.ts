@@ -345,6 +345,31 @@ describe('laporan & admin', () => {
     expect(csv.text).toContain('VOID');
   });
 
+  it('ringkasan memuat kinerja kasir, jumlah item dan transaksi terbaru; analisa menu & denyut target tersedia untuk owner', async () => {
+    const t = new Date().toISOString().slice(0, 10);
+    const from = '2000-01-01'; const to = '2100-01-01';
+    const s = (await request(app).get(`/api/reports/summary?from=${from}&to=${to}`).set(asOwner()).expect(200)).body;
+    expect(s.byCashier.reduce((n: number, c: { amount: number }) => n + c.amount, 0)).toBe(s.netSales);
+    expect(s.byCashier.reduce((n: number, c: { voidCount: number }) => n + c.voidCount, 0)).toBe(s.voidCount);
+    expect(s.itemCount).toBeGreaterThan(0);
+    expect(s.recentOrders.length).toBeGreaterThan(0);
+    expect(s.recentOrders[0]).toHaveProperty('methodLabel');
+    const matrix = (await request(app).get(`/api/reports/menu-matrix?from=${from}&to=${to}`).set(asOwner()).expect(200)).body;
+    expect(matrix.rows.length).toBe(catalog.products.length);
+    expect(matrix.rows.reduce((n: number, r: { qty: number }) => n + r.qty, 0)).toBe(matrix.totalQty);
+    expect(['star', 'plowhorse', 'puzzle', 'dog']).toContain(matrix.rows[0].quadrant);
+    await request(app).put('/api/settings').set(asOwner()).send({ goals: { monthlySales: 50_000_000 } }).expect(200);
+    await request(app).put('/api/settings').set(asOwner()).send({ goals: { monthlySales: -1 } }).expect(400);
+    const pulse = (await request(app).get('/api/reports/pulse').set(asOwner()).expect(200)).body;
+    expect(pulse.target).toBe(50_000_000);
+    expect(pulse.today.slice(0, 7)).toBe(t.slice(0, 7));
+    expect(pulse.dayOfMonth).toBeLessThanOrEqual(pulse.daysInMonth);
+    expect(pulse.monthRevenue).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(pulse.heatmap) && Array.isArray(pulse.last14)).toBe(true);
+    await request(app).get('/api/reports/pulse').set(asDevice('kasir')).expect(403);
+    await request(app).get(`/api/reports/menu-matrix?from=${from}&to=${to}`).set(asDevice('kasir')).expect(403);
+  });
+
   it('kasir tidak bisa membuka laporan atau mengubah menu', async () => {
     expect((await request(app).get('/api/reports/summary?from=2026-01-01&to=2026-01-02').set(asDevice('kasir'))).status).toBe(403);
     expect((await request(app).post('/api/categories').set(asDevice('kasir')).send({ name: 'X' })).status).toBe(403);

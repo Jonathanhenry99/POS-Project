@@ -59,7 +59,7 @@ export function Sparkline({ values, className }: { values: number[]; className?:
   );
 }
 
-/** Kartu KPI bergaya ESB: latar biru muda, angka besar, badge perubahan. */
+/** Kartu KPI laporan: kartu putih, angka besar, badge perubahan. */
 export function KpiTile({
   label,
   value,
@@ -81,7 +81,7 @@ export function KpiTile({
 }) {
   const shown = useCountUp(value);
   return (
-    <div className="animate-rise flex flex-col rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/[0.07] to-primary/[0.02] p-4">
+    <div className="tile animate-rise flex flex-col p-4">
       <div className="flex items-start justify-between gap-2">
         <p className="flex items-center gap-1.5 text-sm font-medium text-fg-muted">
           {icon}
@@ -96,6 +96,20 @@ export function KpiTile({
   );
 }
 
+/** Lebar elemen pembungkus (px), agar grafik SVG memenuhi kartu tanpa meregangkan teks. */
+export function useWidth(initial: number) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(initial);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => el.clientWidth > 0 && setWidth(Math.round(el.clientWidth)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
 /** Format sumbu ringkas: 1.250.000 -> 1,3 jt; 25.000 -> 25 rb. */
 export function shortNumber(n: number): string {
   const a = Math.abs(n);
@@ -104,7 +118,7 @@ export function shortNumber(n: number): string {
   return String(n);
 }
 
-function niceMax(v: number) {
+export function niceMax(v: number) {
   if (v <= 0) return 1;
   const pow = Math.pow(10, Math.floor(Math.log10(v)));
   const n = v / pow;
@@ -116,8 +130,8 @@ function niceMax(v: number) {
 export function AreaChart({ data, format = formatNumber, height = 220 }: { data: { label: string; value: number; detail?: string }[]; format?: (n: number) => string; height?: number }) {
   const [active, setActive] = useState<number | null>(null);
   const ref = useRef<SVGSVGElement>(null);
+  const [wrap, W] = useWidth(640);
   if (!data.length) return <EmptyChart />;
-  const W = 640;
   const H = height;
   const padL = 52;
   const padB = 26;
@@ -139,7 +153,7 @@ export function AreaChart({ data, format = formatNumber, height = 220 }: { data:
   };
   const a = active !== null ? data[active] : null;
   return (
-    <div className="relative">
+    <div className="relative" ref={wrap}>
       <svg
         ref={ref}
         viewBox={`0 0 ${W} ${H}`}

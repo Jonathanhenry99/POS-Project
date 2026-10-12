@@ -57,6 +57,8 @@ const NAV: NavGroup[] = [
     items: [
       { to: '/admin/laporan', label: 'Rangkuman Penjualan', end: true },
       { to: '/admin/laporan/menu', label: 'Penjualan Menu' },
+      { to: '/admin/laporan/analisa-menu', label: 'Analisa Menu' },
+      { to: '/admin/laporan/kasir', label: 'Kinerja Kasir' },
       { to: '/admin/laporan/pembayaran', label: 'Pembayaran' },
       { to: '/admin/laporan/void', label: 'Batal & Void' },
       { to: '/admin/laporan/laba', label: 'Laba Kotor' },
@@ -86,6 +88,8 @@ const NAV: NavGroup[] = [
 
 const TITLES: [prefix: string, title: string][] = [
   ['/admin/laporan/menu', 'Laporan › Penjualan Menu'],
+  ['/admin/laporan/analisa-menu', 'Laporan › Analisa Menu'],
+  ['/admin/laporan/kasir', 'Laporan › Kinerja Kasir'],
   ['/admin/laporan/pembayaran', 'Laporan › Pembayaran'],
   ['/admin/laporan/void', 'Laporan › Batal & Void'],
   ['/admin/laporan/laba', 'Laporan › Laba Kotor'],

@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pos: { tables: [], notes: [], cancellationReasons: [], productStations: {} },
   brand: { logo: '' },
   receipt: DEFAULT_RECEIPT_SETTINGS,
+  goals: { monthlySales: 0 },
 };
 
 /** Menggabungkan pengaturan tersimpan dengan default, supaya kunci baru selalu terisi. */
@@ -51,5 +52,6 @@ export function mergeSettings(partial: Partial<{ [K in keyof AppSettings]: Parti
     pos: { ...DEFAULT_SETTINGS.pos!, ...partial?.pos },
     brand: { ...DEFAULT_SETTINGS.brand!, ...partial?.brand },
     receipt: { ...DEFAULT_RECEIPT_SETTINGS, ...partial?.receipt },
+    goals: { ...DEFAULT_SETTINGS.goals!, ...partial?.goals },
   };
 }

@@ -5,9 +5,10 @@ import { formatDateTime, formatNumber, formatRupiah, type Order } from '@mourden
 import { toast } from '../../components/feedback';
 import { Badge, Button, Card, Empty, ErrorNote, Skeleton, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
+import { CashierReport, MenuMatrixReport } from './AnalysisReports';
 import { AreaChart, ColumnChart, Composition, Heatmap, KpiTile } from './charts';
 import { addDays, formatDateLabel, storeTimezone, today, useApi } from './hooks';
-import { daysBetween, netRevenue, useSummary, type Range, type Summary } from './reportData';
+import { daysBetween, downloadOrdersCsv, netRevenue, useSummary, type Range, type Summary } from './reportData';
 
 type Preset = 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'lastmonth' | 'custom';
 
@@ -50,13 +51,7 @@ export function FilterCard({ value, onApply, extra, exportable = true }: { value
   const exportCsv = async () => {
     setExporting(true);
     try {
-      const res = await api<Response>(`/reports/orders.csv?from=${value.from}&to=${value.to}`, { raw: true });
-      const url = URL.createObjectURL(await res.blob());
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `transaksi_${value.from}_${value.to}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadOrdersCsv(value);
     } catch (e) {
       toast(errorMessage(e), 'error');
     } finally {
@@ -64,13 +59,13 @@ export function FilterCard({ value, onApply, extra, exportable = true }: { value
     }
   };
   return (
-    <section className="animate-rise mb-4 rounded-3xl border border-line bg-surface p-4 shadow-card">
+    <section className="tile animate-rise mb-4 p-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1">
           <p className="mb-1.5 text-sm font-semibold text-fg-muted">Tanggal Pesan</p>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex h-12 items-center overflow-hidden rounded-xl border border-line bg-surface-2 focus-within:border-primary">
-              <span className="grid h-full w-12 place-items-center bg-primary text-white">
+              <span className="grid h-full w-12 place-items-center bg-[var(--ink)] text-white">
                 <CalendarDays className="size-5" />
               </span>
               <input type="date" value={draft.from} max={draft.to} onChange={(e) => setDraft({ ...draft, from: e.target.value })} className="h-full bg-transparent px-3 font-semibold outline-none" aria-label="Dari tanggal" />
@@ -88,7 +83,8 @@ export function FilterCard({ value, onApply, extra, exportable = true }: { value
                       setDraft(r);
                       onApply(r);
                     }}
-                    className={cx('press h-10 shrink-0 rounded-xl border px-3 text-sm font-semibold', active ? 'border-primary bg-primary/10 text-primary' : 'border-line text-fg-muted hover:text-fg')}
+                    aria-pressed={active}
+                    className="pill shrink-0"
                   >
                     {p.label}
                   </button>
@@ -100,11 +96,11 @@ export function FilterCard({ value, onApply, extra, exportable = true }: { value
         {extra}
         <div className="flex gap-2">
           {exportable && (
-            <Button variant="outline" className="border-primary/50 text-primary" icon={<Download className="size-5" />} loading={exporting} onClick={exportCsv}>
+            <Button variant="outline" icon={<Download className="size-5" />} loading={exporting} onClick={exportCsv}>
               Unduh
             </Button>
           )}
-          <button onClick={() => onApply(draft)} className="press bg-grad-accent h-12 rounded-xl px-6 font-semibold text-white shadow-[0_10px_24px_-12px_var(--accent)]">
+          <button onClick={() => onApply(draft)} className="press bg-grad-primary glow h-12 rounded-xl px-6 font-semibold text-white">
             Tampilkan
           </button>
         </div>
@@ -132,6 +128,8 @@ export function ReportsPage() {
         <Routes>
           <Route index element={<Rangkuman s={s} prev={summary.prev} range={range} />} />
           <Route path="menu" element={<MenuReport s={s} />} />
+          <Route path="analisa-menu" element={<MenuMatrixReport range={range} />} />
+          <Route path="kasir" element={<CashierReport s={s} />} />
           <Route path="pembayaran" element={<PaymentReport s={s} />} />
           <Route path="void" element={<VoidReport s={s} range={range} />} />
           <Route path="laba" element={<ProfitReport s={s} prev={summary.prev} />} />

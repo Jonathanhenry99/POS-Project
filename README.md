@@ -120,6 +120,13 @@ Checklist ini juga tersedia sebagai daftar centang di aplikasi (Pengaturan print
 
 Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. Karena itu aplikasi menampilkan "Struk dikirim ke printer". Status printer yang sebenarnya terlihat di aplikasi RawBT.
 
+## Back office (owner)
+
+- **Dashboard**: KPI dengan perbandingan periode (hari ini / 7 hari / bulan ini), ringkasan penjualan per jam atau per hari, menu terlaris, pola jam ramai 4 minggu, transaksi terbaru (diperbarui tiap menit), komposisi penjualan, kinerja kasir, peringatan stok, dan ekspor CSV.
+- **Target penjualan bulanan** (Pengaturan → Target penjualan): capaian, proyeksi akhir bulan, dan kebutuhan per hari.
+- **Analisa Menu** (Laporan): matriks popularitas x margin per porsi (Bintang / Andalan / Potensi / Evaluasi). Akurat bila Resep & HPP sudah diisi.
+- **Kinerja Kasir** (Laporan): penjualan, rata-rata bill, diskon, dan void per kasir.
+
 ## Tahap berikutnya
 
 - Alert stok berbasis AI: prediksi kebutuhan dari pola penjualan dan opname. Data pergerakan stok sudah tersedia.

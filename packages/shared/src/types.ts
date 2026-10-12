@@ -66,6 +66,11 @@ export interface ReceiptSettings {
   showItemCount: boolean;
 }
 
+export interface GoalsSettings {
+  /** Target penjualan bersih per bulan (rupiah). 0 = belum diatur. */
+  monthlySales: number;
+}
+
 export interface AppSettings {
   store: StoreSettings;
   pricing: PricingSettings;
@@ -75,6 +80,7 @@ export interface AppSettings {
   /** Opsional agar data bootstrap lama di tablet tetap terbaca; mergeSettings selalu mengisinya. */
   brand?: BrandSettings;
   receipt?: ReceiptSettings;
+  goals?: GoalsSettings;
 }
 
 export interface PosSettings {

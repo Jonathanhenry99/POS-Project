@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { ORDER_TYPE_LABEL, PAYMENT_LABEL, type OrderType, type PaymentMethod } from '@mourden/shared';
+import { ORDER_TYPE_LABEL, PAYMENT_LABEL, analyzeMenu, businessDate, type MenuSalesRow, type OrderType, type PaymentMethod } from '@mourden/shared';
 import { need } from '../auth';
 import { pool } from '../db';
 import { dateRangeQuery, parse } from '../http';
-import { getStockLevels, getTimezone } from '../repo';
+import { getSettings, getStockLevels, getTimezone } from '../repo';
 
 export const reportsRouter = Router();
 
@@ -14,12 +14,12 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
   const range = [q.from, q.to];
   const paid = "business_date between $1 and $2 and status = 'paid'";
 
-  const [totals, voids, byMethod, byHour, byDay, top, byCategory, cogs, heatmap, slow, byType] = await Promise.all([
+  const [totals, voids, byMethod, byHour, byDay, top, byCategory, cogs, heatmap, slow, byType, byCashier, items, recent] = await Promise.all([
     pool.query(
       `select count(*)::int as "orderCount", coalesce(sum(subtotal), 0)::int as "grossSales",
          coalesce(sum(discount_amount), 0)::int as "discountTotal", coalesce(sum(service_amount), 0)::int as "serviceTotal",
          coalesce(sum(tax_amount), 0)::int as "taxTotal", coalesce(sum(rounding_amount), 0)::int as "roundingTotal",
-         coalesce(sum(total), 0)::int as "netSales"
+         coalesce(sum(total), 0)::int as "netSales", coalesce(sum(pax), 0)::int as "paxTotal"
        from orders where ${paid}`,
       range,
     ),
@@ -88,6 +88,29 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
        from orders where ${paid} group by 1 order by amount desc`,
       range,
     ),
+    // Kinerja kasir: penjualan, diskon yang diberikan, dan jumlah void per nama kasir.
+    pool.query(
+      `select cashier_name as name,
+         count(*) filter (where status = 'paid')::int as count,
+         coalesce(sum(total) filter (where status = 'paid'), 0)::int as amount,
+         coalesce(sum(discount_amount) filter (where status = 'paid'), 0)::int as "discountAmount",
+         count(*) filter (where status = 'void')::int as "voidCount"
+       from orders where business_date between $1 and $2 group by 1 order by amount desc`,
+      range,
+    ),
+    pool.query(
+      `select coalesce(sum(oi.qty), 0)::int as "itemCount"
+       from order_items oi join orders o on o.id = oi.order_id
+       where o.business_date between $1 and $2 and o.status = 'paid'`,
+      range,
+    ),
+    pool.query(
+      `select o.id, o.number, o.created_at as "createdAt", o.total, o.payment_method as method, o.cashier_name as "cashierName",
+         o.status, o.customer_name as "customerName", o.order_type as "orderType", o.table_name as "tableName",
+         (select coalesce(sum(qty), 0)::int from order_items where order_id = o.id) as "itemCount"
+       from orders o where o.business_date between $1 and $2 order by o.created_at desc limit 8`,
+      range,
+    ),
   ]);
 
   const t = totals.rows[0];
@@ -114,8 +137,74 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
     heatmap: heatmap.rows,
     slowMovers: slow.rows,
     byOrderType: byType.rows.map((r) => ({ ...r, label: ORDER_TYPE_LABEL[r.type as OrderType] })),
+    byCashier: byCashier.rows,
+    itemCount: items.rows[0].itemCount,
+    recentOrders: recent.rows.map((r) => ({ ...r, methodLabel: PAYMENT_LABEL[r.method as PaymentMethod], orderTypeLabel: ORDER_TYPE_LABEL[r.orderType as OrderType] })),
   });
 });
+
+/** Analisa menu: popularitas x margin per porsi untuk semua menu aktif (HPP dari resep dasar saat ini). */
+reportsRouter.get('/reports/menu-matrix', need('admin'), async (req, res) => {
+  const q = parse(dateRangeQuery, req.query);
+  const { rows } = await pool.query<MenuSalesRow>(
+    `select p.id as "productId", p.name, coalesce(c.name, 'Lainnya') as category, p.price,
+       coalesce(s.qty, 0)::int as qty, coalesce(s.amount, 0)::int as amount,
+       coalesce(r.cost, 0)::float8 as cost, coalesce(r.lines, 0)::int as "recipeLines"
+     from products p
+     left join categories c on c.id = p.category_id
+     left join (
+       select oi.product_id, sum(oi.qty) as qty, sum(oi.line_total) as amount
+       from order_items oi join orders o on o.id = oi.order_id
+       where o.business_date between $1 and $2 and o.status = 'paid' group by 1
+     ) s on s.product_id = p.id
+     left join (
+       select ri.product_id, sum(ri.qty * i.cost_per_unit) as cost, count(*) as lines
+       from recipe_items ri join ingredients i on i.id = ri.ingredient_id
+       where ri.option_id is null group by 1
+     ) r on r.product_id = p.id
+     where p.active`,
+    [q.from, q.to],
+  );
+  res.json(analyzeMenu(rows));
+});
+
+/** Denyut bulan berjalan: capaian terhadap target penjualan + tren 14 hari (penjualan bersih = subtotal - diskon). */
+reportsRouter.get('/reports/pulse', need('admin'), async (_req, res) => {
+  const settings = await getSettings(pool);
+  const today = businessDate(new Date().toISOString(), settings.store.timezone);
+  const monthFrom = `${today.slice(0, 8)}01`;
+  const [y, m] = today.split('-').map(Number);
+  const { rows } = await pool.query<{ date: string; count: number; revenue: number }>(
+    `select business_date as date, count(*)::int as count, coalesce(sum(subtotal - discount_amount), 0)::int as revenue
+     from orders where status = 'paid' and business_date between least($1::date, $2::date - 13) and $2 group by 1 order by 1`,
+    [monthFrom, today],
+  );
+  // Pola keramaian 4 minggu terakhir (hari x jam), tidak bergantung pada filter dashboard.
+  const heatmap = await pool.query(
+    `select extract(isodow from created_at at time zone $2)::int as dow, extract(hour from created_at at time zone $2)::int as hour,
+       count(*)::int as count, sum(total)::int as amount
+     from orders where status = 'paid' and business_date between $1::date - 27 and $1::date group by 1, 2`,
+    [today, settings.store.timezone],
+  );
+  const month = rows.filter((r) => r.date >= monthFrom);
+  res.json({
+    today,
+    monthFrom,
+    daysInMonth: new Date(Date.UTC(y, m, 0)).getUTCDate(),
+    dayOfMonth: Number(today.slice(8)),
+    monthRevenue: month.reduce((n, r) => n + r.revenue, 0),
+    monthOrders: month.reduce((n, r) => n + r.count, 0),
+    target: settings.goals?.monthlySales ?? 0,
+    last14: rows.filter((r) => r.date >= addDaysIso(today, -13)),
+    heatmap: heatmap.rows,
+  });
+});
+
+function addDaysIso(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 /** Ringkasan untuk beranda owner: penjualan hari ini + peringatan stok. */
 reportsRouter.get('/reports/alerts', need('admin'), async (_req, res) => {

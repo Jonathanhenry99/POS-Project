@@ -1,4 +1,5 @@
 // Tipe & pengambil data laporan bersama untuk Dashboard dan halaman Laporan.
+import { api } from '../../lib/api';
 import { addDays, useApi } from './hooks';
 
 export interface Summary {
@@ -28,6 +29,48 @@ export interface Summary {
   heatmap: { dow: number; hour: number; count: number; amount: number }[];
   slowMovers: { id: string; name: string }[];
   byOrderType: { type: string; label: string; count: number; amount: number }[];
+  paxTotal: number;
+  itemCount: number;
+  byCashier: { name: string; count: number; amount: number; discountAmount: number; voidCount: number }[];
+  recentOrders: {
+    id: string;
+    number: string;
+    createdAt: string;
+    total: number;
+    method: string;
+    methodLabel: string;
+    cashierName: string;
+    status: 'paid' | 'void';
+    customerName: string;
+    orderType: string;
+    orderTypeLabel: string;
+    tableName: string;
+    itemCount: number;
+  }[];
+}
+
+/** Denyut bulan berjalan: capaian target + tren 14 hari + pola keramaian 4 minggu. */
+export interface Pulse {
+  today: string;
+  monthFrom: string;
+  daysInMonth: number;
+  dayOfMonth: number;
+  monthRevenue: number;
+  monthOrders: number;
+  target: number;
+  last14: { date: string; count: number; revenue: number }[];
+  heatmap: { dow: number; hour: number; count: number; amount: number }[];
+}
+
+/** Unduh transaksi per baris item sebagai CSV (dibuka di Excel/Google Sheets). */
+export async function downloadOrdersCsv(range: Range) {
+  const res = await api<Response>(`/reports/orders.csv?from=${range.from}&to=${range.to}`, { raw: true });
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `transaksi_${range.from}_${range.to}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export interface Range {

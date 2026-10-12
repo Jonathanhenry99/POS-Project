@@ -1,8 +1,8 @@
-import { Save, Tablet } from 'lucide-react';
+import { Save, Tablet, Target } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { computeTotals, formatDateTime, formatNumber, type AppSettings, type PricingSettings } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
-import { Badge, Button, Card, ErrorNote, Field, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
+import { Badge, Button, Card, ErrorNote, Field, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { setBrandLogo } from '../../lib/brand';
 import { refreshBootstrap } from '../../lib/sync';
@@ -123,6 +123,17 @@ export function SettingsPage() {
           </Card>
 
           <ReceiptSettingsCard form={form} onChange={setForm} />
+
+          <Card title="Target penjualan" icon={<Target className="size-4" />}>
+            <Field label="Target penjualan bersih per bulan" hint="Dashboard menampilkan capaian, proyeksi akhir bulan, dan kebutuhan per hari. Kosongkan (0) bila tidak dipakai.">
+              {(id) => <MoneyInput id={id} value={form.goals?.monthlySales ?? 0} onChange={(n) => setForm((f) => (f ? { ...f, goals: { monthlySales: n } } : f))} />}
+            </Field>
+            {(form.goals?.monthlySales ?? 0) > 0 && (
+              <p className="mt-3 rounded-xl bg-surface-2 p-3 text-sm text-fg-muted">
+                Setara rata-rata <b className="text-fg">Rp {formatNumber(Math.round((form.goals?.monthlySales ?? 0) / 30))}</b> per hari.
+              </p>
+            )}
+          </Card>
 
           <Card title="Kebijakan kasir">
             <div className="flex flex-col gap-4">
