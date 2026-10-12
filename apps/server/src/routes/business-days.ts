@@ -60,7 +60,9 @@ businessDaysRouter.put('/business-days/:id', needDevice, need('pos.shift'), asyn
       for (const shift of shifts) {
         const saved = counts.rows.find((r) => r.shift_id === shift.id);
         const s = shift.summary!;
-        if ((saved?.count ?? 0) !== s.orderCount + s.voidCount || Number(saved?.total ?? 0) !== s.netSales + s.voidAmount) throw badRequest('Transaksi shift belum lengkap. Periksa antrean sinkron.');
+        // Komplimen karyawan tersimpan sebagai transaksi Rp 0 tetapi dihitung terpisah di rekap shift (compCount).
+        const expectedCount = s.orderCount + s.voidCount + (s.compCount ?? 0);
+        if ((saved?.count ?? 0) !== expectedCount || Number(saved?.total ?? 0) !== s.netSales + s.voidAmount) throw badRequest('Transaksi shift belum lengkap. Periksa antrean sinkron.');
       }
       const expected = computeBusinessDaySummary(shifts);
       if (Object.keys(expected).some((key) => JSON.stringify(expected[key as keyof typeof expected]) !== JSON.stringify(day.summary![key as keyof typeof expected]))) throw badRequest('Rekap hari tidak sesuai snapshot shift');

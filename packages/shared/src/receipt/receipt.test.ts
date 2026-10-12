@@ -279,6 +279,17 @@ describe('testReceipt & shiftReceipt', () => {
     expect(text).toContain(row('Selisih (kurang)', '-5.000'));
     expect(text).toContain(row('  - Beli es batu', '-15.000'));
     text.split('\n').forEach((l) => expect(l.length).toBeLessThanOrEqual(32));
+    expect(text).toContain('REKAP SHIFT');
+    expect(text).not.toContain('Settlement EDC');
+
+    // Settlement EDC dari struk dibandingkan catatan sistem; baris selisih hanya bila berbeda.
+    const settled = toPlainText(shiftReceipt({ ...shift, settlement: { qris: 180000, card: null } }, store, DEFAULT_LAYOUT), 32);
+    expect(settled).toContain(row('  QRIS struk', '180.000'));
+    expect(settled).toContain(row('  QRIS sistem', '200.000'));
+    expect(settled).toContain(row('  Selisih QRIS', '-20.000'));
+    expect(settled).toContain(row('  Debit/Kredit struk', 'tidak diisi'));
+    expect(settled).not.toContain('Selisih Debit/Kredit');
+    settled.split('\n').forEach((l) => expect(l.length).toBeLessThanOrEqual(32));
   });
 });
 

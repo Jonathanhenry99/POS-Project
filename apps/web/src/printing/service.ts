@@ -298,7 +298,7 @@ export async function printTest() {
 
 export function printShift(shift: Shift) {
   const config = printerConfigStore.get();
-  return run('Rekap tutup kasir', () => shiftReceipt(shift, storeSettings(), config));
+  return run('Rekap shift', () => shiftReceipt(shift, storeSettings(), config));
 }
 
 export function printBusinessDay(day: BusinessDay) {

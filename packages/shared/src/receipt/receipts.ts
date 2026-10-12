@@ -209,7 +209,7 @@ export function shiftReceipt(shift: Shift, store: StoreSettings, layout: Receipt
   const tz = store.timezone;
   const s = shift.summary;
   header(doc, store);
-  doc.text('REKAP TUTUP KASIR', { align: 'center', bold: true, tall: true });
+  doc.text('REKAP SHIFT', { align: 'center', bold: true, tall: true });
   info(doc, 'Buka', `${formatDateTime(shift.openedAt, tz)} ${shift.openedByName}`);
   if (shift.closedAt) info(doc, 'Tutup', `${formatDateTime(shift.closedAt, tz)} ${shift.closedByName}`);
   doc.rule();
@@ -240,6 +240,17 @@ export function shiftReceipt(shift: Shift, store: StoreSettings, layout: Receipt
       doc.cols(diff === 0 ? 'Selisih (pas)' : diff > 0 ? 'Selisih (lebih)' : 'Selisih (kurang)', formatNumber(diff), {
         bold: true,
       });
+    }
+  }
+  // Angka struk settlement EDC yang diketik saat shift diakhiri, dibandingkan catatan sistem.
+  if (s && shift.settlement) {
+    doc.rule();
+    doc.text('Settlement EDC', { bold: true });
+    for (const [method, label] of [['qris', 'QRIS'], ['card', 'Debit/Kredit']] as const) {
+      const slip = shift.settlement[method];
+      doc.cols(`  ${label} struk`, slip === null ? 'tidak diisi' : formatNumber(slip));
+      doc.cols(`  ${label} sistem`, formatNumber(s.byMethod[method]));
+      if (slip !== null && slip !== s.byMethod[method]) doc.cols(`  Selisih ${label}`, formatNumber(slip - s.byMethod[method]), { bold: true });
     }
   }
   if (shift.cashMovements.length) {

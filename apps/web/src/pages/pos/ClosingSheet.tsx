@@ -12,7 +12,7 @@ import { useApp, useBlindCash } from '../../lib/state';
 import { printBusinessDay, printShift, printStatusStore } from '../../printing/service';
 
 /**
- * Tutup kasir dalam satu lembar: (1) hitung uang tunai, (2) ketik angka struk settlement EDC,
+ * Penutupan dalam satu lembar: (1) hitung uang tunai, (2) ketik angka struk settlement EDC,
  * (3) foto struk settlement & uang tunai. Dipakai untuk akhiri shift maupun tutup toko/hari.
  * Mode buta: catatan sistem dan selisih baru tampil setelah hitungan terkunci.
  */
@@ -45,7 +45,7 @@ export function ClosingSheet({ mode, drafts = 0, onClose, onFinished }: { mode: 
       if (!blind && summary && counted !== summary.expectedCash) lines.push(`Selisih kas ${formatRupiah(counted - summary.expectedCash)}.`);
       if (skipped.length) lines.push(`Belum diisi: ${skipped.join(', ')}. Owner akan melihatnya sebagai “tidak diisi”.`);
       lines.push('Setelah ditutup, angka tidak bisa diubah.');
-      if (!(await confirmDialog({ title: mode === 'day' ? 'Tutup shift & hari?' : 'Tutup kasir?', message: lines.join(' '), confirmLabel: 'Tutup', danger: skipped.length > 0 }))) return;
+      if (!(await confirmDialog({ title: mode === 'day' ? 'Tutup toko?' : 'Akhiri shift?', message: lines.join(' '), confirmLabel: mode === 'day' ? 'Tutup toko' : 'Akhiri shift', danger: skipped.length > 0 }))) return;
     }
     setBusy(true);
     setError('');
@@ -70,7 +70,7 @@ export function ClosingSheet({ mode, drafts = 0, onClose, onFinished }: { mode: 
 
   if (done && saved) {
     return (
-      <Modal open size="lg" onClose={onClose} title={mode === 'day' ? 'Toko ditutup' : 'Kasir ditutup'} footer={<Button size="lg" className="flex-1" onClick={onClose}>Selesai</Button>}>
+      <Modal open size="lg" onClose={onClose} title={mode === 'day' ? 'Toko ditutup' : 'Shift diakhiri'} footer={<Button size="lg" className="flex-1" onClick={onClose}>Selesai</Button>}>
         <div className="flex flex-col gap-4">
           <p className="text-fg-muted">Hitungan sudah terkunci. Ini hasil pencocokannya dengan catatan sistem. Serahkan uang dan struk rekap ke owner.</p>
           <Reconciliation shift={saved} />
@@ -89,10 +89,10 @@ export function ClosingSheet({ mode, drafts = 0, onClose, onFinished }: { mode: 
       size="lg"
       onClose={onClose}
       dismissable={!busy}
-      title={mode === 'day' ? 'Tutup toko / hari' : 'Tutup kasir'}
+      title={mode === 'day' ? 'Tutup toko' : 'Akhiri shift'}
       footer={
         <Button size="lg" className="flex-1" icon={<Lock className="size-5" />} loading={busy} disabled={!canSubmit} onClick={submit}>
-          {saved ? 'Lanjutkan tutup hari' : mode === 'day' ? 'Tutup shift terakhir & hari' : 'Tutup kasir & cetak rekap'}
+          {saved ? 'Lanjutkan tutup toko' : mode === 'day' ? 'Tutup toko & cetak rekap' : 'Akhiri shift & cetak rekap'}
         </Button>
       }
     >
@@ -125,12 +125,12 @@ export function ClosingSheet({ mode, drafts = 0, onClose, onFinished }: { mode: 
         </Step>
 
         <Step n={3} title="Catatan (opsional)">
-          <TextInput aria-label="Catatan tutup kasir" value={note} onChange={(e) => setNote(e.target.value.slice(0, 300))} disabled={!!saved} placeholder="Mis. uang receh kurang, EDC sempat offline" />
+          <TextInput aria-label="Catatan penutupan" value={note} onChange={(e) => setNote(e.target.value.slice(0, 300))} disabled={!!saved} placeholder="Mis. uang receh kurang, EDC sempat offline" />
         </Step>
 
         {required && missing.length > 0 && <p className="rounded-xl bg-warning/10 p-3 text-sm">Wajib diisi sebelum tutup: {missing.join(', ')}.</p>}
         {!!drafts && <p className="rounded-xl bg-warning/10 p-3 text-sm">{drafts} pesanan belum dibayar tetap tersimpan.</p>}
-        {saved && error && <p className="text-sm">Shift sudah ditutup. Lanjutkan penutupan hari; jangan hitung shift dua kali.</p>}
+        {saved && error && <p className="text-sm">Shift sudah diakhiri. Lanjutkan tutup toko; jangan hitung shift dua kali.</p>}
         <ErrorNote>{error}</ErrorNote>
         <p className="text-xs text-fg-muted">Tersimpan di tablet lebih dulu. Gangguan internet atau printer tidak membatalkan penutupan; foto ikut terkirim saat online.</p>
       </div>

@@ -20,7 +20,7 @@ export function ShiftPage() {
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
   const [lastClosed, setLastClosed] = useState<Shift | null>(null);
   const [cashSheet, setCashSheet] = useState(false);
-  const [closing, setClosing] = useState(false);
+  const [closing, setClosing] = useState<'shift' | 'day' | null>(null);
   const blind = useBlindCash();
 
   useEffect(() => {
@@ -28,8 +28,8 @@ export function ShiftPage() {
     void lastClosedShift().then(setLastClosed);
   }, [shift, pending]);
 
-  // Lembar tutup kasir tetap tampil setelah shift tertutup (untuk menunjukkan hasil pencocokan).
-  const closingSheet = closing && <ClosingSheet mode="shift" onClose={() => setClosing(false)} onFinished={(s) => setLastClosed(s)} />;
+  // Lembar penutupan tetap tampil setelah shift tertutup (untuk menunjukkan hasil pencocokan).
+  const closingSheet = closing && <ClosingSheet mode={closing} onClose={() => setClosing(null)} onFinished={(s) => setLastClosed(s)} />;
 
   if (!shift) {
     return (
@@ -96,9 +96,21 @@ export function ShiftPage() {
             </ul>
           )}
         </Card>
-        <Button size="xl" variant="primary" icon={<Lock className="size-6" />} onClick={() => setClosing(true)}>
-          Tutup kasir
-        </Button>
+        {/* Hanya dua aksi penutupan, sama dengan halaman Ganti Shift / Hari. */}
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <Button size="lg" variant="outline" className="w-full" onClick={() => setClosing('shift')}>
+              Akhiri shift
+            </Button>
+            <p className="mt-1.5 text-xs text-fg-muted">Ganti petugas. Hari usaha tetap berjalan.</p>
+          </div>
+          <div>
+            <Button size="lg" variant="primary" className="w-full" icon={<Lock className="size-5" />} onClick={() => setClosing('day')}>
+              Tutup toko
+            </Button>
+            <p className="mt-1.5 text-xs text-fg-muted">Akhir hari: tutup shift terakhir dan rekap hari.</p>
+          </div>
+        </div>
       </div>
       </div>
       {cashSheet && <CashMovementSheet onClose={() => setCashSheet(false)} />}
@@ -132,7 +144,7 @@ export function SummaryTable({ summary: s, openingCash, blind = false }: { summa
         <>
           {s.cashIn > 0 && row('Kas masuk', s.cashIn)}
           {s.cashOut > 0 && row('Kas keluar', -s.cashOut)}
-          <p className="mt-2 rounded-xl bg-surface-2 p-3 text-fg-muted">Rincian tunai dan uang laci tampil setelah kasir ditutup. Hitung uang di laci apa adanya saat tutup kasir.</p>
+          <p className="mt-2 rounded-xl bg-surface-2 p-3 text-fg-muted">Rincian tunai dan uang laci tampil setelah shift diakhiri. Hitung uang di laci apa adanya saat itu.</p>
         </>
       ) : (
         <>

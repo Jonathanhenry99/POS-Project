@@ -109,7 +109,7 @@ export function BusinessDayPage() {
                       <Line label="Total penjualan" value={summary.netSales} strong />
                     </section>
                     {blind ? (
-                      <p className="tile p-4 text-sm text-fg-muted">Rincian per metode pembayaran dan kas laci tampil setelah shift ditutup. Saat tutup kasir, hitung uang dan ketik angka struk settlement apa adanya.</p>
+                      <p className="tile p-4 text-sm text-fg-muted">Rincian per metode pembayaran dan kas laci tampil setelah shift ditutup. Saat mengakhiri shift, hitung uang dan ketik angka struk settlement apa adanya.</p>
                     ) : (
                       <div className="grid gap-4 md:grid-cols-2">
                         <section className="tile p-5">
@@ -128,7 +128,7 @@ export function BusinessDayPage() {
                               );
                             })}
                           </div>
-                          <p className="mt-3 text-xs text-fg-muted">QRIS dan Debit/Kredit dicocokkan dengan struk settlement EDC saat tutup kasir.</p>
+                          <p className="mt-3 text-xs text-fg-muted">QRIS dan Debit/Kredit dicocokkan dengan struk settlement EDC saat shift diakhiri.</p>
                         </section>
                         <section className="tile p-5">
                           <h3 className="mb-2 font-semibold">Kas laci</h3>
@@ -148,7 +148,7 @@ export function BusinessDayPage() {
               </div>
 
               <section className="tile flex flex-col gap-3 p-5 lg:sticky lg:top-4">
-                <h3 className="font-semibold">Pergantian petugas & tutup toko</h3>
+                <h3 className="font-semibold">Akhiri shift atau tutup toko</h3>
                 {shift ? (
                   <>
                     <ul className="flex flex-col gap-2 text-sm">
@@ -158,13 +158,13 @@ export function BusinessDayPage() {
                     </ul>
                     <Button size="lg" variant="outline" onClick={() => setCloseMode('shift')}>Akhiri shift</Button>
                     <p className="-mt-1 text-xs text-fg-muted">Ganti petugas: hitung kas dan settlement shift ini. Hari usaha tetap berjalan.</p>
-                    <Button size="lg" icon={<Lock className="size-5" />} onClick={() => setCloseMode('day')}>Tutup toko / hari</Button>
+                    <Button size="lg" icon={<Lock className="size-5" />} onClick={() => setCloseMode('day')}>Tutup toko</Button>
                     <p className="-mt-1 text-xs text-fg-muted">Tutup shift terakhir lalu simpan rekap hari ini.</p>
                   </>
                 ) : (
                   <>
                     <Button onClick={() => navigate('/kasir')}>{activeDay ? 'Buka shift berikutnya' : 'Ke layar kasir'}</Button>
-                    {activeDay && <Button variant="outline" loading={busy} onClick={finishWithoutShift}>Tutup hari setelah shift terakhir</Button>}
+                    {activeDay && <Button variant="outline" loading={busy} onClick={finishWithoutShift}>Tutup toko (shift terakhir sudah diakhiri)</Button>}
                   </>
                 )}
                 <Button variant="ghost" onClick={() => navigate('/shift')}>Catat kas masuk / keluar</Button>

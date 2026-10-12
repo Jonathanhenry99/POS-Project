@@ -579,6 +579,28 @@ describe('hari usaha dan arsip terminal kasir', () => {
     await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(closed).expect(200);
   });
 
+  it('tutup hari berhasil untuk shift yang berisi komplimen karyawan (dihitung terpisah dari transaksi)', async () => {
+    const day = buildDay(); const base = buildShift(day);
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(day).expect(200);
+    const sale = makeOrder('Americano', [], 1, { shiftId: base.id });
+    const free = makeOrder('Americano', [], 1, { shiftId: base.id });
+    const discount = { type: 'percent' as const, value: 100, reason: 'Komplimen Barista' };
+    const comp = { ...free, discount, ...computeTotals(free.items, discount, mergeSettings({}).pricing), payment: { method: 'cash' as const, amount: 0, tendered: 0, change: 0, reference: '' }, comp: { employeeId: userId('barista'), employeeName: 'Barista', approvedById: userId('owner') } };
+    const summary = computeShiftSummary(base, [sale, comp]);
+    expect(summary).toMatchObject({ orderCount: 1, compCount: 1 });
+    for (const o of [sale, comp]) await request(app).put(`/api/orders/${o.id}`).set(asDevice('kasir')).send(o).expect(201);
+    const shift = { ...base, closedAt: '2026-10-06T15:00:00.000Z', closedById: userId('kasir'), closedByName: 'Kasir 1', countedCash: 100000 + sale.total, summary };
+    await request(app).put(`/api/shifts/${base.id}`).set(asDevice('kasir')).send(shift).expect(200);
+    const res = await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(closedDay(day, shift));
+    expect(res.body.error).toBeUndefined(); expect(res.status).toBe(200);
+    // Komplimen yang belum tersinkron tetap membuat finalisasi ditolak (pengaman tidak dilonggarkan).
+    const day2 = buildDay(); const base2 = buildShift(day2);
+    await request(app).put(`/api/business-days/${day2.id}`).set(asDevice('kasir')).send(day2).expect(200);
+    const shift2 = { ...base2, closedAt: '2026-10-06T15:00:00.000Z', closedById: userId('kasir'), closedByName: 'Kasir 1', countedCash: 100000, summary: computeShiftSummary(base2, [{ ...comp, id: randomUUID(), shiftId: base2.id }]) };
+    await request(app).put(`/api/shifts/${base2.id}`).set(asDevice('kasir')).send(shift2).expect(200);
+    await request(app).put(`/api/business-days/${day2.id}`).set(asDevice('kasir')).send(closedDay(day2, shift2)).expect(400);
+  });
+
   it('menolak rekap hari yang dimanipulasi', async () => {
     const day = buildDay(); const base = buildShift(day);
     await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(day).expect(200);
