@@ -2,6 +2,7 @@ import { PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal } from 'luci
 import { useState } from 'react';
 import { formatDateTime, formatNumber, formatRupiah, STATION_LABEL, type StockLevel, type Station } from '@mourden/shared';
 import { toast } from '../../components/feedback';
+import { SearchSelect } from '../../components/SearchSelect';
 import { Badge, Button, Empty, ErrorNote, Field, Modal, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { uuid } from '../../lib/id';
@@ -194,13 +195,7 @@ function IngredientForm({ item, onClose, onSaved }: { item: StockLevel | null; o
         </Field>
         <Field label="Stasiun opname">
           {(id) => (
-            <select id={id} value={form.station} onChange={(e) => set('station', e.target.value as Station)} className={inputClass}>
-              {(['bar', 'kitchen', 'umum'] as Station[]).map((s) => (
-                <option key={s} value={s}>
-                  {STATION_LABEL[s]}
-                </option>
-              ))}
-            </select>
+            <SearchSelect id={id} label="Stasiun opname" value={form.station} onChange={(v) => set('station', v)} options={(['bar', 'kitchen', 'umum'] as Station[]).map((st) => ({ value: st, label: STATION_LABEL[st] }))} />
           )}
         </Field>
         <Field label={`Stok minimum (${form.unit})`} hint="Di bawah ini muncul peringatan.">
@@ -312,14 +307,7 @@ function Movements() {
   return (
     <>
       <DateRangeBar value={range} onChange={setRange} />
-      <select value={type} onChange={(e) => setType(e.target.value)} className={cx(inputClass, 'mb-3 h-11 max-w-56')}>
-        <option value="">Semua jenis</option>
-        {Object.entries(TYPE_LABEL).map(([k, v]) => (
-          <option key={k} value={k}>
-            {v}
-          </option>
-        ))}
-      </select>
+      <SearchSelect label="Jenis pergerakan" className="mb-3 max-w-56" value={type} onChange={setType} options={[{ value: '', label: 'Semua jenis' }, ...Object.entries(TYPE_LABEL).map(([k, v]) => ({ value: k, label: v }))]} />
       <ErrorNote>{error}</ErrorNote>
       {loading && !data && <Spinner className="mx-auto my-10" />}
       {data && !data.length && <Empty title="Tidak ada pergerakan" />}

@@ -1,7 +1,8 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { formatNumber, formatRupiah, type Catalog, type Ingredient } from '@mourden/shared';
+import { formatNumber, formatRupiah, STATION_LABEL, type Catalog, type Ingredient } from '@mourden/shared';
 import { toast } from '../../components/feedback';
+import { SearchSelect } from '../../components/SearchSelect';
 import { Badge, Button, Empty, ErrorNote, Modal, Spinner, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { PageHeader } from './AdminRoutes';
@@ -177,12 +178,14 @@ function RecipeEditor({
   const baseCost = cost(null);
 
   const update = (idx: number, patch: Partial<RecipeLine>) => setLines((ls) => ls!.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  const add = (optionId: string | null) => ingredients[0] && setLines((ls) => [...(ls ?? []), { optionId, ingredientId: ingredients[0].id, qty: 1 }]);
+  // Baris baru dimulai kosong dan langsung membuka pencarian bahan.
+  const add = (optionId: string | null) => ingredients.length && setLines((ls) => [...(ls ?? []), { optionId, ingredientId: '', qty: 1 }]);
+  const ingredientOptions = useMemo(() => ingredients.map((x) => ({ value: x.id, label: x.name, hint: x.unit, group: STATION_LABEL[x.station] })), [ingredients]);
 
   const submit = async () => {
     setBusy(true);
     try {
-      await api(`/recipes/${summary.productId}`, { method: 'PUT', body: { lines: lines!.filter((l) => l.qty > 0) } });
+      await api(`/recipes/${summary.productId}`, { method: 'PUT', body: { lines: lines!.filter((l) => l.ingredientId && l.qty > 0) } });
       toast('Resep disimpan');
       onSaved();
       onClose();
@@ -207,13 +210,16 @@ function RecipeEditor({
             return (
               <div key={i} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                 {/* HP: nama bahan satu baris penuh, takaran di bawahnya. */}
-                <select value={l.ingredientId} onChange={(e) => update(i, { ingredientId: e.target.value })} className={cx(inputClass, 'min-w-0 basis-full sm:flex-1')}>
-                  {ingredients.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.name}
-                    </option>
-                  ))}
-                </select>
+                <SearchSelect
+                  label="Bahan"
+                  placeholder="Pilih bahan..."
+                  searchPlaceholder="Ketik nama bahan..."
+                  autoOpen={!l.ingredientId}
+                  value={l.ingredientId}
+                  onChange={(v) => update(i, { ingredientId: v })}
+                  options={ingredientOptions}
+                  className="min-w-0 basis-full sm:flex-1 sm:basis-0"
+                />
                 <input
                   inputMode="decimal"
                   value={String(l.qty)}

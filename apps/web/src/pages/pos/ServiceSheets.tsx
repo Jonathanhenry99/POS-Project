@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SearchSelect } from '../../components/SearchSelect';
 import { Button, ErrorNote, Modal, inputClass } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import { useApp } from '../../lib/state';
@@ -15,7 +16,7 @@ export function ServiceSheet({ onClose }: { onClose: () => void }) {
   return <Modal open title="Meja & jumlah tamu" onClose={onClose} footer={<Button onClick={() => { try { setService(table, Number(pax || 0)); onClose(); } catch (e) { setError(errorMessage(e)); } }}>Simpan</Button>}>
     <div className="flex flex-col gap-4">
       <p className="text-sm text-fg-muted">Meja yang sedang terisi pesanan tersimpan di tablet ini ditandai. Gunakan menu Meja & pesanan untuk membukanya. Mengganti meja tidak mengubah item/harga.</p>
-      <label>Meja<select className={`${inputClass} mt-2`} value={table} disabled={cart.orderType !== 'dine_in'} onChange={(e) => setTable(e.target.value)}><option value="">Tanpa meja</option>{[...new Set([...tables, ...(cart.tableName ? [cart.tableName] : [])])].map((name) => { const occupied = saved.some((o) => o.id !== cart.savedId && o.tableName === name); return <option key={name} value={name} disabled={occupied}>{name}{occupied ? ' · Terisi' : ''}</option>; })}</select></label>
+      <div><p className="mb-2">Meja</p><SearchSelect label="Meja" searchPlaceholder="Ketik nama meja..." value={table} disabled={cart.orderType !== 'dine_in'} onChange={setTable} options={[{ value: '', label: 'Tanpa meja' }, ...[...new Set([...tables, ...(cart.tableName ? [cart.tableName] : [])])].map((name) => { const occupied = saved.some((o) => o.id !== cart.savedId && o.tableName === name); return { value: name, label: name, hint: occupied ? 'Terisi' : undefined, disabled: occupied }; })]} /></div>
       {!tables.length && <p className="text-sm text-fg-muted">Owner dapat menambahkan meja di Pengaturan → Master operasional kasir.</p>}
       <label>Jumlah tamu (pax)<input className={`${inputClass} mt-2`} inputMode="numeric" value={pax} maxLength={3} onChange={(e) => setPax(e.target.value.replace(/\D/g, ''))} placeholder="0" /></label>
       <ErrorNote>{error}</ErrorNote>
@@ -39,8 +40,8 @@ export function TransferSheet({ onClose }: { onClose: () => void }) {
     <div className="flex flex-col gap-3"><p className="text-sm text-fg-muted">Pilih jumlah item dan pesanan tujuan dengan tipe yang sama. Bila ada diskon, lepaskan dahulu lalu terapkan kembali pada pesanan yang sesuai.</p>
       <Button variant="outline" onClick={() => setQuantities(Object.fromEntries(cart.lines.map((l) => [l.key, l.qty])))}>Pilih semua item</Button>
       {cart.lines.map((l) => <label key={l.key} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2 p-3"><span><b>{l.name}</b><span className="block text-sm text-fg-muted">{l.options.map((o) => o.name).join(', ')} {l.note} · tersedia {l.qty}</span></span><input aria-label={`Jumlah pindah ${l.name}`} type="number" min={0} max={l.qty} className={`${inputClass} w-24`} value={quantities[l.key] ?? 0} onChange={(e) => setQuantities((s) => ({ ...s, [l.key]: Number(e.target.value) }))} /></label>)}
-      <label>Pesanan tujuan<select className={`${inputClass} mt-2`} value={target} onChange={(e) => setTarget(e.target.value)}><option value="new">Pesanan baru</option>{saved.filter((o) => o.id !== cart.savedId && o.orderType === cart.orderType).map((o) => <option key={o.id} value={o.id}>{o.label}{o.tableName ? ` · ${o.tableName}` : ''}</option>)}</select></label>
-      {target === 'new' && cart.orderType === 'dine_in' && <label>Meja tujuan<select className={`${inputClass} mt-2`} value={table} onChange={(e) => setTable(e.target.value)}><option value="">Tanpa meja</option>{tables.filter((t) => t !== cart.tableName && !saved.some((o) => o.tableName === t)).map((t) => <option key={t}>{t}</option>)}</select></label>}
+      <div><p className="mb-2">Pesanan tujuan</p><SearchSelect label="Pesanan tujuan" value={target} onChange={setTarget} options={[{ value: 'new', label: 'Pesanan baru' }, ...saved.filter((o) => o.id !== cart.savedId && o.orderType === cart.orderType).map((o) => ({ value: o.id, label: o.label, hint: o.tableName || undefined }))]} /></div>
+      {target === 'new' && cart.orderType === 'dine_in' && <div><p className="mb-2">Meja tujuan</p><SearchSelect label="Meja tujuan" searchPlaceholder="Ketik nama meja..." value={table} onChange={setTable} options={[{ value: '', label: 'Tanpa meja' }, ...tables.filter((t) => t !== cart.tableName && !saved.some((o) => o.tableName === t)).map((t) => ({ value: t, label: t }))]} /></div>}
       <ErrorNote>{error}</ErrorNote>
     </div>
   </Modal>;

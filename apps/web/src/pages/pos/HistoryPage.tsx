@@ -5,6 +5,7 @@ import { OwnerApproval } from '../../components/OwnerApproval';
 import { PrintStatusCard } from '../../components/PrintStatusCard';
 import { ReceiptPreview } from '../../components/ReceiptPreview';
 import { toast } from '../../components/feedback';
+import { SearchSelect } from '../../components/SearchSelect';
 import { Badge, Button, Empty, ErrorNote, Modal, Segmented, cx, inputClass } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import type { LocalOrder } from '../../lib/idb';
@@ -95,10 +96,8 @@ export function HistoryPage() {
           <div className="grid grid-cols-2 gap-2">
             <label className="text-xs text-fg-muted">Dari tanggal<input aria-label="Riwayat dari tanggal" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={cx(inputClass, 'mt-1 text-sm')} /></label>
             <label className="text-xs text-fg-muted">Sampai tanggal<input aria-label="Riwayat sampai tanggal" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={cx(inputClass, 'mt-1 text-sm')} /></label>
-            <select aria-label="Metode pembayaran" className={cx(inputClass, 'text-sm')} value={payment} onChange={(e) => setPayment(e.target.value as PaymentMethod | 'all')}>
-              <option value="all">Semua pembayaran</option>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_LABEL[m]}</option>)}
-            </select>
-            <select aria-label="Status transaksi" className={cx(inputClass, 'text-sm')} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="all">Semua status</option><option value="paid">Lunas</option><option value="void">Void</option></select>
+            <SearchSelect label="Metode pembayaran" className="text-sm" value={payment} onChange={setPayment} options={[{ value: 'all', label: 'Semua pembayaran' }, ...PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_LABEL[m] }))]} />
+            <SearchSelect label="Status transaksi" className="text-sm" value={status} onChange={setStatus} options={[{ value: 'all', label: 'Semua status' }, { value: 'paid', label: 'Lunas' }, { value: 'void', label: 'Void' }]} />
           </div>
           <div className="flex items-center justify-between text-xs text-fg-muted"><span>{filtered.length} transaksi · {scope === 'server' ? 'arsip server tablet ini' : 'data lokal tablet'}</span><button className="min-h-11 px-2 font-semibold text-primary" onClick={() => { setFrom(''); setTo(''); setPayment('all'); setStatus('all'); setQuery(''); }}>Reset filter</button></div>
           {scope === 'server' && <><p className="text-xs text-fg-muted">Tanggal kosong memakai hari ini. Arsip yang dimuat disimpan di tablet untuk dibuka lagi saat offline.</p><Button variant="outline" loading={busy} onClick={() => void loadArchive()}>Muat ulang arsip</Button><ErrorNote>{archiveError}</ErrorNote></>}

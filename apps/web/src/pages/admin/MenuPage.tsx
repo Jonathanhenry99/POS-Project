@@ -2,6 +2,7 @@ import { Coffee, Layers3, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from
 import { useMemo, useState } from 'react';
 import { formatNumber, type Catalog, type Category, type OptionGroup, type Product } from '@mourden/shared';
 import { toast } from '../../components/feedback';
+import { SearchSelect } from '../../components/SearchSelect';
 import { Badge, Button, Empty, ErrorNote, Field, Modal, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { refreshBootstrap } from '../../lib/sync';
@@ -159,13 +160,7 @@ function ProductForm({ catalog, product, onClose, onSaved }: { catalog: Catalog;
         <div className="grid grid-cols-2 gap-3">
           <Field label="Kategori">
             {(id) => (
-              <select id={id} value={form.categoryId} onChange={(e) => set('categoryId', e.target.value)} className={inputClass}>
-                {catalog.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              <SearchSelect id={id} label="Kategori" value={form.categoryId} onChange={(v) => set('categoryId', v)} options={catalog.categories.map((c) => ({ value: c.id, label: c.name }))} />
             )}
           </Field>
           <Field label="Harga dasar">{(id) => <MoneyInput id={id} value={form.price} onChange={(n) => set('price', n)} />}</Field>

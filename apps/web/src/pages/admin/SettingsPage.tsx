@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { computeTotals, formatDateTime, formatNumber, type AppSettings, type PricingSettings } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
+import { SearchSelect } from '../../components/SearchSelect';
 import { Badge, Button, Card, ErrorNote, Field, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { setBrandLogo } from '../../lib/brand';
@@ -105,13 +106,7 @@ export function SettingsPage() {
                 <Field label="Telepon / Instagram">{(id) => <TextInput id={id} value={form.store.phone} onChange={(e) => set('store', 'phone', e.target.value)} />}</Field>
                 <Field label="Zona waktu">
                   {(id) => (
-                    <select id={id} value={form.store.timezone} onChange={(e) => set('store', 'timezone', e.target.value)} className={inputClass}>
-                      {TIMEZONES.map((t) => (
-                        <option key={t.value} value={t.value}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchSelect id={id} label="Zona waktu" value={form.store.timezone} onChange={(v) => set('store', 'timezone', v)} options={TIMEZONES} />
                   )}
                 </Field>
               </div>

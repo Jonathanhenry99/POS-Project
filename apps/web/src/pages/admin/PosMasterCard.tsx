@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import type { Catalog, PosSettings } from '@mourden/shared';
+import { SearchSelect } from '../../components/SearchSelect';
 import { Button, Card, Empty, cx, inputClass } from '../../components/ui';
 import { useApi } from './hooks';
 import { PillNav, SearchBox, matches } from './PillNav';
@@ -33,11 +34,7 @@ export function PosMasterCard({ value = EMPTY, onChange }: { value?: PosSettings
           {value.cancellationReasons.map((r, i) => (
             <Row key={i} onRemove={() => set({ cancellationReasons: value.cancellationReasons.filter((_, j) => j !== i) })} removeLabel={`Hapus alasan ${i + 1}`}>
               <input aria-label={`Alasan ${i + 1}`} className={cx(inputClass, 'min-w-0 basis-full sm:flex-1 sm:basis-0')} maxLength={200} value={r.text} onChange={(e) => set({ cancellationReasons: value.cancellationReasons.map((v, j) => (j === i ? { ...v, text: e.target.value } : v)) })} />
-              <select aria-label={`Jenis alasan ${i + 1}`} className={cx(inputClass, 'min-w-0 flex-1 sm:max-w-48')} value={r.kind} onChange={(e) => set({ cancellationReasons: value.cancellationReasons.map((v, j) => (j === i ? { ...v, kind: e.target.value as typeof v.kind } : v)) })}>
-                <option value="menu">Item menu</option>
-                <option value="order">Pesanan tersimpan</option>
-                <option value="void">Transaksi lunas (void)</option>
-              </select>
+              <SearchSelect label={`Jenis alasan ${i + 1}`} className="min-w-0 flex-1 sm:max-w-56" value={r.kind} onChange={(kind) => set({ cancellationReasons: value.cancellationReasons.map((v, j) => (j === i ? { ...v, kind } : v)) })} options={REASON_KINDS} />
             </Row>
           ))}
         </Rows>
@@ -52,14 +49,7 @@ export function PosMasterCard({ value = EMPTY, onChange }: { value?: PosSettings
           {value.notes.map((n, i) => (
             <Row key={i} onRemove={() => set({ notes: value.notes.filter((_, j) => j !== i) })} removeLabel={`Hapus catatan ${i + 1}`}>
               <input aria-label={`Catatan ${i + 1}`} className={cx(inputClass, 'min-w-0 basis-full sm:flex-1 sm:basis-0')} maxLength={200} value={n.text} onChange={(e) => set({ notes: value.notes.map((v, j) => (j === i ? { ...v, text: e.target.value } : v)) })} />
-              <select aria-label={`Kategori catatan ${i + 1}`} className={cx(inputClass, 'min-w-0 flex-1 sm:max-w-48')} value={n.categoryId ?? ''} onChange={(e) => set({ notes: value.notes.map((v, j) => (j === i ? { ...v, categoryId: e.target.value || null } : v)) })}>
-                <option value="">Semua kategori</option>
-                {catalog?.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              <SearchSelect label={`Kategori catatan ${i + 1}`} className="min-w-0 flex-1 sm:max-w-56" value={n.categoryId ?? ''} onChange={(id) => set({ notes: value.notes.map((v, j) => (j === i ? { ...v, categoryId: id || null } : v)) })} options={[{ value: '', label: 'Semua kategori' }, ...(catalog?.categories ?? []).map((c) => ({ value: c.id, label: c.name }))]} />
             </Row>
           ))}
         </Rows>
@@ -99,16 +89,10 @@ function CheckerCard({ catalog, stations, onChange }: { catalog: Catalog | null;
       )}
       <div className="mt-2 max-h-96 overflow-y-auto">
         {list.map((p) => (
-          <label key={p.id} className="flex min-h-12 items-center justify-between gap-3 border-b border-line py-2 last:border-0">
+          <div key={p.id} className="flex min-h-12 items-center justify-between gap-3 border-b border-line py-2 last:border-0">
             <span className="min-w-0 truncate">{p.name}</span>
-            <select className={cx(inputClass, 'max-w-36 shrink-0')} value={stations[p.id] ?? 'umum'} onChange={(e) => onChange({ ...stations, [p.id]: e.target.value as Station })}>
-              {(['umum', 'bar', 'kitchen'] as Station[]).map((st) => (
-                <option key={st} value={st}>
-                  {STATION_NAME[st]}
-                </option>
-              ))}
-            </select>
-          </label>
+            <SearchSelect label={`Tujuan checker ${p.name}`} className="max-w-36 shrink-0" value={stations[p.id] ?? 'umum'} onChange={(st) => onChange({ ...stations, [p.id]: st })} options={STATION_OPTIONS} />
+          </div>
         ))}
         {catalog && !list.length && <Empty title="Tidak ada menu yang cocok" />}
       </div>
@@ -117,6 +101,12 @@ function CheckerCard({ catalog, stations, onChange }: { catalog: Catalog | null;
 }
 
 const STATION_NAME: Record<Station, string> = { umum: 'Umum', bar: 'Bar', kitchen: 'Dapur' };
+const STATION_OPTIONS = (['umum', 'bar', 'kitchen'] as Station[]).map((st) => ({ value: st, label: STATION_NAME[st] }));
+const REASON_KINDS: { value: PosSettings['cancellationReasons'][number]['kind']; label: string }[] = [
+  { value: 'menu', label: 'Item menu' },
+  { value: 'order', label: 'Pesanan tersimpan' },
+  { value: 'void', label: 'Transaksi lunas (void)' },
+];
 
 function Rows({ children, empty }: { children: ReactNode[]; empty: string }) {
   if (!children.length) return <p className="mb-3 rounded-xl bg-surface-2 px-3 py-2.5 text-sm text-fg-muted">{empty}</p>;
