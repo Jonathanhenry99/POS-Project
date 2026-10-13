@@ -26,6 +26,8 @@ export interface AppState {
   online: boolean;
   activeShift: Shift | null;
   sync: { pending: number; failed: number; syncing: boolean; lastSyncAt: string | null; lastError: string };
+  /** Alasan terakhir data menu gagal diperbarui padahal internet ada. `rejected` = server menolak tablet ini (akses dicabut). */
+  dataError: { rejected: boolean; message: string } | null;
 }
 
 export const appStore = createStore<AppState>({
@@ -40,6 +42,7 @@ export const appStore = createStore<AppState>({
   online: typeof navigator === 'undefined' ? true : navigator.onLine,
   activeShift: null,
   sync: { pending: 0, failed: 0, syncing: false, lastSyncAt: null, lastError: '' },
+  dataError: null,
 });
 
 export const useApp = <S,>(selector: (s: AppState) => S) => useStore(appStore, selector);

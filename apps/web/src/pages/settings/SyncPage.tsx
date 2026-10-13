@@ -6,7 +6,7 @@ import { confirmDialog, toast } from '../../components/feedback';
 import { Badge, Button, Card, Empty } from '../../components/ui';
 import type { OutboxItem } from '../../lib/idb';
 import { unpairDevice } from '../../lib/session';
-import { useApp } from '../../lib/state';
+import { appStore, useApp } from '../../lib/state';
 import { flushOutbox, listOutbox, refreshBootstrap, retryFailed } from '../../lib/sync';
 
 export function SyncPage() {
@@ -15,6 +15,7 @@ export function SyncPage() {
   const device = useApp((s) => s.device);
   const user = useApp((s) => s.user);
   const data = useApp((s) => s.data);
+  const dataError = useApp((s) => s.dataError);
   const tz = data?.settings.store.timezone ?? 'Asia/Jakarta';
   const [items, setItems] = useState<OutboxItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -29,13 +30,26 @@ export function SyncPage() {
     const ok = await refreshBootstrap();
     await flushOutbox();
     setBusy(false);
-    toast(ok ? 'Data diperbarui' : 'Server tidak bisa dihubungi', ok ? 'success' : 'error');
+    const why = appStore.get().dataError;
+    toast(ok ? 'Data diperbarui' : why ? `Data tidak diperbarui: ${why.message}` : 'Server tidak bisa dihubungi. Periksa internet.', ok ? 'success' : 'error');
   };
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
         <h1 className="text-2xl font-bold">Sinkronisasi</h1>
+        {dataError && (
+          <div className="rounded-2xl border border-danger/30 bg-danger/10 p-4 text-sm">
+            <p className="font-bold text-danger">{dataError.rejected ? 'Server menolak tablet ini' : 'Menu dan pengaturan tidak bisa diperbarui'}</p>
+            {dataError.rejected ? (
+              <p className="mt-1 text-fg">
+                Akses perangkat dengan kode struk <b>{device?.code}</b> sudah dicabut atau belum aktif di server. Selama begini menu tidak diperbarui dan transaksi tidak terkirim (tetap tersimpan di tablet). Minta owner login di tablet ini, tekan <b>Lepas aktivasi perangkat</b> di bawah, lalu aktifkan lagi.
+              </p>
+            ) : (
+              <p className="mt-1 text-fg">{dataError.message}</p>
+            )}
+          </div>
+        )}
         <Card>
           <div className="flex flex-wrap items-center gap-4">
             {online ? <Wifi className="size-8 text-success" /> : <CloudOff className="size-8 text-warning" />}

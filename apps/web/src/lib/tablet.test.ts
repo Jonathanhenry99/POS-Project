@@ -5,7 +5,7 @@ import { rawbtIntentUrl, RawBTPrinter } from '../printing/rawbt';
 import { db, resetDbForTests, type BootstrapData } from './idb';
 import { checkout, closeShift, listOrders, openShift, voidOrder, closeBusinessDay, ensureBusinessDay, businessDayDetails, listBusinessDays, addCashMovement, type CartLine } from './pos';
 import { appStore } from './state';
-import { flushOutbox, listOutbox, retryFailed } from './sync';
+import { flushOutbox, listOutbox, refreshBootstrap, retryFailed } from './sync';
 import { fetchOrderArchive } from './order-archive';
 
 const catalog: Catalog = { categories: [], products: [], optionGroups: [] };
@@ -280,5 +280,25 @@ describe('hari usaha tambahan', () => {
     appStore.set({ activeShift: old });
     await expect(checkout({ lines: [line(20000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' })).rejects.toThrow('ditutup');
     expect(await listOrders()).toHaveLength(0);
+  });
+});
+
+describe('perbarui data menu di tablet', () => {
+  it('server menolak tablet (akses dicabut): alasannya tersimpan untuk ditampilkan, menu lama tetap dipakai; putus internet hanya menandai offline', async () => {
+    mockFetch([() => new Response(JSON.stringify({ error: 'Perangkat belum diaktifkan atau sudah dicabut' }), { status: 401 })]);
+    expect(await refreshBootstrap()).toBe(false);
+    expect(appStore.get().dataError).toEqual({ rejected: true, message: 'Perangkat belum diaktifkan atau sudah dicabut' });
+    expect(appStore.get().data).toBe(data);
+    expect(appStore.get().online).toBe(true);
+
+    appStore.set({ dataError: null });
+    mockFetch([offline]);
+    expect(await refreshBootstrap()).toBe(false);
+    expect(appStore.get()).toMatchObject({ dataError: null, online: false });
+
+    appStore.set({ dataError: { rejected: true, message: 'x' } });
+    mockFetch([() => new Response(JSON.stringify({ ...data, serverTime: new Date().toISOString() }), { status: 200 })]);
+    expect(await refreshBootstrap()).toBe(true);
+    expect(appStore.get()).toMatchObject({ dataError: null, online: true });
   });
 });

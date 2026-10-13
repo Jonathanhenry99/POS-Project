@@ -10,13 +10,16 @@ export async function refreshBootstrap(): Promise<boolean> {
     const { serverTime: _, ...rest } = data;
     const next: BootstrapData = { ...rest, fetchedAt: new Date().toISOString() };
     await kvSet('bootstrap', next);
-    appStore.set({ data: next, online: true });
+    appStore.set({ data: next, online: true, dataError: null });
     // Pengguna yang sedang login dinonaktifkan owner -> keluar.
     const user = appStore.get().user;
     if (user && !next.users.some((u) => u.id === user.id)) appStore.set({ user: null });
     return true;
   } catch (e) {
+    // Putus internet cukup ditandai offline. Penolakan server (mis. akses tablet dicabut) harus terlihat kasir,
+    // kalau tidak menu lama terus dipakai tanpa ada yang tahu sebabnya.
     if (e instanceof ApiError && e.status === 0) appStore.set({ online: false });
+    else appStore.set({ dataError: { rejected: e instanceof ApiError && e.status === 401, message: errorMessage(e) } });
     return false;
   }
 }

@@ -149,5 +149,5 @@ export async function unpairDevice() {
   await kvDelete('device');
   await kvDelete('bootstrap');
   writeLocal(OPERATOR_KEY, null);
-  appStore.set({ mode: 'online', device: null, data: null, user: null, activeShift: null });
+  appStore.set({ mode: 'online', device: null, data: null, user: null, activeShift: null, dataError: null });
 }

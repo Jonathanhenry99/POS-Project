@@ -179,14 +179,15 @@ function Clock() {
 function SyncPill() {
   const online = useApp((s) => s.online);
   const sync = useApp((s) => s.sync);
-  const label = !online ? 'Offline' : sync.failed ? `${sync.failed} gagal` : sync.pending ? `${sync.pending} antre` : 'Online';
+  const rejected = useApp((s) => !!s.dataError?.rejected);
+  const label = !online ? 'Offline' : rejected ? 'Akses dicabut' : sync.failed ? `${sync.failed} gagal` : sync.pending ? `${sync.pending} antre` : 'Online';
   return (
     <NavLink
       to="/sinkron"
       title="Status sinkronisasi"
       className={cx(
         'press flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold',
-        !online ? 'bg-warning text-on-warning' : sync.failed ? 'bg-danger text-white' : 'bg-white text-success',
+        !online ? 'bg-warning text-on-warning' : sync.failed || rejected ? 'bg-danger text-white' : 'bg-white text-success',
       )}
     >
       {!online ? (
@@ -194,7 +195,7 @@ function SyncPill() {
       ) : sync.syncing ? (
         <RefreshCw className="size-4 animate-spin" />
       ) : (
-        <StatusDot tone={sync.failed ? 'red' : sync.pending ? 'amber' : 'green'} pulse={!sync.failed} />
+        <StatusDot tone={sync.failed || rejected ? 'red' : sync.pending ? 'amber' : 'green'} pulse={!sync.failed && !rejected} />
       )}
       {label}
     </NavLink>
