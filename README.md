@@ -144,6 +144,14 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - **Menu habis**: tombol di toolbar kasir membuka daftar menu dengan sakelar; menu yang habis berlabel HABIS dan tidak bisa dipesan (tekan-lama kartu menu tetap berfungsi sebagai jalan pintas).
 - **Opname** dikerjakan dari HP barista/kitchen (login web), bukan dari tablet kasir.
 
+## Notifikasi WhatsApp (stok)
+
+- Diatur owner di **Pengaturan → Notifikasi WhatsApp**: aktifkan nomor di CallMeBot (layanan gratis pihak ketiga, pemakaian pribadi), isi nama, nomor dan API key, lalu **Tes kirim**. Tablet kasir tidak perlu aplikasi atau nomor; pesan dikirim dari server.
+- Tiga kabar, masing-masing bisa dimatikan: **bahan menipis/habis** (sekali saat turun ke batas minimum, sekali lagi saat habis, diam sampai stok pulih), **menu ditandai habis** di tablet, dan **ringkasan saat Tutup toko**.
+- Pesan masuk antrean di database (`notify_outbox`) dulu; yang gagal dicoba lagi pada kejadian berikutnya (maksimal 5 kali, 12 jam). Kegagalan kirim tidak pernah menggagalkan transaksi/sinkron.
+- API key tersimpan di `notify_recipients`, tidak pernah dikirim ke klien, bootstrap tablet, atau log audit. Alamat layanan bisa diganti lewat env `WHATSAPP_API_URL`.
+- Kabar bahan per penjualan butuh **Resep & HPP** terisi; tanpa resep, stok hanya berubah lewat opname, barang masuk dan waste.
+
 ## Menguji dari HP/laptop owner
 
 - **Pratinjau kasir** (tombol di back office): layar kasir dengan menu asli. Bawaan **simulasi**: tidak ada yang tersimpan, cetak hanya tampil di layar.

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { need } from '../auth';
 import { audit, pool, tx } from '../db';
 import { notFound, parse } from '../http';
+import { menuSoldOut } from '../notify';
 import { getCatalog } from '../repo';
 
 export const catalogRouter = Router();
@@ -107,9 +108,14 @@ catalogRouter.patch('/products/:id', need('admin'), async (req, res) => {
 /** Kasir boleh menandai menu habis/tersedia langsung dari layar kasir. */
 catalogRouter.post('/products/:id/sold-out', need('pos.sell'), async (req, res) => {
   const b = parse(z.object({ soldOut: z.boolean() }), req.body);
-  const { rowCount } = await pool.query('update products set sold_out = $1, updated_at = now() where id = $2', [b.soldOut, req.params.id]);
-  if (!rowCount) throw notFound();
+  // Subquery di RETURNING membaca keadaan sebelum update: kabar hanya dikirim saat benar-benar berubah jadi habis.
+  const { rows } = await pool.query<{ name: string; before: boolean }>(
+    'update products set sold_out = $1, updated_at = now() where id = $2 returning name, (select p.sold_out from products p where p.id = $2) as before',
+    [b.soldOut, req.params.id],
+  );
+  if (!rows[0]) throw notFound();
   await audit(pool, req.auth.user!.id, b.soldOut ? 'sold-out' : 'available', 'product', String(req.params.id));
+  if (b.soldOut && !rows[0].before) await menuSoldOut(rows[0].name, req.auth.user!.name);
   res.json({ ok: true });
 });
 

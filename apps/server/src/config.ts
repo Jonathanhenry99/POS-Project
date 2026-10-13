@@ -21,6 +21,8 @@ export const config = {
   poolMax: parseInt(process.env.PG_POOL_MAX ?? (process.env.VERCEL ? '3' : '10'), 10),
   /** Origin web yang diizinkan (dipisah koma). Kosong = hanya same-origin. */
   corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+  /** Alamat layanan pengirim WhatsApp (bawaan: CallMeBot). Bisa diganti tanpa mengubah kode. */
+  whatsappApiUrl: process.env.WHATSAPP_API_URL ?? 'https://api.callmebot.com/whatsapp.php',
   /** Folder hasil build web untuk disajikan oleh server yang sama (production). */
   webDist: process.env.WEB_DIST ?? fileURLToPath(new URL('../../web/dist', import.meta.url)),
 };

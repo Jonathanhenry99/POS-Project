@@ -4,6 +4,7 @@ import { computeBusinessDaySummary, type BusinessDay, type Shift } from '@mourde
 import { need, needDevice } from '../auth';
 import { audit, pool, tx } from '../db';
 import { badRequest, dateRangeQuery, parse } from '../http';
+import { dayClosed } from '../notify';
 import { getTimezone } from '../repo';
 
 export const businessDaysRouter = Router();
@@ -74,6 +75,7 @@ businessDaysRouter.put('/business-days/:id', needDevice, need('pos.shift'), asyn
     await audit(c, req.auth.user!.id, day.closedAt ? 'close' : 'open', 'business-day', day.id, { businessDate: day.businessDate });
     return 'saved';
   });
+  if (status === 'saved' && day.closedAt) await dayClosed({ businessDate: day.businessDate, closedByName: day.closedByName }, req.auth.device!.name);
   res.json({ ok: true, status });
 });
 

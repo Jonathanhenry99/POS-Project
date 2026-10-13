@@ -6,6 +6,7 @@ import { computeTotals, computeShiftSummary, computeBusinessDaySummary, mergeSet
 import { createApp } from '../src/app';
 import { pool, setPool } from '../src/db';
 import { migrate } from '../src/migrate';
+import { drainNotifications, setTransport } from '../src/notify';
 import { seed } from '../src/seed';
 
 const app = createApp();
@@ -673,5 +674,138 @@ describe('master kasir dan arsip transaksi terminal', () => {
     const isolated = await request(app).get(url).set({ Authorization: `Device ${other.body.token}`, 'X-Operator': userId('kasir') }).expect(200);
     expect(isolated.body.orders).toHaveLength(0);
     await request(app).get('/api/tablet/orders?from=2020-01-03&to=2020-01-02').set(asDevice('kasir')).expect(400);
+  });
+});
+
+describe('notifikasi WhatsApp', () => {
+  const KEY = 'KUNCI987';
+  const sent: { phone: string; apikey: string; text: string }[] = [];
+  let fail = false;
+  let recipientId = '';
+  let ingId = '';
+  const texts = (prefix: string) => sent.map((m) => m.text).filter((t) => t.startsWith(prefix));
+  const move = async (type: 'waste' | 'purchase', qty: number) => {
+    await request(app).post('/api/stock/movements').set(asOwner()).send({ ingredientId: ingId, type, qty, note: 'tes notif' }).expect(201);
+    await drainNotifications();
+  };
+  const soldOut = async (index: number, value: boolean) => {
+    await request(app).post(`/api/products/${catalog.products[index].id}/sold-out`).set(asDevice('kasir')).send({ soldOut: value }).expect(200);
+    await drainNotifications();
+  };
+
+  beforeAll(() => {
+    setTransport(async (to, text) => {
+      if (fail) return { ok: false, detail: 'APIKey is invalid.' };
+      sent.push({ ...to, text });
+      return { ok: true, detail: '' };
+    });
+  });
+  afterAll(async () => {
+    await drainNotifications();
+    setTransport(null);
+  });
+
+  it('penerima disimpan owner, nomor dirapikan, kunci tidak pernah keluar (API, bootstrap tablet, audit); tes kirim langsung', async () => {
+    await request(app).get('/api/notify').set(asDevice('kasir')).expect(403);
+    await request(app).post('/api/notify/recipients').set(asOwner()).send({ name: 'Owner', phone: '12ab', apikey: KEY }).expect(400);
+    const created = await request(app).post('/api/notify/recipients').set(asOwner()).send({ name: 'Owner', phone: '0812-3456-7890', apikey: KEY }).expect(201);
+    recipientId = created.body.id;
+    expect(created.body).toEqual({ id: recipientId, name: 'Owner', phone: '+6281234567890', active: true });
+    const page = await request(app).get('/api/notify').set(asOwner()).expect(200);
+    expect(page.body.toggles).toEqual({ soldOut: true, lowStock: true, dayClose: true });
+    const boot = await request(app).get('/api/sync/bootstrap').set(asDevice());
+    const settings = await request(app).get('/api/settings').set(asDevice('kasir'));
+    const audit = await pool.query("select data from audit_log where entity = 'notify-recipient'");
+    for (const leak of [page.text, boot.text, settings.text, JSON.stringify(audit.rows)]) expect(leak).not.toContain(KEY);
+    expect(boot.text).not.toContain('6281234567890');
+
+    const test = await request(app).post(`/api/notify/recipients/${recipientId}/test`).set(asOwner()).expect(200);
+    expect(test.body).toEqual({ ok: true, detail: '' });
+    expect(sent[0]).toMatchObject({ phone: '+6281234567890', apikey: KEY });
+    expect(sent[0].text).toContain('Tes notifikasi');
+  });
+
+  it('menu ditandai habis: dikabarkan sekali saat berubah, bukan saat dikirim ulang', async () => {
+    await soldOut(1, false);
+    await soldOut(1, true);
+    await soldOut(1, true);
+    expect(texts('*Menu habis')).toHaveLength(1);
+    expect(texts('*Menu habis')[0]).toContain(catalog.products[1].name);
+    expect(texts('*Menu habis')[0]).toContain('Ditandai oleh Kasir 1');
+    await soldOut(1, false);
+    await soldOut(1, true);
+    expect(texts('*Menu habis')).toHaveLength(2);
+    await soldOut(1, false);
+  });
+
+  it('bahan: dikabarkan saat turun ke bawah minimum, lagi saat habis, dan diam sampai stok pulih', async () => {
+    const res = await request(app).post('/api/ingredients').set(asOwner()).send({ name: 'Sirup Tes Notif', unit: 'ml', station: 'bar', minStock: 50, costPerUnit: 10, initialStock: 100 }).expect(201);
+    ingId = res.body.id;
+    await drainNotifications();
+    const mine = () => texts('*Stok bahan').filter((t) => t.includes('Sirup Tes Notif'));
+    expect(mine()).toHaveLength(0);
+    await move('waste', 60);
+    expect(mine()).toHaveLength(1);
+    expect(mine()[0]).toContain('Di bawah minimum:\n- Sirup Tes Notif: sisa 40 ml, minimum 50');
+    await move('waste', 10);
+    expect(mine()).toHaveLength(1);
+    await move('waste', 30);
+    expect(mine()).toHaveLength(2);
+    expect(mine()[1]).toContain('HABIS:\n- Sirup Tes Notif (sisa 0 ml)');
+    await move('purchase', 200);
+    await move('waste', 10);
+    expect(mine()).toHaveLength(2);
+    // Dimatikan owner: tingkat tetap diikuti, tetapi tidak ada pesan.
+    await request(app).put('/api/notify/toggles').set(asOwner()).send({ lowStock: false }).expect(200);
+    await move('waste', 150);
+    expect(mine()).toHaveLength(2);
+    await request(app).put('/api/notify/toggles').set(asOwner()).send({ lowStock: true }).expect(200);
+    await move('purchase', 100);
+    await move('waste', 100);
+    expect(mine()).toHaveLength(3);
+  });
+
+  it('pengiriman gagal tidak mengganggu kasir; pesan tetap antre dan terkirim pada kejadian berikutnya', async () => {
+    fail = true;
+    const before = sent.length;
+    await soldOut(2, true);
+    expect(sent).toHaveLength(before);
+    const stuck = await pool.query("select attempts, last_error from notify_outbox where sent_at is null and kind = 'sold-out'");
+    expect(stuck.rows).toEqual([{ attempts: 1, last_error: 'APIKey is invalid.' }]);
+    const log = (await request(app).get('/api/notify').set(asOwner())).body.log;
+    expect(log[0]).toMatchObject({ kind: 'sold-out', sentAt: null, lastError: 'APIKey is invalid.', recipientName: 'Owner' });
+    fail = false;
+    await soldOut(3, true);
+    expect(sent.slice(before).map((m) => m.text.split('\n')[1]).sort()).toEqual([catalog.products[2].name, catalog.products[3].name].sort());
+    expect((await pool.query('select 1 from notify_outbox where sent_at is null')).rowCount).toBe(0);
+    await soldOut(2, false);
+  });
+
+  it('tutup toko: satu ringkasan bahan kurang & menu habis; kiriman ulang tidak mengulang pesan', async () => {
+    const day: BusinessDay = { id: randomUUID(), deviceId: 'client', businessDate: '2026-10-06', openedAt: '2026-10-06T00:00:00.000Z', openedById: userId('kasir'), openedByName: 'Kasir 1', closedAt: null, closedById: null, closedByName: '', closingNote: '', shiftIds: [], summary: null };
+    const base: Shift = { id: randomUUID(), deviceId: 'client', businessDayId: day.id, openedAt: day.openedAt, openedById: userId('kasir'), openedByName: 'Kasir 1', openingCash: 100000, cashMovements: [], closedAt: null, closedById: null, closedByName: '', countedCash: null, closingNote: '', summary: null };
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(day).expect(200);
+    await request(app).put(`/api/shifts/${base.id}`).set(asDevice('kasir')).send(base).expect(200);
+    const shift = { ...base, closedAt: '2026-10-06T15:00:00.000Z', closedById: userId('kasir'), closedByName: 'Kasir 1', countedCash: 100000, summary: computeShiftSummary(base, []), closeMode: 'day' as const };
+    await request(app).put(`/api/shifts/${base.id}`).set(asDevice('kasir')).send(shift).expect(200);
+    await drainNotifications();
+    expect(texts('*Toko ditutup')).toHaveLength(0);
+    const closed = { ...day, closedAt: '2026-10-06T16:00:00.000Z', closedById: userId('kasir'), closedByName: 'Kasir 1', shiftIds: [shift.id], summary: computeBusinessDaySummary([shift]) };
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(closed).expect(200);
+    await request(app).put(`/api/business-days/${day.id}`).set(asDevice('kasir')).send(closed).expect(200);
+    await drainNotifications();
+    const [summary, ...rest] = texts('*Toko ditutup');
+    expect(rest).toHaveLength(0);
+    expect(summary).toContain('Selasa, 6 Okt 2026, ditutup Kasir 1 (Tablet Kasir)');
+    expect(summary).toMatch(/Di bawah minimum \(\d+\):\n(- .*\n)*- Sirup Tes Notif: sisa 40 ml, minimum 50/);
+    expect(summary).toContain(`- ${catalog.products[3].name}`);
+
+    // Penerima dinonaktifkan: tidak ada pesan baru.
+    await request(app).patch(`/api/notify/recipients/${recipientId}`).set(asOwner()).send({ active: false }).expect(200);
+    const count = sent.length;
+    await soldOut(2, true);
+    expect(sent).toHaveLength(count);
+    await request(app).delete(`/api/notify/recipients/${recipientId}`).set(asOwner()).expect(200);
+    expect((await pool.query('select 1 from notify_outbox')).rowCount).toBe(0);
   });
 });

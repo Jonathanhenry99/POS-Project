@@ -8,6 +8,7 @@ import { setBrandLogo } from '../../lib/brand';
 import { refreshBootstrap } from '../../lib/sync';
 import { PageHeader } from './AdminRoutes';
 import { storeTimezone, useApi } from './hooks';
+import { NotifyCard } from './NotifyCard';
 import { PosMasterCard } from './PosMasterCard';
 import { ReceiptSettingsCard } from './ReceiptSettingsCard';
 
@@ -199,6 +200,7 @@ export function SettingsPage() {
           </Card>
 
           <div className="flex flex-col gap-4">
+            <NotifyCard />
             <Devices />
             <ChangePin />
           </div>

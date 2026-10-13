@@ -4,6 +4,7 @@ import { businessDate, validateOrderMath, type Order } from '@mourden/shared';
 import { need, needDevice } from '../auth';
 import { audit, pool, tx, type Db } from '../db';
 import { badRequest, dateRangeQuery, forbidden, notFound, parse } from '../http';
+import { stockChanged } from '../notify';
 import { getSettings, getTimezone } from '../repo';
 
 export const ordersRouter = Router();
@@ -160,6 +161,7 @@ ordersRouter.put('/orders/:id', needDevice, need('pos.sell'), async (req, res) =
     await audit(c, req.auth.user!.id, 'create', 'order', order.id, { number: order.number, total: order.total });
     return 'created' as const;
   });
+  if (result === 'created') await stockChanged();
   res.status(result === 'created' ? 201 : 200).json({ ok: true, status: result });
 });
 
@@ -213,6 +215,7 @@ ordersRouter.post('/orders/:id/void', need('pos.void'), async (req, res) => {
     if (ok) await audit(c, actor.id, 'void', 'order', String(req.params.id), { reason: body.reason, approvedBy: body.approvedById });
     return ok;
   });
+  if (changed) await stockChanged();
   res.json({ ok: true, status: changed ? 'voided' : 'already-void' });
 });
 

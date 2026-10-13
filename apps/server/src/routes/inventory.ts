@@ -5,6 +5,7 @@ import { businessDate, can, countFromBreakdown } from '@mourden/shared';
 import { need } from '../auth';
 import { audit, pool, tx } from '../db';
 import { badRequest, dateRangeQuery, forbidden, notFound, parse } from '../http';
+import { stockChanged } from '../notify';
 import { getIngredients, getStockLevels, getTimezone, round3 } from '../repo';
 
 export const inventoryRouter = Router();
@@ -62,6 +63,7 @@ inventoryRouter.post('/ingredients', need('admin'), async (req, res) => {
     await audit(c, req.auth.user!.id, 'create', 'ingredient', rows[0].id, b);
     return rows[0].id as string;
   });
+  await stockChanged({ silent: true });
   res.status(201).json({ id });
 });
 
@@ -80,6 +82,7 @@ inventoryRouter.patch('/ingredients/:id', need('admin'), async (req, res) => {
   const { rowCount } = await pool.query(`update ingredients set ${[...sets, 'updated_at = now()'].join(', ')} where id = $${vals.length}`, vals);
   if (!rowCount) throw notFound();
   await audit(pool, req.auth.user!.id, 'update', 'ingredient', String(req.params.id), b);
+  await stockChanged({ silent: true });
   res.json({ ok: true });
 });
 
@@ -122,6 +125,7 @@ inventoryRouter.post('/stock/movements', need('stock.record'), async (req, res) 
     );
     return 'created';
   });
+  if (result === 'created') await stockChanged();
   res.status(result === 'created' ? 201 : 200).json({ ok: true, status: result });
 });
 
@@ -231,6 +235,7 @@ inventoryRouter.put('/opname/:id', need('stock.opname'), async (req, res) => {
     await audit(c, user.id, 'create', 'opname', id, { station: b.station, count: b.items.length });
     return 'created';
   });
+  if (result === 'created') await stockChanged();
   res.status(result === 'created' ? 201 : 200).json({ ok: true, status: result, ...(await opnameDetail(id)) });
 });
 
