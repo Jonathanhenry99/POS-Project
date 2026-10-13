@@ -1,13 +1,13 @@
 import { Coffee, Layers3, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { formatNumber, type Catalog, type Category, type OptionGroup, type Product } from '@mourden/shared';
-import { toast } from '../../components/feedback';
+import { formatDateTime, formatNumber, type Catalog, type Category, type OptionGroup, type Product } from '@mourden/shared';
+import { confirmDialog, toast } from '../../components/feedback';
 import { SearchSelect } from '../../components/SearchSelect';
 import { Badge, Button, Empty, ErrorNote, Field, Modal, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { refreshBootstrap } from '../../lib/sync';
 import { PageHeader } from './AdminRoutes';
-import { useApi } from './hooks';
+import { storeTimezone, useApi } from './hooks';
 import { PillNav, SearchBox, matches } from './PillNav';
 
 async function saved(reload: () => void, msg: string) {
@@ -64,13 +64,20 @@ function Products({ catalog, reload }: { catalog: Catalog; reload: () => void })
   const [editing, setEditing] = useState<Product | 'new' | null>(null);
   const [cat, setCat] = useState('all');
   const [search, setSearch] = useState('');
-  const found = catalog.products.filter((p) => matches(`${p.name} ${p.sku ?? ''}`, search));
+  const [inactiveOnly, setInactiveOnly] = useState(false);
+  const inactiveCount = catalog.products.filter((p) => !p.active).length;
+  const found = catalog.products.filter((p) => matches(`${p.name} ${p.sku ?? ''}`, search) && (!inactiveOnly || !p.active));
   const list = found.filter((p) => cat === 'all' || p.categoryId === cat);
   const catName = (id: string) => catalog.categories.find((c) => c.id === id)?.name ?? '-';
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <SearchBox value={search} onChange={setSearch} label="Cari produk" placeholder="Cari nama produk atau SKU..." className="max-w-md" />
+        {/* Jalan pintas untuk merapikan: menu nonaktif adalah calon yang paling sering dihapus. */}
+        <button className="pill bg-surface shadow-card" aria-pressed={inactiveOnly} onClick={() => setInactiveOnly((v) => !v)}>
+          Nonaktif
+          <span className="rounded-full bg-black/8 px-2 py-0.5 text-xs tabular">{inactiveCount}</span>
+        </button>
         <Button className="ml-auto" icon={<Plus className="size-5" />} disabled={!catalog.categories.length} onClick={() => setEditing('new')}>
           Tambah produk
         </Button>
@@ -144,15 +151,47 @@ function ProductForm({ catalog, product, onClose, onSaved }: { catalog: Catalog;
     }
   };
 
+  const remove = async () => {
+    if (!product) return;
+    setError('');
+    try {
+      const usage = await api<{ orderCount: number; lastSoldAt: string | null }>(`/products/${product.id}/usage`);
+      const history = usage.orderCount
+        ? `Sudah terjual di ${formatNumber(usage.orderCount)} transaksi, terakhir ${formatDateTime(usage.lastSoldAt!, storeTimezone())}. Riwayat penjualan dan laporannya tetap tersimpan.`
+        : 'Menu ini belum pernah terjual.';
+      const ok = await confirmDialog({
+        title: `Hapus ${product.name}?`,
+        message: `${history} Menu hilang dari layar kasir, daftar menu dan resep, dan tidak bisa dikembalikan dari aplikasi. Kalau hanya libur sementara, cukup matikan “Aktif”.`,
+        confirmLabel: 'Hapus menu',
+        danger: true,
+      });
+      if (!ok) return;
+      setBusy(true);
+      await api(`/products/${product.id}`, { method: 'DELETE' });
+      await saved(onSaved, `${product.name} dihapus`);
+      onClose();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  };
+
   return (
     <Modal
       open
       onClose={onClose}
       title={product ? 'Ubah produk' : 'Produk baru'}
       footer={
-        <Button className="flex-1" size="lg" loading={busy} disabled={!form.name.trim() || !form.categoryId} onClick={submit}>
-          Simpan
-        </Button>
+        <>
+          {product && (
+            <Button size="lg" variant="ghost" className="text-danger! hover:bg-danger/10!" icon={<Trash2 className="size-5" />} disabled={busy} onClick={() => void remove()}>
+              Hapus
+            </Button>
+          )}
+          <Button className="flex-1" size="lg" loading={busy} disabled={!form.name.trim() || !form.categoryId} onClick={submit}>
+            Simpan
+          </Button>
+        </>
       }
     >
       <div className="flex flex-col gap-4">

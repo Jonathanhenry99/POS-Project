@@ -516,6 +516,39 @@ describe('laporan & admin', () => {
     expect(boot.catalog.products.find((x: { id: string }) => x.id === p.id).soldOut).toBe(true);
   });
 
+  it('hapus menu: hilang dari menu owner, tablet dan resep; riwayat penjualan tetap ada; hanya owner', async () => {
+    const cat = catalog.categories[0];
+    const created = await request(app).post('/api/products').set(asOwner()).send({ categoryId: cat.id, name: 'Menu Musiman Lama', price: 22000, optionGroupIds: [] }).expect(201);
+    const id = created.body.id as string;
+    const milk = (await request(app).get('/api/ingredients?all=1').set(asOwner())).body.find((i: { name: string }) => i.name === 'Susu Segar');
+    await request(app).put(`/api/recipes/${id}`).set(asOwner()).send({ lines: [{ optionId: null, ingredientId: milk.id, qty: 100 }] }).expect(200);
+    const line = priceLine(22000, [], 1);
+    const items = [{ id: randomUUID(), productId: id, name: 'Menu Musiman Lama', basePrice: 22000, qty: 1, options: [], note: '', ...line }];
+    const totals = computeTotals(items, null, mergeSettings({}).pricing);
+    const order = { ...makeOrder('Americano', [], 1), items, ...totals, payment: { method: 'cash' as const, amount: totals.total, tendered: totals.total, change: 0, reference: '' } };
+    await request(app).put(`/api/orders/${order.id}`).set(asDevice('kasir')).send(order).expect(201);
+
+    const usage = await request(app).get(`/api/products/${id}/usage`).set(asOwner()).expect(200);
+    expect(usage.body.orderCount).toBe(1);
+    expect(usage.body.lastSoldAt).toBeTruthy();
+    await request(app).delete(`/api/products/${id}`).set(asDevice('kasir')).expect(403);
+    await request(app).delete(`/api/products/${id}`).set(asOwner()).expect(200);
+
+    const has = (list: { id?: string; productId?: string }[]) => list.some((x) => (x.id ?? x.productId) === id);
+    expect(has((await request(app).get('/api/admin/catalog').set(asOwner())).body.products)).toBe(false);
+    expect(has((await request(app).get('/api/sync/bootstrap').set(asDevice())).body.catalog.products)).toBe(false);
+    expect(has((await request(app).get('/api/recipes').set(asOwner())).body)).toBe(false);
+    // Tidak bisa diubah, ditandai habis, atau dihapus dua kali.
+    await request(app).patch(`/api/products/${id}`).set(asOwner()).send({ active: true }).expect(404);
+    await request(app).post(`/api/products/${id}/sold-out`).set(asDevice('kasir')).send({ soldOut: true }).expect(404);
+    await request(app).delete(`/api/products/${id}`).set(asOwner()).expect(404);
+    // Riwayat: transaksi, nama item dan resepnya masih tersimpan.
+    const kept = await pool.query('select oi.name, (select count(*)::int from recipe_items where product_id = $1) as recipe from order_items oi where oi.product_id = $1', [id]);
+    expect(kept.rows).toEqual([{ name: 'Menu Musiman Lama', recipe: 1 }]);
+    const logged = await pool.query("select data from audit_log where entity = 'product' and action = 'delete' and entity_id = $1", [id]);
+    expect(logged.rows[0].data).toEqual({ name: 'Menu Musiman Lama' });
+  });
+
   it('tidak bisa menonaktifkan owner terakhir', async () => {
     const res = await request(app).patch(`/api/users/${userId('owner')}`).set(asOwner()).send({ active: false });
     expect(res.status).toBe(400);

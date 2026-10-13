@@ -97,11 +97,36 @@ catalogRouter.patch('/products/:id', need('admin'), async (req, res) => {
   await tx(async (c) => {
     const { sets, vals } = updateSet(b, productCols);
     vals.push(req.params.id);
-    const { rowCount } = await c.query(`update products set ${[...sets, 'updated_at = now()'].join(', ')} where id = $${vals.length}`, vals);
+    const { rowCount } = await c.query(`update products set ${[...sets, 'updated_at = now()'].join(', ')} where id = $${vals.length} and deleted_at is null`, vals);
     if (!rowCount) throw notFound();
     if (b.optionGroupIds) await setProductGroups(c, String(req.params.id), b.optionGroupIds);
     await audit(c, req.auth.user!.id, 'update', 'product', String(req.params.id), b);
   });
+  res.json({ ok: true });
+});
+
+/** Seberapa sering menu ini terjual; ditampilkan sebelum owner menghapusnya. */
+catalogRouter.get('/products/:id/usage', need('admin'), async (req, res) => {
+  const { rows } = await pool.query<{ orderCount: number; lastSoldAt: string | null }>(
+    `select count(distinct o.id)::int as "orderCount", max(o.created_at) as "lastSoldAt"
+     from order_items oi join orders o on o.id = oi.order_id
+     where oi.product_id = $1 and o.status = 'paid'`,
+    [req.params.id],
+  );
+  res.json(rows[0]);
+});
+
+/**
+ * Hapus menu. Barisnya hanya ditandai terhapus (dan dinonaktifkan), tidak dibuang: transaksi lama, laporan per
+ * kategori dan HPP tetap memakai datanya, dan tablet yang belum sinkron masih bisa mengirim penjualan terakhirnya.
+ */
+catalogRouter.delete('/products/:id', need('admin'), async (req, res) => {
+  const { rows } = await pool.query<{ name: string }>(
+    'update products set deleted_at = now(), active = false, sold_out = false, updated_at = now() where id = $1 and deleted_at is null returning name',
+    [req.params.id],
+  );
+  if (!rows[0]) throw notFound();
+  await audit(pool, req.auth.user!.id, 'delete', 'product', String(req.params.id), { name: rows[0].name });
   res.json({ ok: true });
 });
 
@@ -110,7 +135,7 @@ catalogRouter.post('/products/:id/sold-out', need('pos.sell'), async (req, res) 
   const b = parse(z.object({ soldOut: z.boolean() }), req.body);
   // Subquery di RETURNING membaca keadaan sebelum update: kabar hanya dikirim saat benar-benar berubah jadi habis.
   const { rows } = await pool.query<{ name: string; before: boolean }>(
-    'update products set sold_out = $1, updated_at = now() where id = $2 returning name, (select p.sold_out from products p where p.id = $2) as before',
+    'update products set sold_out = $1, updated_at = now() where id = $2 and deleted_at is null returning name, (select p.sold_out from products p where p.id = $2) as before',
     [b.soldOut, req.params.id],
   );
   if (!rows[0]) throw notFound();
@@ -235,7 +260,7 @@ const recipeBody = z.object({
 catalogRouter.put('/recipes/:productId', need('admin'), async (req, res) => {
   const b = parse(recipeBody, req.body);
   await tx(async (c) => {
-    const { rowCount } = await c.query('select 1 from products where id = $1', [req.params.productId]);
+    const { rowCount } = await c.query('select 1 from products where id = $1 and deleted_at is null', [req.params.productId]);
     if (!rowCount) throw notFound('Produk tidak ditemukan');
     await c.query('delete from recipe_items where product_id = $1', [req.params.productId]);
     for (const l of b.lines) {

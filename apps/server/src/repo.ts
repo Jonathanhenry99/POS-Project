@@ -19,7 +19,7 @@ export async function getCatalog(db: Db, includeInactive = false): Promise<Catal
     db.query(`select id, name, sort, active from categories ${activeOnly} order by sort, name`),
     db.query(
       `select id, category_id as "categoryId", name, sku, price, active, sold_out as "soldOut", sort
-       from products ${activeOnly} order by sort, name`,
+       from products where deleted_at is null ${includeInactive ? '' : 'and active'} order by sort, name`,
     ),
     db.query(`select id, name, multi, required, sort from option_groups ${activeOnly} order by sort, name`),
     db.query(
