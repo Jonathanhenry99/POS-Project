@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { can, verifyPin, type PublicUser } from '@mourden/shared';
 import { checkLock, clearFails, need, needDevice, needUser, newDeviceToken, recordFail, signSession, userColumns } from '../auth';
 import { audit, pool, tx } from '../db';
-import { HttpError, forbidden, notFound, parse } from '../http';
+import { HttpError, badRequest, forbidden, notFound, parse } from '../http';
 import { getCatalog, getIngredients, getSettings } from '../repo';
 
 export const authRouter = Router();
@@ -95,7 +95,7 @@ authRouter.post('/devices/test', need('admin'), async (req, res) => {
   const { token, hash } = newDeviceToken();
   const device = await tx(async (c) => {
     await c.query('select pg_advisory_xact_lock(724502)');
-    const existing = await c.query('update devices set token_hash = $1, revoked_at = null where is_test returning id, name, code', [hash]);
+    const existing = await c.query('update devices set token_hash = $1, revoked_at = null, deleted_at = null where is_test returning id, name, code', [hash]);
     if (existing.rows[0]) return existing.rows[0];
     const { rows: used } = await c.query<{ code: string }>('select code from devices');
     const taken = new Set(used.map((r) => r.code));
@@ -114,7 +114,7 @@ authRouter.post('/devices/test', need('admin'), async (req, res) => {
 authRouter.get('/devices', need('admin'), async (_req, res) => {
   const { rows } = await pool.query(
     `select id, name, code, is_test as "isTest", created_at as "createdAt", last_seen_at as "lastSeenAt", revoked_at as "revokedAt"
-     from devices order by created_at desc`,
+     from devices where deleted_at is null order by created_at desc`,
   );
   res.json(rows);
 });
@@ -123,6 +123,19 @@ authRouter.post('/devices/:id/revoke', need('admin'), async (req, res) => {
   const { rowCount } = await pool.query('update devices set revoked_at = now() where id = $1 and revoked_at is null', [req.params.id]);
   if (!rowCount) throw notFound('Perangkat tidak ditemukan');
   await audit(pool, req.auth.user!.id, 'revoke', 'device', String(req.params.id));
+  res.json({ ok: true });
+});
+
+/** Buang perangkat yang sudah dicabut dari daftar. Transaksinya tetap ada dan kode struknya tidak dipakai ulang. */
+authRouter.delete('/devices/:id', need('admin'), async (req, res) => {
+  const { rows } = await pool.query<{ name: string; code: string; revoked: boolean; deleted: boolean }>(
+    'select name, code, revoked_at is not null as revoked, deleted_at is not null as deleted from devices where id = $1',
+    [req.params.id],
+  );
+  if (!rows[0] || rows[0].deleted) throw notFound('Perangkat tidak ditemukan');
+  if (!rows[0].revoked) throw badRequest('Cabut akses perangkat ini dulu, baru bisa dihapus dari daftar');
+  await pool.query('update devices set deleted_at = now() where id = $1', [req.params.id]);
+  await audit(pool, req.auth.user!.id, 'delete', 'device', String(req.params.id), { name: rows[0].name, code: rows[0].code });
   res.json({ ok: true });
 });
 

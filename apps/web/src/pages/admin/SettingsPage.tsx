@@ -313,6 +313,25 @@ function Devices() {
                 Cabut
               </Button>
             )}
+            {d.revokedAt && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-danger!"
+                onClick={async () => {
+                  const ok = await confirmDialog({ title: `Hapus ${d.name} (kode ${d.code}) dari daftar?`, message: 'Perangkat ini sudah dicabut. Transaksinya tetap tersimpan dan kode struknya tidak dipakai lagi oleh tablet lain.', confirmLabel: 'Hapus dari daftar', danger: true });
+                  if (!ok) return;
+                  try {
+                    await api(`/devices/${d.id}`, { method: 'DELETE' });
+                    reload();
+                  } catch (e) {
+                    toast(errorMessage(e), 'error');
+                  }
+                }}
+              >
+                Hapus
+              </Button>
+            )}
           </li>
         ))}
       </ul>

@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { need } from '../auth';
 import { audit, pool, tx } from '../db';
-import { notFound, parse } from '../http';
+import { badRequest, notFound, parse } from '../http';
 import { menuSoldOut } from '../notify';
 import { getCatalog } from '../repo';
 
@@ -48,12 +48,26 @@ catalogRouter.patch('/categories/:id', need('admin'), async (req, res) => {
   const { sets, vals } = updateSet(b, { name: 'name', sort: 'sort', active: 'active' });
   vals.push(req.params.id);
   const { rows } = await pool.query(
-    `update categories set ${[...sets, 'updated_at = now()'].join(', ')} where id = $${vals.length} returning id, name, sort, active`,
+    `update categories set ${[...sets, 'updated_at = now()'].join(', ')} where id = $${vals.length} and deleted_at is null returning id, name, sort, active`,
     vals,
   );
   if (!rows[0]) throw notFound();
   await audit(pool, req.auth.user!.id, 'update', 'category', String(req.params.id), b);
   res.json(rows[0]);
+});
+
+/** Kategori hanya bisa dihapus bila sudah kosong, supaya tidak ada menu yang ikut hilang tanpa disadari. */
+catalogRouter.delete('/categories/:id', need('admin'), async (req, res) => {
+  const name = await tx(async (c) => {
+    const { rows } = await c.query<{ name: string }>('select name from categories where id = $1 and deleted_at is null for update', [req.params.id]);
+    if (!rows[0]) throw notFound();
+    const { rows: used } = await c.query<{ n: number }>('select count(*)::int as n from products where category_id = $1 and deleted_at is null', [req.params.id]);
+    if (used[0].n) throw badRequest(`Masih ada ${used[0].n} menu di kategori ini. Pindahkan atau hapus menunya dulu.`);
+    await c.query('update categories set deleted_at = now(), active = false, updated_at = now() where id = $1', [req.params.id]);
+    await audit(c, req.auth.user!.id, 'delete', 'category', String(req.params.id), { name: rows[0].name });
+    return rows[0].name;
+  });
+  res.json({ ok: true, name });
 });
 
 // ---------- Produk ----------
@@ -209,10 +223,24 @@ catalogRouter.patch('/option-groups/:id', need('admin'), async (req, res) => {
   await tx(async (c) => {
     const { sets, vals } = updateSet(b, { name: 'name', multi: 'multi', required: 'required', sort: 'sort', active: 'active' });
     vals.push(req.params.id);
-    const { rowCount } = await c.query(`update option_groups set ${[...sets, 'updated_at = now()'].join(', ')} where id = $${vals.length}`, vals);
+    const { rowCount } = await c.query(`update option_groups set ${[...sets, 'updated_at = now()'].join(', ')} where id = $${vals.length} and deleted_at is null`, vals);
     if (!rowCount) throw notFound();
     if (b.options) await saveOptions(c, String(req.params.id), b.options);
     await audit(c, req.auth.user!.id, 'update', 'option_group', String(req.params.id), b);
+  });
+  res.json({ ok: true });
+});
+
+/** Hapus grup varian/add-on: dilepas dari semua menu. Pilihan dan resepnya dipertahankan untuk transaksi lama. */
+catalogRouter.delete('/option-groups/:id', need('admin'), async (req, res) => {
+  await tx(async (c) => {
+    const { rows } = await c.query<{ name: string }>(
+      'update option_groups set deleted_at = now(), active = false, updated_at = now() where id = $1 and deleted_at is null returning name',
+      [req.params.id],
+    );
+    if (!rows[0]) throw notFound();
+    const { rowCount } = await c.query('delete from product_option_groups where group_id = $1', [req.params.id]);
+    await audit(c, req.auth.user!.id, 'delete', 'option_group', String(req.params.id), { name: rows[0].name, products: rowCount });
   });
   res.json({ ok: true });
 });

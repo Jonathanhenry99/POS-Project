@@ -1,9 +1,10 @@
 import { KeyRound, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { ROLE_LABEL, type PublicUser, type Role } from '@mourden/shared';
-import { toast } from '../../components/feedback';
-import { Badge, Button, ErrorNote, Field, Modal, Segmented, Spinner, TextInput, Toggle } from '../../components/ui';
+import { confirmDialog, toast } from '../../components/feedback';
+import { Badge, Button, DeleteButton, ErrorNote, Field, Modal, Segmented, Spinner, TextInput, Toggle } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
+import { useApp } from '../../lib/state';
 import { refreshBootstrap } from '../../lib/sync';
 import { PageHeader } from './AdminRoutes';
 import { useApi } from './hooks';
@@ -56,6 +57,7 @@ function UserForm({ user, onClose, onSaved }: { user: PublicUser | null; onClose
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const pinValid = /^\d{4,6}$/.test(pin);
+  const me = useApp((s) => s.user?.id);
 
   const submit = async () => {
     setBusy(true);
@@ -74,15 +76,41 @@ function UserForm({ user, onClose, onSaved }: { user: PublicUser | null; onClose
     }
   };
 
+  const remove = async () => {
+    if (!user) return;
+    const ok = await confirmDialog({
+      title: `Hapus ${user.name}?`,
+      message: `Akun @${user.username} tidak bisa login lagi dan hilang dari daftar. Transaksi, shift dan opname lamanya tetap tercatat atas namanya. Kalau hanya cuti, cukup matikan “Aktif”.`,
+      confirmLabel: 'Hapus pengguna',
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/users/${user.id}`, { method: 'DELETE' });
+      toast(`${user.name} dihapus`);
+      void refreshBootstrap();
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  };
+
   return (
     <Modal
       open
       onClose={onClose}
       title={user ? `Ubah ${user.name}` : 'Pengguna baru'}
       footer={
-        <Button className="flex-1" size="lg" loading={busy} disabled={!name.trim() || (!user && (!username.trim() || !pinValid)) || (!!pin && !pinValid)} onClick={submit}>
-          Simpan
-        </Button>
+        <>
+          {user && user.id !== me && <DeleteButton disabled={busy} onClick={() => void remove()} />}
+          <Button className="flex-1" size="lg" loading={busy} disabled={!name.trim() || (!user && (!username.trim() || !pinValid)) || (!!pin && !pinValid)} onClick={submit}>
+            Simpan
+          </Button>
+        </>
       }
     >
       <div className="flex flex-col gap-4">

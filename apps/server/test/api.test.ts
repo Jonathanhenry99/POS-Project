@@ -842,3 +842,85 @@ describe('notifikasi WhatsApp', () => {
     expect((await pool.query('select 1 from notify_outbox')).rowCount).toBe(0);
   });
 });
+
+describe('hapus data master (riwayat tetap utuh)', () => {
+  const ownerGet = async (url: string) => (await request(app).get(url).set(asOwner()).expect(200)).body;
+
+  it('kategori: ditolak selama masih berisi menu, bisa setelah kosong; hanya owner', async () => {
+    const cat = (await request(app).post('/api/categories').set(asOwner()).send({ name: 'Kategori Sementara' }).expect(201)).body;
+    const prod = (await request(app).post('/api/products').set(asOwner()).send({ categoryId: cat.id, name: 'Isi Kategori', price: 10000, optionGroupIds: [] }).expect(201)).body;
+    await request(app).delete(`/api/categories/${cat.id}`).set(asDevice('kasir')).expect(403);
+    const blocked = await request(app).delete(`/api/categories/${cat.id}`).set(asOwner()).expect(400);
+    expect(blocked.body.error).toContain('Masih ada 1 menu');
+    await request(app).delete(`/api/products/${prod.id}`).set(asOwner()).expect(200);
+    await request(app).delete(`/api/categories/${cat.id}`).set(asOwner()).expect(200);
+    expect((await ownerGet('/api/admin/catalog')).categories.some((c: { id: string }) => c.id === cat.id)).toBe(false);
+    await request(app).patch(`/api/categories/${cat.id}`).set(asOwner()).send({ name: 'Hidup lagi' }).expect(404);
+    await request(app).delete(`/api/categories/${cat.id}`).set(asOwner()).expect(404);
+  });
+
+  it('varian & add-on: grup hilang dan dilepas dari menu yang memakainya', async () => {
+    const group = (await request(app).post('/api/option-groups').set(asOwner()).send({ name: 'Topping Lama', multi: true, required: false, options: [{ name: 'Boba', priceDelta: 5000 }] }).expect(201)).body;
+    const prod = (await request(app).post('/api/products').set(asOwner()).send({ categoryId: catalog.categories[0].id, name: 'Menu Bertopping', price: 20000, optionGroupIds: [group.id] }).expect(201)).body;
+    await request(app).delete(`/api/option-groups/${group.id}`).set(asOwner()).expect(200);
+    const after = await ownerGet('/api/admin/catalog');
+    expect(after.optionGroups.some((g: { id: string }) => g.id === group.id)).toBe(false);
+    expect(after.products.find((p: { id: string }) => p.id === prod.id).optionGroupIds).toEqual([]);
+    await request(app).delete(`/api/option-groups/${group.id}`).set(asOwner()).expect(404);
+    await request(app).delete(`/api/products/${prod.id}`).set(asOwner()).expect(200);
+  });
+
+  it('bahan: ditolak selama masih dipakai resep; setelah dihapus hilang dari stok tetapi pergerakannya tersimpan', async () => {
+    const ing = (await request(app).post('/api/ingredients').set(asOwner()).send({ name: 'Sirup Musiman', unit: 'ml', station: 'bar', minStock: 0, costPerUnit: 50, initialStock: 300 }).expect(201)).body;
+    const prod = (await request(app).post('/api/products').set(asOwner()).send({ categoryId: catalog.categories[0].id, name: 'Minuman Musiman', price: 25000, optionGroupIds: [] }).expect(201)).body;
+    await request(app).put(`/api/recipes/${prod.id}`).set(asOwner()).send({ lines: [{ optionId: null, ingredientId: ing.id, qty: 30 }] }).expect(200);
+    expect(await ownerGet(`/api/ingredients/${ing.id}/usage`)).toEqual({ recipes: ['Minuman Musiman'], stock: 300 });
+    const blocked = await request(app).delete(`/api/ingredients/${ing.id}`).set(asOwner()).expect(400);
+    expect(blocked.body.error).toContain('Minuman Musiman');
+    await request(app).put(`/api/recipes/${prod.id}`).set(asOwner()).send({ lines: [] }).expect(200);
+    await request(app).delete(`/api/ingredients/${ing.id}`).set(asDevice('kasir')).expect(403);
+    await request(app).delete(`/api/ingredients/${ing.id}`).set(asOwner()).expect(200);
+    for (const url of ['/api/ingredients', '/api/ingredients?all=1', '/api/ingredients?inactive=1']) expect((await ownerGet(url)).some((i: { id: string }) => i.id === ing.id)).toBe(false);
+    await request(app).post('/api/stock/movements').set(asOwner()).send({ ingredientId: ing.id, type: 'purchase', qty: 10 }).expect(404);
+    await request(app).patch(`/api/ingredients/${ing.id}`).set(asOwner()).send({ active: true }).expect(404);
+    expect((await pool.query('select 1 from stock_movements where ingredient_id = $1', [ing.id])).rowCount).toBe(1);
+    await request(app).delete(`/api/products/${prod.id}`).set(asOwner()).expect(200);
+  });
+
+  it('bahan nonaktif tetap terlihat owner (untuk diaktifkan lagi atau dihapus), tidak untuk barista', async () => {
+    const ing = (await request(app).post('/api/ingredients').set(asOwner()).send({ name: 'Bahan Libur', unit: 'pcs', station: 'bar', minStock: 0, costPerUnit: 1, active: false }).expect(201)).body;
+    const has = (list: { id: string }[]) => list.some((i) => i.id === ing.id);
+    expect(has(await ownerGet('/api/ingredients'))).toBe(false);
+    expect(has(await ownerGet('/api/ingredients?inactive=1'))).toBe(true);
+    const barista = (await request(app).post('/api/auth/login').send({ username: 'barista', pin: '1111' })).body.token;
+    expect(has((await request(app).get('/api/ingredients?inactive=1').set({ Authorization: `Bearer ${barista}` }).expect(200)).body)).toBe(false);
+    await request(app).delete(`/api/ingredients/${ing.id}`).set(asOwner()).expect(200);
+  });
+
+  it('pengguna: tidak bisa menghapus diri sendiri; yang dihapus tidak bisa login dan username-nya bebas dipakai lagi', async () => {
+    await request(app).delete(`/api/users/${userId('owner')}`).set(asOwner()).expect(400);
+    const made = (await request(app).post('/api/users').set(asOwner()).send({ name: 'Kitchen Lama', username: 'kitchenlama', role: 'kitchen', pin: '2468' }).expect(201)).body;
+    await request(app).post('/api/auth/login').send({ username: 'kitchenlama', pin: '2468' }).expect(200);
+    await request(app).delete(`/api/users/${made.id}`).set(asDevice('kasir')).expect(403);
+    await request(app).delete(`/api/users/${made.id}`).set(asOwner()).expect(200);
+    expect((await ownerGet('/api/users')).some((u: { id: string }) => u.id === made.id)).toBe(false);
+    expect((await request(app).get('/api/sync/bootstrap').set(asDevice())).body.users.some((u: { id: string }) => u.id === made.id)).toBe(false);
+    expect((await request(app).post('/api/auth/login').send({ username: 'kitchenlama', pin: '2468' })).status).not.toBe(200);
+    await request(app).patch(`/api/users/${made.id}`).set(asOwner()).send({ active: true }).expect(404);
+    await request(app).delete(`/api/users/${made.id}`).set(asOwner()).expect(404);
+    const again = (await request(app).post('/api/users').set(asOwner()).send({ name: 'Kitchen Baru', username: 'kitchenlama', role: 'kitchen', pin: '1357' }).expect(201)).body;
+    await request(app).delete(`/api/users/${again.id}`).set(asOwner()).expect(200);
+  });
+
+  it('perangkat: hanya yang sudah dicabut bisa dibuang dari daftar; kode struknya tidak dipakai ulang', async () => {
+    const paired = (await request(app).post('/api/devices/pair').send({ username: 'owner', pin: '123456', name: 'Tablet Bekas' }).expect(201)).body;
+    await request(app).delete(`/api/devices/${paired.device.id}`).set(asOwner()).expect(400);
+    await request(app).post(`/api/devices/${paired.device.id}/revoke`).set(asOwner()).expect(200);
+    await request(app).delete(`/api/devices/${paired.device.id}`).set(asOwner()).expect(200);
+    expect((await ownerGet('/api/devices')).some((d: { id: string }) => d.id === paired.device.id)).toBe(false);
+    await request(app).delete(`/api/devices/${paired.device.id}`).set(asOwner()).expect(404);
+    const next = (await request(app).post('/api/devices/pair').send({ username: 'owner', pin: '123456', name: 'Tablet Pengganti' }).expect(201)).body;
+    expect(next.device.code).not.toBe(paired.device.code);
+    await request(app).post(`/api/devices/${next.device.id}/revoke`).set(asOwner()).expect(200);
+  });
+});

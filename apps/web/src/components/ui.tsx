@@ -1,4 +1,4 @@
-import { Delete, Loader2, X } from 'lucide-react';
+import { Delete, Loader2, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 import { formatNumber, parseRupiah } from '@mourden/shared';
 
@@ -51,6 +51,15 @@ export function Button({
       {loading ? <Loader2 className="size-5 animate-spin" /> : icon}
       {children}
     </button>
+  );
+}
+
+/** Tombol hapus di kaki form, di kiri tombol Simpan. Pemanggil selalu meminta konfirmasi dulu. */
+export function DeleteButton({ onClick, disabled, children = 'Hapus' }: { onClick: () => void; disabled?: boolean; children?: ReactNode }) {
+  return (
+    <Button size="lg" variant="ghost" className="text-danger! hover:bg-danger/10!" icon={<Trash2 className="size-5" />} disabled={disabled} onClick={onClick}>
+      {children}
+    </Button>
   );
 }
 

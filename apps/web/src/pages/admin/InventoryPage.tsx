@@ -1,9 +1,9 @@
 import { PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { formatDateTime, formatNumber, formatRupiah, STATION_LABEL, type StockLevel, type Station } from '@mourden/shared';
-import { toast } from '../../components/feedback';
+import { confirmDialog, toast } from '../../components/feedback';
 import { SearchSelect } from '../../components/SearchSelect';
-import { Badge, Button, Empty, ErrorNote, Field, Modal, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
+import { Badge, Button, DeleteButton, Empty, ErrorNote, Field, Modal, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { uuid } from '../../lib/id';
 import { refreshBootstrap } from '../../lib/sync';
@@ -47,15 +47,17 @@ export function InventoryPage() {
 type MoveType = 'purchase' | 'waste' | 'adjust';
 
 function StockLevels() {
-  const { data, error, loading, reload } = useApi<StockLevel[]>('/ingredients');
+  const { data, error, loading, reload } = useApi<StockLevel[]>('/ingredients?inactive=1');
   const [station, setStation] = useState<'all' | Station>('all');
   const [editing, setEditing] = useState<StockLevel | 'new' | null>(null);
   const [moving, setMoving] = useState<{ item: StockLevel; type: MoveType } | null>(null);
   const [search, setSearch] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
-  const found = (data ?? []).filter((i) => matches(i.name, search) && (!lowOnly || i.status !== 'aman'));
+  // Bahan nonaktif ikut tampil (bisa diaktifkan lagi atau dihapus) tetapi tidak dihitung sebagai "perlu dibeli".
+  const isLow = (i: StockLevel) => i.active && i.status !== 'aman';
+  const found = (data ?? []).filter((i) => matches(i.name, search) && (!lowOnly || isLow(i)));
   const list = found.filter((i) => station === 'all' || i.station === station);
-  const lowCount = (data ?? []).filter((i) => i.status !== 'aman').length;
+  const lowCount = (data ?? []).filter(isLow).length;
   const value = list.reduce((s, i) => s + Math.max(0, i.stock) * i.costPerUnit, 0);
 
   return (
@@ -100,7 +102,9 @@ function StockLevels() {
               {list.map((i) => (
                 <tr key={i.id}>
                   <td className="px-3 py-2">
-                    <p className="font-semibold">{i.name}</p>
+                    <p className={cx('font-semibold', !i.active && 'text-fg-subtle')}>
+                      {i.name} {!i.active && <Badge>Nonaktif</Badge>}
+                    </p>
                     <p className="text-xs text-fg-muted">
                       {STATION_LABEL[i.station]} · {formatRupiah(i.costPerUnit)}/{i.unit}
                     </p>
@@ -112,7 +116,7 @@ function StockLevels() {
                   <td className="px-3 py-2 text-right text-fg-muted tabular">{i.avgDailyUsage ? formatNumber(i.avgDailyUsage) : '-'}</td>
                   <td className="px-3 py-2 text-right tabular">{i.daysLeft === null ? '-' : `± ${i.daysLeft} hari`}</td>
                   <td className="px-3 py-2">
-                    <Badge tone={i.status === 'aman' ? 'green' : i.status === 'menipis' ? 'amber' : 'red'}>{i.status}</Badge>
+                    {i.active ? <Badge tone={i.status === 'aman' ? 'green' : i.status === 'menipis' ? 'amber' : 'red'}>{i.status}</Badge> : <span className="text-fg-subtle">-</span>}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex justify-end gap-1">
@@ -184,8 +188,46 @@ function IngredientForm({ item, onClose, onSaved }: { item: StockLevel | null; o
     }
   };
 
+  const remove = async () => {
+    if (!item) return;
+    setError('');
+    try {
+      const usage = await api<{ recipes: string[]; stock: number }>(`/ingredients/${item.id}/usage`);
+      // Selama masih di resep, penjualan menu itu tetap memotong bahan ini; jadi harus dikeluarkan dari resep dulu.
+      if (usage.recipes.length) return setError(`Masih dipakai di resep ${usage.recipes.length} menu: ${usage.recipes.slice(0, 5).join(', ')}${usage.recipes.length > 5 ? ', ...' : ''}. Keluarkan dari resep dulu, atau cukup matikan “Aktif”.`);
+      const ok = await confirmDialog({
+        title: `Hapus ${item.name}?`,
+        message: `${usage.stock > 0 ? `Sisa stok ${formatNumber(usage.stock)} ${item.unit} tidak dihitung lagi. ` : ''}Bahan hilang dari stok dan opname. Riwayat pergerakan dan opname lamanya tetap tersimpan.`,
+        confirmLabel: 'Hapus bahan',
+        danger: true,
+      });
+      if (!ok) return;
+      setBusy(true);
+      await api(`/ingredients/${item.id}`, { method: 'DELETE' });
+      toast(`${item.name} dihapus`);
+      void refreshBootstrap();
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  };
+
   return (
-    <Modal open onClose={onClose} title={item ? 'Ubah bahan' : 'Bahan baru'} footer={<Button className="flex-1" size="lg" loading={busy} disabled={!form.name.trim() || !form.unit.trim()} onClick={submit}>Simpan</Button>}>
+    <Modal
+      open
+      onClose={onClose}
+      title={item ? 'Ubah bahan' : 'Bahan baru'}
+      footer={
+        <>
+          {item && <DeleteButton disabled={busy} onClick={() => void remove()} />}
+          <Button className="flex-1" size="lg" loading={busy} disabled={!form.name.trim() || !form.unit.trim()} onClick={submit}>
+            Simpan
+          </Button>
+        </>
+      }
+    >
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
           <Field label="Nama bahan">{(id) => <TextInput id={id} value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus />}</Field>

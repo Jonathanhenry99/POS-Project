@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { formatDateTime, formatNumber, type Catalog, type Category, type OptionGroup, type Product } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
 import { SearchSelect } from '../../components/SearchSelect';
-import { Badge, Button, Empty, ErrorNote, Field, Modal, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
+import { Badge, Button, DeleteButton, Empty, ErrorNote, Field, Modal, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { refreshBootstrap } from '../../lib/sync';
 import { PageHeader } from './AdminRoutes';
@@ -183,11 +183,7 @@ function ProductForm({ catalog, product, onClose, onSaved }: { catalog: Catalog;
       title={product ? 'Ubah produk' : 'Produk baru'}
       footer={
         <>
-          {product && (
-            <Button size="lg" variant="ghost" className="text-danger! hover:bg-danger/10!" icon={<Trash2 className="size-5" />} disabled={busy} onClick={() => void remove()}>
-              Hapus
-            </Button>
-          )}
+          {product && <DeleteButton disabled={busy} onClick={() => void remove()} />}
           <Button className="flex-1" size="lg" loading={busy} disabled={!form.name.trim() || !form.categoryId} onClick={submit}>
             Simpan
           </Button>
@@ -254,12 +250,12 @@ function Categories({ catalog, reload }: { catalog: Catalog; reload: () => void 
           </li>
         ))}
       </ul>
-      {editing && <CategoryForm category={editing === 'new' ? null : editing} nextSort={catalog.categories.length} onClose={() => setEditing(null)} onSaved={reload} />}
+      {editing && <CategoryForm category={editing === 'new' ? null : editing} nextSort={catalog.categories.length} menuCount={editing === 'new' ? 0 : catalog.products.filter((p) => p.categoryId === editing.id).length} onClose={() => setEditing(null)} onSaved={reload} />}
     </>
   );
 }
 
-function CategoryForm({ category, nextSort, onClose, onSaved }: { category: Category | null; nextSort: number; onClose: () => void; onSaved: () => void }) {
+function CategoryForm({ category, nextSort, menuCount, onClose, onSaved }: { category: Category | null; nextSort: number; menuCount: number; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(category?.name ?? '');
   const [sort, setSort] = useState(String(category?.sort ?? nextSort));
   const [active, setActive] = useState(category?.active ?? true);
@@ -278,8 +274,37 @@ function CategoryForm({ category, nextSort, onClose, onSaved }: { category: Cate
       setBusy(false);
     }
   };
+  const remove = async () => {
+    if (!category) return;
+    // Kategori harus kosong dulu, supaya tidak ada menu yang ikut hilang tanpa disadari.
+    if (menuCount) return setError(`Masih ada ${menuCount} menu di kategori ini (termasuk yang nonaktif). Pindahkan ke kategori lain atau hapus menunya dulu.`);
+    const ok = await confirmDialog({ title: `Hapus kategori ${category.name}?`, message: 'Kategori hilang dari layar kasir dan daftar menu. Laporan lama tetap memakai namanya.', confirmLabel: 'Hapus kategori', danger: true });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api(`/categories/${category.id}`, { method: 'DELETE' });
+      await saved(onSaved, `Kategori ${category.name} dihapus`);
+      onClose();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  };
   return (
-    <Modal open size="sm" onClose={onClose} title={category ? 'Ubah kategori' : 'Kategori baru'} footer={<Button className="flex-1" loading={busy} disabled={!name.trim()} onClick={submit}>Simpan</Button>}>
+    <Modal
+      open
+      size="sm"
+      onClose={onClose}
+      title={category ? 'Ubah kategori' : 'Kategori baru'}
+      footer={
+        <>
+          {category && <DeleteButton disabled={busy} onClick={() => void remove()} />}
+          <Button className="flex-1" size="lg" loading={busy} disabled={!name.trim()} onClick={submit}>
+            Simpan
+          </Button>
+        </>
+      }
+    >
       <div className="flex flex-col gap-4">
         <Field label="Nama">{(id) => <TextInput id={id} value={name} onChange={(e) => setName(e.target.value)} autoFocus />}</Field>
         <Field label="Urutan tampil" hint="Angka kecil tampil lebih dulu di layar kasir.">
@@ -318,12 +343,12 @@ function Groups({ catalog, reload }: { catalog: Catalog; reload: () => void }) {
           </button>
         ))}
       </div>
-      {editing && <GroupForm group={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={reload} />}
+      {editing && <GroupForm usedBy={editing === 'new' ? 0 : catalog.products.filter((p) => p.optionGroupIds.includes(editing.id)).length} group={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={reload} />}
     </>
   );
 }
 
-function GroupForm({ group, onClose, onSaved }: { group: OptionGroup | null; onClose: () => void; onSaved: () => void }) {
+function GroupForm({ group, usedBy, onClose, onSaved }: { group: OptionGroup | null; usedBy: number; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(group?.name ?? '');
   const [multi, setMulti] = useState(group?.multi ?? false);
   const [required, setRequired] = useState(group?.required ?? false);
@@ -348,8 +373,40 @@ function GroupForm({ group, onClose, onSaved }: { group: OptionGroup | null; onC
     }
   };
 
+  const remove = async () => {
+    if (!group) return;
+    const ok = await confirmDialog({
+      title: `Hapus grup ${group.name}?`,
+      message: usedBy ? `Grup ini dipakai ${usedBy} menu dan akan dilepas dari menu-menu itu. Pilihan di dalamnya tidak muncul lagi di kasir; transaksi lama tidak berubah.` : 'Grup ini tidak dipakai menu mana pun. Transaksi lama tidak berubah.',
+      confirmLabel: 'Hapus grup',
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api(`/option-groups/${group.id}`, { method: 'DELETE' });
+      await saved(onSaved, `Grup ${group.name} dihapus`);
+      onClose();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  };
+
   return (
-    <Modal open onClose={onClose} title={group ? 'Ubah grup' : 'Grup baru'} footer={<Button className="flex-1" size="lg" loading={busy} disabled={!valid} onClick={submit}>Simpan</Button>}>
+    <Modal
+      open
+      onClose={onClose}
+      title={group ? 'Ubah grup' : 'Grup baru'}
+      footer={
+        <>
+          {group && <DeleteButton disabled={busy} onClick={() => void remove()} />}
+          <Button className="flex-1" size="lg" loading={busy} disabled={!valid} onClick={submit}>
+            Simpan
+          </Button>
+        </>
+      }
+    >
       <div className="flex flex-col gap-4">
         <Field label="Nama grup" hint="Contoh: Ukuran, Suhu, Tambahan">
           {(id) => <TextInput id={id} value={name} onChange={(e) => setName(e.target.value)} autoFocus />}

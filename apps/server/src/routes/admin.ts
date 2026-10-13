@@ -13,7 +13,7 @@ const role = z.enum(['owner', 'kasir', 'barista', 'kitchen']);
 const pin = z.string().regex(/^\d{4,6}$/, 'PIN harus 4-6 angka');
 
 adminRouter.get('/users', need('admin'), async (_req, res) => {
-  const { rows } = await pool.query(`select ${userColumns} from users order by active desc, name`);
+  const { rows } = await pool.query(`select ${userColumns} from users where deleted_at is null order by active desc, name`);
   res.json(rows);
 });
 
@@ -41,7 +41,7 @@ adminRouter.patch('/users/:id', need('admin'), async (req, res) => {
     req.body,
   );
   const user = await tx(async (c) => {
-    const { rows: cur } = await c.query('select id, role, active from users where id = $1 for update', [req.params.id]);
+    const { rows: cur } = await c.query('select id, role, active from users where id = $1 and deleted_at is null for update', [req.params.id]);
     if (!cur[0]) throw notFound('Pengguna tidak ditemukan');
     const losingOwner = cur[0].role === 'owner' && cur[0].active && (body.active === false || (body.role && body.role !== 'owner'));
     if (losingOwner) {
@@ -70,6 +70,28 @@ adminRouter.patch('/users/:id', need('admin'), async (req, res) => {
 });
 
 /** Pengguna mengganti PIN sendiri (perlu PIN lama). */
+/**
+ * Hapus pengguna. Akunnya tidak bisa login lagi dan hilang dari daftar; transaksi, shift dan opname lama
+ * tetap atas namanya. Username dibebaskan supaya bisa dipakai lagi.
+ */
+adminRouter.delete('/users/:id', need('admin'), async (req, res) => {
+  if (req.params.id === req.auth.user!.id) throw badRequest('Tidak bisa menghapus akun sendiri');
+  await tx(async (c) => {
+    const { rows: cur } = await c.query<{ name: string; username: string; role: string; active: boolean }>(
+      'select name, username, role, active from users where id = $1 and deleted_at is null for update',
+      [req.params.id],
+    );
+    if (!cur[0]) throw notFound('Pengguna tidak ditemukan');
+    if (cur[0].role === 'owner' && cur[0].active) {
+      const { rows } = await c.query<{ n: number }>("select count(*)::int as n from users where role = 'owner' and active");
+      if (rows[0].n <= 1) throw badRequest('Harus ada minimal satu owner aktif');
+    }
+    await c.query("update users set deleted_at = now(), active = false, username = username || '~' || left(id::text, 8), updated_at = now() where id = $1", [req.params.id]);
+    await audit(c, req.auth.user!.id, 'delete', 'user', String(req.params.id), { name: cur[0].name, username: cur[0].username });
+  });
+  res.json({ ok: true });
+});
+
 adminRouter.post('/me/pin', needUser, async (req, res) => {
   const body = parse(z.object({ oldPin: pin, newPin: pin }), req.body);
   const { rows } = await pool.query<{ pin_hash: string }>('select pin_hash from users where id = $1', [req.auth.user!.id]);

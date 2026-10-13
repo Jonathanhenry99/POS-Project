@@ -16,12 +16,12 @@ export async function getTimezone(db: Db): Promise<string> {
 export async function getCatalog(db: Db, includeInactive = false): Promise<Catalog> {
   const activeOnly = includeInactive ? '' : 'where active';
   const [cats, prods, groups, opts, links] = await Promise.all([
-    db.query(`select id, name, sort, active from categories ${activeOnly} order by sort, name`),
+    db.query(`select id, name, sort, active from categories where deleted_at is null ${includeInactive ? '' : 'and active'} order by sort, name`),
     db.query(
       `select id, category_id as "categoryId", name, sku, price, active, sold_out as "soldOut", sort
        from products where deleted_at is null ${includeInactive ? '' : 'and active'} order by sort, name`,
     ),
-    db.query(`select id, name, multi, required, sort from option_groups ${activeOnly} order by sort, name`),
+    db.query(`select id, name, multi, required, sort from option_groups where deleted_at is null ${includeInactive ? '' : 'and active'} order by sort, name`),
     db.query(
       `select id, group_id as "groupId", name, price_delta as "priceDelta", active, sort
        from options ${activeOnly} order by sort, name`,
@@ -46,15 +46,16 @@ const ingredientCols = `i.id, i.name, i.unit, i.station, i.min_stock as "minStoc
 
 export async function getIngredients(db: Db, includeInactive = false): Promise<Ingredient[]> {
   const { rows } = await db.query(
-    `select ${ingredientCols} from ingredients i ${includeInactive ? '' : 'where i.active'} order by i.station, i.name`,
+    `select ${ingredientCols} from ingredients i where i.deleted_at is null ${includeInactive ? '' : 'and i.active'} order by i.station, i.name`,
   );
   return rows;
 }
 
 /** Stok saat ini, rata-rata pemakaian 7 hari, perkiraan hari habis, dan status. */
-export async function getStockLevels(db: Db, opts: { station?: string; ids?: string[] } = {}): Promise<StockLevel[]> {
+export async function getStockLevels(db: Db, opts: { station?: string; ids?: string[]; includeInactive?: boolean } = {}): Promise<StockLevel[]> {
   const params: unknown[] = [];
-  const where = ['i.active'];
+  // Bahan yang dihapus selalu nonaktif, jadi 'i.active' sudah menyaringnya.
+  const where = [opts.includeInactive ? 'i.deleted_at is null' : 'i.active'];
   if (opts.station) {
     params.push(opts.station);
     where.push(`i.station = $${params.length}`);

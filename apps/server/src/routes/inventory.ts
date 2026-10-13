@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { businessDate, can, countFromBreakdown } from '@mourden/shared';
 import { need } from '../auth';
-import { audit, pool, tx } from '../db';
+import { audit, pool, tx, type Db } from '../db';
 import { badRequest, dateRangeQuery, forbidden, notFound, parse } from '../http';
 import { stockChanged } from '../notify';
 import { getIngredients, getStockLevels, getTimezone, round3 } from '../repo';
@@ -15,13 +15,14 @@ const station = z.enum(['bar', 'kitchen', 'umum']);
 
 /** Daftar bahan + stok. Owner melihat semua; barista/kitchen juga boleh (untuk mencatat barang masuk/terbuang). */
 inventoryRouter.get('/ingredients', need('stock.record'), async (req, res) => {
-  const q = parse(z.object({ station: station.optional(), all: z.enum(['1']).optional() }), req.query);
+  const q = parse(z.object({ station: station.optional(), all: z.enum(['1']).optional(), inactive: z.enum(['1']).optional() }), req.query);
   if (q.all) {
     if (!can(req.auth.user!.role, 'admin')) throw forbidden();
     res.json(await getIngredients(pool, true));
     return;
   }
-  const levels = await getStockLevels(pool, { station: q.station });
+  // Owner melihat bahan nonaktif juga (untuk diaktifkan lagi atau dihapus); barista hanya yang aktif.
+  const levels = await getStockLevels(pool, { station: q.station, includeInactive: !!q.inactive && can(req.auth.user!.role, 'admin') });
   res.json(can(req.auth.user!.role, 'admin') ? levels : levels.map(hideSystemStock));
 });
 
@@ -79,7 +80,7 @@ inventoryRouter.patch('/ingredients/:id', need('admin'), async (req, res) => {
     sets.push(`${col} = $${vals.length}`);
   }
   vals.push(req.params.id);
-  const { rowCount } = await pool.query(`update ingredients set ${[...sets, 'updated_at = now()'].join(', ')} where id = $${vals.length}`, vals);
+  const { rowCount } = await pool.query(`update ingredients set ${[...sets, 'updated_at = now()'].join(', ')} where id = $${vals.length} and deleted_at is null`, vals);
   if (!rowCount) throw notFound();
   await audit(pool, req.auth.user!.id, 'update', 'ingredient', String(req.params.id), b);
   await stockChanged({ silent: true });
@@ -99,6 +100,39 @@ const movementBody = z.object({
   note: z.string().max(200).default(''),
 });
 
+/** Menu yang resepnya masih memakai bahan ini (menu terhapus tidak dihitung). */
+async function recipesUsing(db: Db, ingredientId: string): Promise<string[]> {
+  const { rows } = await db.query<{ name: string }>(
+    `select distinct p.name from recipe_items ri join products p on p.id = ri.product_id
+     where ri.ingredient_id = $1 and p.deleted_at is null order by p.name`,
+    [ingredientId],
+  );
+  return rows.map((r) => r.name);
+}
+
+inventoryRouter.get('/ingredients/:id/usage', need('admin'), async (req, res) => {
+  const [recipes, level] = await Promise.all([recipesUsing(pool, String(req.params.id)), getStockLevels(pool, { ids: [String(req.params.id)], includeInactive: true })]);
+  res.json({ recipes, stock: level[0]?.stock ?? 0 });
+});
+
+/**
+ * Hapus bahan. Ditolak selama masih ada resep yang memakainya: kalau tidak, penjualan menu itu tetap memotong
+ * stok bahan yang sudah tidak terlihat. Pergerakan stok dan opname lamanya tetap tersimpan.
+ */
+inventoryRouter.delete('/ingredients/:id', need('admin'), async (req, res) => {
+  await tx(async (c) => {
+    const { rows } = await c.query<{ name: string }>('select name from ingredients where id = $1 and deleted_at is null for update', [req.params.id]);
+    if (!rows[0]) throw notFound();
+    const recipes = await recipesUsing(c, String(req.params.id));
+    if (recipes.length) throw badRequest(`Masih dipakai di resep ${recipes.length} menu: ${recipes.slice(0, 5).join(', ')}${recipes.length > 5 ? ', ...' : ''}. Keluarkan dari resep dulu.`);
+    // Resep milik menu yang sudah dihapus tidak dipakai lagi; barisnya dibuang agar tidak menggantung.
+    await c.query('delete from recipe_items where ingredient_id = $1', [req.params.id]);
+    await c.query('update ingredients set deleted_at = now(), active = false, updated_at = now() where id = $1', [req.params.id]);
+    await audit(c, req.auth.user!.id, 'delete', 'ingredient', String(req.params.id), { name: rows[0].name });
+  });
+  res.json({ ok: true });
+});
+
 inventoryRouter.post('/stock/movements', need('stock.record'), async (req, res) => {
   const b = parse(movementBody, req.body);
   const user = req.auth.user!;
@@ -111,7 +145,7 @@ inventoryRouter.post('/stock/movements', need('stock.record'), async (req, res) 
       const { rowCount } = await c.query('select 1 from stock_movements where id = $1', [b.id]);
       if (rowCount) return 'exists';
     }
-    const { rows } = await c.query<{ cost_per_unit: number }>('select cost_per_unit from ingredients where id = $1 for update', [b.ingredientId]);
+    const { rows } = await c.query<{ cost_per_unit: number }>('select cost_per_unit from ingredients where id = $1 and deleted_at is null for update', [b.ingredientId]);
     if (!rows[0]) throw notFound('Bahan tidak ditemukan');
     let unitCost = rows[0].cost_per_unit;
     if (b.type === 'purchase' && b.totalCost && b.qty > 0) {
