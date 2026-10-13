@@ -8,9 +8,10 @@ export interface NotifyToggles {
   soldOut: boolean;
   lowStock: boolean;
   dayClose: boolean;
+  approval: boolean;
 }
-export const DEFAULT_TOGGLES: NotifyToggles = { soldOut: true, lowStock: true, dayClose: true };
-export type NotifyKind = 'sold-out' | 'stock' | 'day-close' | 'test';
+export const DEFAULT_TOGGLES: NotifyToggles = { soldOut: true, lowStock: true, dayClose: true, approval: true };
+export type NotifyKind = 'sold-out' | 'stock' | 'day-close' | 'approval' | 'test';
 
 export interface SendResult {
   ok: boolean;
@@ -183,6 +184,14 @@ export async function menuSoldOut(productName: string, byName: string) {
   await notify('sold-out', 'soldOut', async () => {
     const s = await getSettings(pool);
     return `*Menu habis - ${s.store.name}*\n${productName}\n\nDitandai oleh ${byName}, ${clock(s.store.timezone)}`;
+  });
+}
+
+/** Kasir meminta persetujuan owner dari tablet. Kode di pesan ini bisa langsung dibacakan ke kasir bila setuju. */
+export async function approvalRequested(r: { by: string; device: string; reason: string; code: string; minutes: number }) {
+  await notify('approval', 'approval', async () => {
+    const s = await getSettings(pool);
+    return `*Minta persetujuan - ${s.store.name}*\n${r.by} (${r.device}):\n${r.reason}\n\nSetuju? Beri kode *${r.code.slice(0, 3)} ${r.code.slice(3)}* ke kasir, atau tekan Setujui di dashboard. Berlaku ${r.minutes} menit. Abaikan pesan ini untuk menolak.`;
   });
 }
 

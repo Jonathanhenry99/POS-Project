@@ -25,7 +25,7 @@ notifyRouter.get('/notify', need('admin'), async (_req, res) => {
 });
 
 notifyRouter.put('/notify/toggles', need('admin'), async (req, res) => {
-  const b = parse(z.object({ soldOut: z.boolean(), lowStock: z.boolean(), dayClose: z.boolean() }).partial(), req.body);
+  const b = parse(z.object({ soldOut: z.boolean(), lowStock: z.boolean(), dayClose: z.boolean(), approval: z.boolean() }).partial(), req.body);
   const next = { ...DEFAULT_TOGGLES, ...(await getToggles()), ...b };
   await pool.query(`insert into settings (key, value) values ('notify', $1) on conflict (key) do update set value = excluded.value, updated_at = now()`, [JSON.stringify(next)]);
   await audit(pool, req.auth.user!.id, 'update', 'notify', null, b);

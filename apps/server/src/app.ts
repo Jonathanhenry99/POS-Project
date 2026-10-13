@@ -15,6 +15,7 @@ import { reportsRouter } from './routes/reports';
 import { businessDaysRouter } from './routes/business-days';
 import { reviewRouter } from './routes/review';
 import { notifyRouter } from './routes/notify';
+import { approvalsRouter } from './routes/approvals';
 
 export function createApp() {
   const app = express();
@@ -30,7 +31,7 @@ export function createApp() {
     res.json({ ok: true, time: new Date().toISOString() });
   });
   api.use(authenticate);
-  api.use(authRouter, adminRouter, catalogRouter, ordersRouter, inventoryRouter, reportsRouter, businessDaysRouter, reviewRouter, notifyRouter);
+  api.use(authRouter, adminRouter, catalogRouter, ordersRouter, inventoryRouter, reportsRouter, businessDaysRouter, reviewRouter, notifyRouter, approvalsRouter);
   api.use((_req, res) => {
     res.status(404).json({ error: 'Endpoint tidak ditemukan' });
   });

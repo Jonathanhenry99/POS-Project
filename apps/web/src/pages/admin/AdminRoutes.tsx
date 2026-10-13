@@ -26,6 +26,7 @@ import { BrandLogo } from '../../components/BrandLogo';
 import { AppModeButton } from '../../components/AppModeButton';
 import { Sidebar, SidebarProfile, SidebarToggle, useSidebarPreference } from '../../components/ui/sidebar';
 import { useApp } from '../../lib/state';
+import { ApprovalBanner } from './ApprovalBanner';
 import { DashboardPage } from './DashboardPage';
 import { InventoryPage } from './InventoryPage';
 import { MenuPage } from './MenuPage';
@@ -268,6 +269,7 @@ export default function AdminRoutes() {
           </div>
         </header>
         {!online && mode === 'tablet' && <p className="bg-warning px-4 py-2 text-sm font-semibold text-on-warning">Offline: halaman admin butuh internet.</p>}
+        {user.role === 'owner' && online && <ApprovalBanner />}
         <main className="admin-content min-h-0 flex-1 overflow-y-auto pb-20 lg:pb-0">
           <div key={pathname}>
             <Routes>

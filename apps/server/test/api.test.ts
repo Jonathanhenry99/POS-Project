@@ -745,7 +745,7 @@ describe('notifikasi WhatsApp', () => {
     recipientId = created.body.id;
     expect(created.body).toEqual({ id: recipientId, name: 'Owner', phone: '+6281234567890', active: true });
     const page = await request(app).get('/api/notify').set(asOwner()).expect(200);
-    expect(page.body.toggles).toEqual({ soldOut: true, lowStock: true, dayClose: true });
+    expect(page.body.toggles).toEqual({ soldOut: true, lowStock: true, dayClose: true, approval: true });
     const boot = await request(app).get('/api/sync/bootstrap').set(asDevice());
     const settings = await request(app).get('/api/settings').set(asDevice('kasir'));
     const audit = await pool.query("select data from audit_log where entity = 'notify-recipient'");
@@ -922,5 +922,70 @@ describe('hapus data master (riwayat tetap utuh)', () => {
     const next = (await request(app).post('/api/devices/pair').send({ username: 'owner', pin: '123456', name: 'Tablet Pengganti' }).expect(201)).body;
     expect(next.device.code).not.toBe(paired.device.code);
     await request(app).post(`/api/devices/${next.device.id}/revoke`).set(asOwner()).expect(200);
+  });
+});
+
+describe('persetujuan owner jarak jauh', () => {
+  const ask = async (reason = 'Komplimen di atas jatah untuk Barista: Americano') => {
+    const id = randomUUID();
+    await request(app).post('/api/tablet/approvals').set(asDevice('kasir')).send({ id, reason }).expect(201);
+    return id;
+  };
+  const status = async (id: string) => (await request(app).get(`/api/tablet/approvals/${id}`).set(asDevice('kasir')).expect(200)).body;
+  const pending = async () => (await request(app).get('/api/approvals/pending').set(asOwner()).expect(200)).body as { id: string; code: string; reason: string; requestedByName: string }[];
+
+  it('owner menyetujui dari dashboard: tablet menerima nama owner; hanya owner yang bisa memutuskan', async () => {
+    const id = await ask();
+    expect(await status(id)).toEqual({ status: 'pending', approver: null });
+    const mine = (await pending()).find((p) => p.id === id)!;
+    expect(mine).toMatchObject({ reason: 'Komplimen di atas jatah untuk Barista: Americano', requestedByName: 'Kasir 1' });
+    expect(mine.code).toMatch(/^\d{6}$/);
+    await request(app).get('/api/approvals/pending').set(asDevice('kasir')).expect(403);
+    await request(app).post(`/api/approvals/${id}/decide`).set(asDevice('kasir')).send({ approve: true }).expect(403);
+    await request(app).post(`/api/approvals/${id}/decide`).set(asOwner()).send({ approve: true }).expect(200);
+    const done = await status(id);
+    expect(done.status).toBe('approved');
+    expect(done.approver).toMatchObject({ id: userId('owner'), role: 'owner' });
+    // Tidak bisa diputuskan dua kali, dan tidak lagi tampil sebagai menunggu.
+    await request(app).post(`/api/approvals/${id}/decide`).set(asOwner()).send({ approve: false }).expect(400);
+    expect((await pending()).some((p) => p.id === id)).toBe(false);
+  });
+
+  it('ditolak owner, atau kedaluwarsa: tablet tidak mendapat persetujuan', async () => {
+    const rejected = await ask('Void transaksi A-1');
+    await request(app).post(`/api/approvals/${rejected}/decide`).set(asOwner()).send({ approve: false }).expect(200);
+    expect(await status(rejected)).toEqual({ status: 'rejected', approver: null });
+    const late = await ask('Diskon 50%');
+    await pool.query("update approval_requests set expires_at = now() - interval '1 second' where id = $1", [late]);
+    expect(await status(late)).toEqual({ status: 'expired', approver: null });
+    await request(app).post(`/api/approvals/${late}/decide`).set(asOwner()).send({ approve: true }).expect(400);
+    const code = (await pool.query('select code from approval_requests where id = $1', [late])).rows[0].code;
+    expect((await request(app).post(`/api/tablet/approvals/${late}/redeem`).set(asDevice('kasir')).send({ code }).expect(200)).body.status).toBe('expired');
+  });
+
+  it('kode sekali pakai: kode benar menyetujui; salah berulang membatalkan permintaan; tablet lain tidak bisa memakainya', async () => {
+    const id = await ask();
+    const code = (await pending()).find((p) => p.id === id)!.code;
+    const wrong = code === '000000' ? '111111' : '000000';
+    const miss = await request(app).post(`/api/tablet/approvals/${id}/redeem`).set(asDevice('kasir')).send({ code: wrong }).expect(400);
+    expect(miss.body.error).toContain('Sisa 4 kali');
+    const other = await request(app).post('/api/devices/pair').send({ username: 'owner', pin: '123456', name: 'Tablet lain' }).expect(201);
+    await request(app).post(`/api/tablet/approvals/${id}/redeem`).set({ Authorization: `Device ${other.body.token}`, 'X-Operator': userId('kasir') }).send({ code }).expect(404);
+    await request(app).post(`/api/devices/${other.body.device.id}/revoke`).set(asOwner()).expect(200);
+    const ok = await request(app).post(`/api/tablet/approvals/${id}/redeem`).set(asDevice('kasir')).send({ code }).expect(200);
+    expect(ok.body).toMatchObject({ status: 'approved', approver: { role: 'owner' } });
+
+    const locked = await ask();
+    const real = (await pending()).find((p) => p.id === locked)!.code;
+    const bad = real === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 5; i++) await request(app).post(`/api/tablet/approvals/${locked}/redeem`).set(asDevice('kasir')).send({ code: bad }).expect(400);
+    expect((await request(app).post(`/api/tablet/approvals/${locked}/redeem`).set(asDevice('kasir')).send({ code: real }).expect(200)).body.status).toBe('rejected');
+  });
+
+  it('permintaan beruntun dibatasi per tablet', async () => {
+    await pool.query('delete from approval_requests');
+    for (let i = 0; i < 6; i++) await ask(`Permintaan ${i}`);
+    const res = await request(app).post('/api/tablet/approvals').set(asDevice('kasir')).send({ id: randomUUID(), reason: 'Satu lagi' }).expect(400);
+    expect(res.body.error).toContain('Terlalu banyak');
   });
 });
