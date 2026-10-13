@@ -1,4 +1,4 @@
-import { ArrowLeft, CloudOff, Printer, ShieldCheck, Tablet } from 'lucide-react';
+import { ArrowLeft, CloudOff, Fingerprint, Printer, ShieldCheck, Tablet } from 'lucide-react';
 import { BrandLogo } from '../components/BrandLogo';
 import { useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router';
@@ -7,6 +7,7 @@ import { Button, ErrorNote, Field, PinPad, TextInput, cx } from '../components/u
 import { errorMessage } from '../lib/api';
 import { loginOnline, loginTablet } from '../lib/session';
 import { useApp } from '../lib/state';
+import { AttendanceSheet } from './AttendanceSheet';
 
 export function LoginPage() {
   const mode = useApp((s) => s.mode);
@@ -81,6 +82,8 @@ function TabletLogin() {
   const users = useApp((s) => s.data?.users) ?? NO_USERS;
   const deviceName = useApp((s) => s.device?.name);
   const deviceCode = useApp((s) => s.device?.code);
+  const attendanceOn = useApp((s) => !!s.data?.settings.attendance?.enabled);
+  const [absen, setAbsen] = useState(false);
   const dataError = useApp((s) => s.dataError);
   const [selected, setSelected] = useState<CachedUser | null>(null);
   const [error, setError] = useState('');
@@ -157,6 +160,12 @@ function TabletLogin() {
             ))}
           </div>
           {!users.length && <ErrorNote>Data pengguna belum ada. Sambungkan tablet ke internet sekali untuk mengunduh data.</ErrorNote>}
+          {attendanceOn && (
+            <button onClick={() => setAbsen(true)} className="press mt-4 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-line-strong bg-surface font-semibold shadow-card">
+              <Fingerprint className="size-5 text-primary" /> Absen masuk
+            </button>
+          )}
+          {absen && <AttendanceSheet onClose={() => setAbsen(false)} />}
         </div>
         <div className="w-full shrink-0 rounded-3xl border border-line bg-surface p-6 shadow-card lg:w-[340px]">
           {selected ? (

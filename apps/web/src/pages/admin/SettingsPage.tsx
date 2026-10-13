@@ -1,4 +1,4 @@
-import { BellRing, Gift, Percent, ReceiptText, Save, ShieldCheck, Store, Tablet, Target, Utensils, type LucideIcon } from 'lucide-react';
+import { BellRing, Fingerprint, Gift, Percent, ReceiptText, Save, ShieldCheck, Store, Tablet, Target, Utensils, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { computeTotals, formatDateTime, formatNumber, type AppSettings, type PricingSettings } from '@mourden/shared';
@@ -28,7 +28,7 @@ const SECTIONS: { value: Section; label: string; icon: LucideIcon; hint: string;
   { value: 'toko', label: 'Toko', icon: Store, hint: 'Identitas toko di struk dan target penjualan.', form: true, layout: TWO_COL },
   { value: 'struk', label: 'Struk & logo', icon: ReceiptText, hint: 'Logo toko dan isi struk 58 mm.', form: true, layout: 'max-w-5xl' },
   { value: 'harga', label: 'Pajak & service', icon: Percent, hint: 'Service charge, PB1 dan pembulatan total.', form: true, layout: 'max-w-3xl' },
-  { value: 'kasir', label: 'Aturan kasir', icon: ShieldCheck, hint: 'Void, diskon, tutup kasir, komplimen karyawan dan toleransi selisih.', form: true, layout: TWO_COL },
+  { value: 'kasir', label: 'Aturan kasir', icon: ShieldCheck, hint: 'Void, diskon, tutup kasir, komplimen, toleransi selisih dan absensi karyawan.', form: true, layout: TWO_COL },
   { value: 'operasional', label: 'Meja & catatan', icon: Utensils, hint: 'Daftar meja, template catatan, alasan pembatalan dan tujuan checker.', form: true, layout: TWO_COL },
   { value: 'notifikasi', label: 'Notifikasi', icon: BellRing, hint: 'Kabar stok ke WhatsApp. Tersimpan otomatis.', form: false, layout: 'max-w-3xl' },
   { value: 'perangkat', label: 'Perangkat & PIN', icon: Tablet, hint: 'Tablet kasir yang aktif dan PIN Anda. Tersimpan otomatis.', form: false, layout: TWO_COL },
@@ -81,6 +81,8 @@ export function SettingsPage() {
   };
 
   const num = (s: string) => parseFloat(s.replace(',', '.')) || 0;
+  const attendance = form?.attendance ?? { enabled: false, startTime: '09:00', graceMinutes: 0 };
+  const setAttendance = (patch: Partial<typeof attendance>) => setForm((f) => (f ? { ...f, attendance: { ...attendance, ...patch } } : f));
 
   return (
     <div className="p-4">
@@ -232,6 +234,30 @@ export function SettingsPage() {
               </div>
             </Card>
             </>
+          )}
+
+          {section === 'kasir' && (
+            <Card title="Absensi karyawan" icon={<Fingerprint className="size-4" />}>
+              <div className="flex flex-col gap-4">
+                <Toggle
+                  checked={attendance.enabled}
+                  onChange={(v) => setAttendance({ enabled: v })}
+                  label="Aktifkan absen masuk"
+                  description="Tombol Absen masuk muncul di layar login tablet kasir. Karyawan memasukkan PIN sendiri lalu selfie; hasilnya terlihat di menu Absensi."
+                />
+                {attendance.enabled && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Jam masuk" hint="Absen setelah jam ini dihitung telat.">
+                      {(id) => <TextInput id={id} type="time" value={attendance.startTime} onChange={(e) => e.target.value && setAttendance({ startTime: e.target.value })} />}
+                    </Field>
+                    <Field label="Toleransi (menit)" hint="0 = tidak ada toleransi.">
+                      {(id) => <TextInput id={id} inputMode="numeric" value={String(attendance.graceMinutes)} onChange={(e) => setAttendance({ graceMinutes: Math.max(0, Math.min(180, Math.round(num(e.target.value)))) })} />}
+                    </Field>
+                  </div>
+                )}
+                <p className="text-xs text-fg-muted">Kabar telat dan ringkasan siapa yang belum absen dikirim lewat Notifikasi WhatsApp bila sudah diatur.</p>
+              </div>
+            </Card>
           )}
 
           {section === 'operasional' && <PosMasterCard value={form.pos} onChange={(pos) => setForm((f) => (f ? { ...f, pos } : f))} />}

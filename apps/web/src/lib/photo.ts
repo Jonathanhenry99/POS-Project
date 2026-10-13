@@ -16,7 +16,16 @@ function draw(img: HTMLImageElement, maxSide: number, quality: number): string {
 }
 
 /** JPEG data URL, sisi terpanjang <= 1280 px. Diturunkan bertahap bila masih terlalu besar. */
-export async function compressPhoto(file: File): Promise<string> {
+export function compressPhoto(file: File): Promise<string> {
+  return compress(file, [[1280, 0.72], [1024, 0.6], [800, 0.5]], MAX_CHARS);
+}
+
+/** Selfie absensi: cukup untuk mengenali wajah, jauh lebih kecil dari foto bukti (satu foto per orang per hari). */
+export function compressSelfie(file: File): Promise<string> {
+  return compress(file, [[640, 0.7], [480, 0.6], [360, 0.5]], 200_000);
+}
+
+async function compress(file: File, steps: readonly (readonly [number, number])[], maxChars: number): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('Pilih berkas foto');
   const url = URL.createObjectURL(file);
   try {
@@ -25,9 +34,9 @@ export async function compressPhoto(file: File): Promise<string> {
     await img.decode().catch(() => {
       throw new Error('Foto tidak bisa dibaca');
     });
-    for (const [side, q] of [[1280, 0.72], [1024, 0.6], [800, 0.5]] as const) {
+    for (const [side, q] of steps) {
       const out = draw(img, side, q);
-      if (out.length <= MAX_CHARS) return out;
+      if (out.length <= maxChars) return out;
     }
     throw new Error('Foto terlalu besar, coba ambil ulang');
   } finally {

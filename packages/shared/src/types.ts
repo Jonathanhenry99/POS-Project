@@ -104,6 +104,15 @@ export interface AppSettings {
   goals?: GoalsSettings;
   comp?: CompSettings;
   stock?: StockSettings;
+  attendance?: AttendanceSettings;
+}
+
+/** Absensi karyawan dari tablet kasir (PIN + selfie). */
+export interface AttendanceSettings {
+  enabled: boolean;
+  /** Jam masuk "HH:MM" pada zona waktu toko. Absen setelah jam ini + toleransi dihitung telat. */
+  startTime: string;
+  graceMinutes: number;
 }
 
 export interface PosSettings {

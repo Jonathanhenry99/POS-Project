@@ -5,6 +5,7 @@ import { checkLock, clearFails, need, needDevice, needUser, newDeviceToken, reco
 import { audit, pool, tx } from '../db';
 import { HttpError, badRequest, forbidden, notFound, parse } from '../http';
 import { getCatalog, getIngredients, getSettings } from '../repo';
+import { attendanceSummaryDue } from './attendance';
 
 export const authRouter = Router();
 
@@ -144,6 +145,8 @@ authRouter.delete('/devices/:id', need('admin'), async (req, res) => {
  * supaya kasir tetap bisa login saat internet putus.
  */
 authRouter.get('/sync/bootstrap', needDevice, async (req, res) => {
+  // Tablet menyinkron tiap beberapa menit; ini sekaligus menjadi pemicu ringkasan absensi setelah jam masuk.
+  await attendanceSummaryDue();
   const [settings, catalog, ingredients, users] = await Promise.all([
     getSettings(pool),
     getCatalog(pool),

@@ -745,7 +745,7 @@ describe('notifikasi WhatsApp', () => {
     recipientId = created.body.id;
     expect(created.body).toEqual({ id: recipientId, name: 'Owner', phone: '+6281234567890', active: true });
     const page = await request(app).get('/api/notify').set(asOwner()).expect(200);
-    expect(page.body.toggles).toEqual({ soldOut: true, lowStock: true, dayClose: true, approval: true });
+    expect(page.body.toggles).toEqual({ soldOut: true, lowStock: true, dayClose: true, approval: true, attendance: true });
     const boot = await request(app).get('/api/sync/bootstrap').set(asDevice());
     const settings = await request(app).get('/api/settings').set(asDevice('kasir'));
     const audit = await pool.query("select data from audit_log where entity = 'notify-recipient'");
@@ -987,5 +987,80 @@ describe('persetujuan owner jarak jauh', () => {
     for (let i = 0; i < 6; i++) await ask(`Permintaan ${i}`);
     const res = await request(app).post('/api/tablet/approvals').set(asDevice('kasir')).send({ id: randomUUID(), reason: 'Satu lagi' }).expect(400);
     expect(res.body.error).toContain('Terlalu banyak');
+  });
+});
+
+describe('absensi karyawan', () => {
+  const PHOTO = `data:image/jpeg;base64,${Buffer.from('selfie').toString('base64')}`;
+  const sent: string[] = [];
+  const clock = (username: string, clockedAt: string, id = randomUUID()) =>
+    request(app).put(`/api/tablet/attendance/${id}`).set(asDevice(username)).send({ userId: userId(username), clockedAt, photo: PHOTO });
+  // Tanggal tetap di masa lalu supaya jam "sekarang" tidak memengaruhi hitungan telat. 01:50 UTC = 08:50 WIB.
+  const DAY = '2026-09-01';
+
+  beforeAll(() => {
+    setTransport(async (_to, text) => {
+      sent.push(text);
+      return { ok: true, detail: '' };
+    });
+  });
+  afterAll(async () => {
+    await drainNotifications();
+    setTransport(null);
+    await request(app).put('/api/settings').set(asOwner()).send({ attendance: { enabled: false } });
+    await pool.query('delete from notify_recipients');
+  });
+
+  it('ditolak selama belum diaktifkan; pengaturan jam masuk hanya oleh owner dan ikut ke tablet', async () => {
+    expect((await clock('kasir', `${DAY}T01:50:00.000Z`)).status).toBe(400);
+    await request(app).put('/api/settings').set(asOwner()).send({ attendance: { startTime: '25:00' } }).expect(400);
+    await request(app).put('/api/settings').set(asDevice('kasir')).send({ attendance: { enabled: true } }).expect(403);
+    await request(app).put('/api/settings').set(asOwner()).send({ attendance: { enabled: true, startTime: '09:00', graceMinutes: 5 } }).expect(200);
+    const boot = (await request(app).get('/api/sync/bootstrap').set(asDevice())).body;
+    expect(boot.settings.attendance).toEqual({ enabled: true, startTime: '09:00', graceMinutes: 5 });
+  });
+
+  it('absen dengan PIN sendiri + selfie: tepat waktu / telat dihitung di zona waktu toko, sekali per orang per hari', async () => {
+    await request(app).post('/api/notify/recipients').set(asOwner()).send({ name: 'Owner', phone: '081234567890', apikey: 'KUNCIABSEN' }).expect(201);
+    const onTime = await clock('kasir', `${DAY}T01:50:00.000Z`);
+    expect(onTime.status).toBe(201);
+    expect(onTime.body).toMatchObject({ status: 'created', lateMinutes: 0 });
+    // 02:20 UTC = 09:20 WIB, toleransi 5 menit -> telat 15 menit.
+    const late = await clock('barista', `${DAY}T02:20:00.000Z`);
+    expect(late.body).toMatchObject({ status: 'created', lateMinutes: 15 });
+    await drainNotifications();
+    expect(sent.filter((t) => t.startsWith('*Absen telat'))).toEqual([expect.stringContaining('Barista absen 09:20, telat 15 menit dari jam masuk 09:00.')]);
+    // Absen kedua di hari yang sama tidak menimpa yang pertama.
+    expect((await clock('kasir', `${DAY}T03:00:00.000Z`)).body.status).toBe('exists');
+    expect((await pool.query("select to_char(clocked_at at time zone 'Asia/Jakarta', 'HH24:MI') as t from attendance where user_id = $1 and business_date = $2", [userId('kasir'), DAY])).rows[0].t).toBe('08:50');
+    // Tidak bisa mengabsenkan orang lain, dan foto wajib JPEG.
+    await request(app).put(`/api/tablet/attendance/${randomUUID()}`).set(asDevice('kasir')).send({ userId: userId('barista'), clockedAt: `${DAY}T01:00:00.000Z`, photo: PHOTO }).expect(403);
+    await request(app).put(`/api/tablet/attendance/${randomUUID()}`).set(asDevice('kitchen')).send({ userId: userId('kitchen'), clockedAt: `${DAY}T01:00:00.000Z`, photo: 'data:text/html;base64,AAAA' }).expect(400);
+  });
+
+  it('owner melihat daftar hadir, yang belum absen, dan fotonya; kasir tidak', async () => {
+    const res = await request(app).get(`/api/attendance?from=${DAY}&to=${DAY}`).set(asOwner()).expect(200);
+    expect(res.body.rows.map((r: { userName: string; lateMinutes: number; hasPhoto: boolean }) => [r.userName, r.lateMinutes, r.hasPhoto])).toEqual([['Kasir 1', 0, true], ['Barista', 15, true]]);
+    expect(res.body.staff.some((u: { role: string }) => u.role === 'owner')).toBe(false);
+    const photo = await request(app).get(`/api/attendance/${res.body.rows[0].id}/photo`).set(asOwner()).expect(200);
+    expect(photo.headers['content-type']).toContain('image/jpeg');
+    expect(Buffer.from(photo.body).toString()).toBe('selfie');
+    await request(app).get(`/api/attendance?from=${DAY}&to=${DAY}`).set(asDevice('kasir')).expect(403);
+    await request(app).get(`/api/attendance/${res.body.rows[0].id}/photo`).set(asDevice('kasir')).expect(403);
+  });
+
+  it('ringkasan harian dikirim sekali setelah jam masuk lewat, dipicu sinkron tablet', async () => {
+    // Jam masuk 00:00 supaya "sekarang" pasti sudah lewat, kapan pun tes dijalankan.
+    await request(app).put('/api/settings').set(asOwner()).send({ attendance: { startTime: '00:00', graceMinutes: 0 } }).expect(200);
+    await pool.query("delete from settings where key = 'attendance_summary'");
+    const before = sent.length;
+    await request(app).get('/api/sync/bootstrap').set(asDevice()).expect(200);
+    await request(app).get('/api/sync/bootstrap').set(asDevice()).expect(200);
+    await drainNotifications();
+    const summaries = sent.slice(before).filter((t) => t.startsWith('*Absensi'));
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toContain('jam masuk 00:00');
+    expect(summaries[0]).toMatch(/Belum absen \(\d+\):\n(- .*\n)*- Kasir 1/);
+    expect(summaries[0]).not.toContain('Owner');
   });
 });

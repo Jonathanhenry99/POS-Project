@@ -152,6 +152,19 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - API key tersimpan di `notify_recipients`, tidak pernah dikirim ke klien, bootstrap tablet, atau log audit. Alamat layanan bisa diganti lewat env `WHATSAPP_API_URL`.
 - Kabar bahan per penjualan butuh **Resep & HPP** terisi; tanpa resep, stok hanya berubah lewat opname, barang masuk dan waste.
 
+## Persetujuan owner jarak jauh
+
+- Layar "Persetujuan owner" di tablet (void, diskon di atas batas, komplimen di atas jatah) punya dua jalur: **PIN owner** (di tempat, bisa offline) atau **Minta persetujuan** (owner tidak di tempat, butuh internet).
+- Permintaan muncul di atas semua halaman admin owner dengan tombol Setujui/Tolak, dan ikut terkirim ke WhatsApp beserta **kode sekali pakai** yang bisa dibacakan ke kasir. Tablet menunggu dan lanjut sendiri.
+- Berlaku 10 menit; kode salah 5 kali membatalkan permintaan; maksimal 6 permintaan per tablet per 10 menit. Semua tercatat di log audit (`approval_requests`).
+
+## Absensi karyawan
+
+- Diaktifkan owner di **Pengaturan → Aturan kasir → Absensi karyawan** (jam masuk + toleransi). Tombol **Absen masuk** lalu muncul di layar login tablet kasir.
+- Alur: pilih nama → PIN sendiri → selfie (kamera depan) → tercatat. Disimpan di tablet dulu dan ikut antrean offline; satu absen masuk per orang per hari.
+- Telat dihitung dari jam tablet pada zona waktu toko, dengan aturan yang sama di tablet dan server (`packages/shared/src/attendance.ts`). Jam server saat menerima ikut disimpan untuk pembanding.
+- Owner melihat rekap dan fotonya di menu **Absensi**. Kabar WhatsApp: tiap absen telat, dan satu ringkasan "sudah/belum absen" setelah jam masuk lewat (dipicu sinkron tablet, tanpa penjadwal).
+
 ## Menguji dari HP/laptop owner
 
 - **Pratinjau kasir** (tombol di back office): layar kasir dengan menu asli. Bawaan **simulasi**: tidak ada yang tersimpan, cetak hanya tampil di layar.

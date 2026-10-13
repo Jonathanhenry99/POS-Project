@@ -9,6 +9,7 @@ export * from './menu-engineering';
 export * from './review';
 export * from './stock-variance';
 export * from './opname-count';
+export * from './attendance';
 export * from './receipt/escpos';
 export * from './receipt/layout';
 export * from './receipt/image';

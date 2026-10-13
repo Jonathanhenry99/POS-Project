@@ -11,6 +11,7 @@ import {
   MonitorSmartphone,
   Receipt,
   Settings,
+  Fingerprint,
   Users,
   X,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ import { AppModeButton } from '../../components/AppModeButton';
 import { Sidebar, SidebarProfile, SidebarToggle, useSidebarPreference } from '../../components/ui/sidebar';
 import { useApp } from '../../lib/state';
 import { ApprovalBanner } from './ApprovalBanner';
+import { AttendancePage } from './AttendancePage';
 import { DashboardPage } from './DashboardPage';
 import { InventoryPage } from './InventoryPage';
 import { MenuPage } from './MenuPage';
@@ -87,6 +89,7 @@ const NAV: NavGroup[] = [
     ],
   },
   { label: 'Pengaturan Menu', icon: Coffee, to: '/admin/menu' },
+  { label: 'Absensi', icon: Fingerprint, to: '/admin/absensi' },
   { label: 'Hak Akses', icon: Users, to: '/admin/pengguna' },
   { label: 'Pengaturan', icon: Settings, to: '/admin/pengaturan' },
 ];
@@ -107,6 +110,7 @@ const TITLES: [prefix: string, title: string][] = [
   ['/admin/stok', 'Inventori › Stok Bahan'],
   ['/admin/resep', 'Inventori › Resep & HPP'],
   ['/admin/menu', 'Pengaturan Menu'],
+  ['/admin/absensi', 'Absensi'],
   ['/admin/pengguna', 'Hak Akses'],
   ['/admin/pengaturan', 'Pengaturan'],
   ['/admin', 'Dashboard'],
@@ -281,6 +285,7 @@ export default function AdminRoutes() {
               <Route path="stok" element={<InventoryPage />} />
               <Route path="menu" element={<MenuPage />} />
               <Route path="resep" element={<RecipesPage />} />
+              <Route path="absensi" element={<AttendancePage />} />
               <Route path="pengguna" element={<UsersPage />} />
               <Route path="pengaturan" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/admin" replace />} />

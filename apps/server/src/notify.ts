@@ -9,9 +9,10 @@ export interface NotifyToggles {
   lowStock: boolean;
   dayClose: boolean;
   approval: boolean;
+  attendance: boolean;
 }
-export const DEFAULT_TOGGLES: NotifyToggles = { soldOut: true, lowStock: true, dayClose: true, approval: true };
-export type NotifyKind = 'sold-out' | 'stock' | 'day-close' | 'approval' | 'test';
+export const DEFAULT_TOGGLES: NotifyToggles = { soldOut: true, lowStock: true, dayClose: true, approval: true, attendance: true };
+export type NotifyKind = 'sold-out' | 'stock' | 'day-close' | 'approval' | 'attendance' | 'test';
 
 export interface SendResult {
   ok: boolean;
@@ -111,6 +112,9 @@ async function notify(kind: Exclude<NotifyKind, 'test'>, toggle: keyof NotifyTog
     console.error('[notify]', e);
   }
 }
+
+/** Untuk modul lain (absensi): kirim satu kabar ke semua penerima aktif bila jenisnya dinyalakan. */
+export const noticeToOwners = notify;
 
 const qty = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
 const LIST_MAX = 12;

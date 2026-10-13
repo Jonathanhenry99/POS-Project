@@ -12,7 +12,7 @@ const BOT_PHRASE = 'I allow callmebot to send me messages';
 const BOT_LINK = `https://wa.me/${BOT_NUMBER.replace(/\D/g, '')}?text=${encodeURIComponent(BOT_PHRASE)}`;
 const BOT_HELP = 'https://www.callmebot.com/blog/free-api-whatsapp-messages/';
 
-type ToggleKey = 'lowStock' | 'soldOut' | 'dayClose' | 'approval';
+type ToggleKey = 'lowStock' | 'soldOut' | 'dayClose' | 'approval' | 'attendance';
 interface Recipient {
   id: string;
   name: string;
@@ -21,7 +21,7 @@ interface Recipient {
 }
 interface LogRow {
   id: string;
-  kind: 'stock' | 'sold-out' | 'day-close' | 'approval' | 'test';
+  kind: 'stock' | 'sold-out' | 'day-close' | 'approval' | 'attendance' | 'test';
   body: string;
   createdAt: string;
   sentAt: string | null;
@@ -35,11 +35,12 @@ interface NotifyData {
   log: LogRow[];
 }
 
-const KIND_LABEL: Record<LogRow['kind'], string> = { stock: 'Stok bahan', 'sold-out': 'Menu habis', 'day-close': 'Tutup toko', approval: 'Minta persetujuan', test: 'Tes kirim' };
+const KIND_LABEL: Record<LogRow['kind'], string> = { stock: 'Stok bahan', 'sold-out': 'Menu habis', 'day-close': 'Tutup toko', approval: 'Minta persetujuan', attendance: 'Absensi', test: 'Tes kirim' };
 const TOGGLES: { key: ToggleKey; label: string; description: string }[] = [
   { key: 'lowStock', label: 'Bahan menipis atau habis', description: 'Sekali saat stok turun ke batas minimum, sekali lagi saat habis. Tidak diulang sampai stok diisi lagi.' },
   { key: 'soldOut', label: 'Menu ditandai habis di kasir', description: 'Saat kasir menekan Menu habis di tablet.' },
   { key: 'approval', label: 'Permintaan persetujuan dari kasir', description: 'Saat kasir butuh persetujuan Anda (void, diskon besar, komplimen di atas jatah) dan Anda tidak di tempat. Pesannya berisi kode sekali pakai.' },
+  { key: 'attendance', label: 'Absensi karyawan', description: 'Ringkasan siapa yang sudah dan belum absen setelah jam masuk, dan kabar tiap ada yang absen telat.' },
   { key: 'dayClose', label: 'Ringkasan saat Tutup toko', description: 'Daftar bahan yang kurang dan menu yang masih ditandai habis, untuk belanja besok.' },
 ];
 
