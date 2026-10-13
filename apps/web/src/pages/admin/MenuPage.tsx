@@ -7,6 +7,7 @@ import { api, errorMessage } from '../../lib/api';
 import { refreshBootstrap } from '../../lib/sync';
 import { PageHeader } from './AdminRoutes';
 import { useApi } from './hooks';
+import { PillNav, SearchBox, matches } from './PillNav';
 
 async function saved(reload: () => void, msg: string) {
   reload();
@@ -62,27 +63,24 @@ function Products({ catalog, reload }: { catalog: Catalog; reload: () => void })
   const [editing, setEditing] = useState<Product | 'new' | null>(null);
   const [cat, setCat] = useState('all');
   const [search, setSearch] = useState('');
-  const list = catalog.products.filter((p) => (cat === 'all' || p.categoryId === cat) && `${p.name} ${p.sku ?? ''}`.toLocaleLowerCase('id-ID').includes(search.trim().toLocaleLowerCase('id-ID')));
+  const found = catalog.products.filter((p) => matches(`${p.name} ${p.sku ?? ''}`, search));
+  const list = found.filter((p) => cat === 'all' || p.categoryId === cat);
   const catName = (id: string) => catalog.categories.find((c) => c.id === id)?.name ?? '-';
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative min-w-48 flex-1">
-          <Search aria-hidden="true" className="pointer-events-none absolute top-3.5 left-3.5 size-5 text-fg-subtle" />
-          <TextInput aria-label="Cari produk" placeholder="Cari nama produk atau SKU..." value={search} onChange={(e) => setSearch(e.target.value)} className="bg-surface pl-11" />
-        </div>
-        <select aria-label="Filter kategori produk" value={cat} onChange={(e) => setCat(e.target.value)} className={cx(inputClass, 'max-w-56 bg-surface')}>
-          <option value="all">Semua kategori</option>
-          {catalog.categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <Button icon={<Plus className="size-5" />} disabled={!catalog.categories.length} onClick={() => setEditing('new')}>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <SearchBox value={search} onChange={setSearch} label="Cari produk" placeholder="Cari nama produk atau SKU..." className="max-w-md" />
+        <Button className="ml-auto" icon={<Plus className="size-5" />} disabled={!catalog.categories.length} onClick={() => setEditing('new')}>
           Tambah produk
         </Button>
       </div>
+      <PillNav
+        label="Kategori produk"
+        className="mb-3"
+        value={cat}
+        onChange={setCat}
+        options={[{ value: 'all', label: 'Semua kategori', count: found.length }, ...catalog.categories.map((c) => ({ value: c.id, label: c.name, count: found.filter((p) => p.categoryId === c.id).length }))]}
+      />
       <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
         <div className="flex items-center justify-between gap-3 border-b border-line bg-surface-2/70 px-5 py-3 text-xs font-semibold text-fg-muted">
           <span>Daftar produk <span className="ml-2 rounded-md border border-line bg-surface px-2 py-0.5 tabular">{list.length}</span></span>

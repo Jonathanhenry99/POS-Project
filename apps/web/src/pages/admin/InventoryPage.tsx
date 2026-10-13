@@ -8,6 +8,7 @@ import { uuid } from '../../lib/id';
 import { refreshBootstrap } from '../../lib/sync';
 import { PageHeader } from './AdminRoutes';
 import { addDays, formatDateLabel, storeTimezone, today, useApi } from './hooks';
+import { PillNav, SearchBox, matches } from './PillNav';
 import { DateRangeBar } from './ReportsPage';
 
 const TYPE_LABEL: Record<string, string> = {
@@ -49,27 +50,37 @@ function StockLevels() {
   const [station, setStation] = useState<'all' | Station>('all');
   const [editing, setEditing] = useState<StockLevel | 'new' | null>(null);
   const [moving, setMoving] = useState<{ item: StockLevel; type: MoveType } | null>(null);
-  const list = (data ?? []).filter((i) => station === 'all' || i.station === station);
+  const [search, setSearch] = useState('');
+  const [lowOnly, setLowOnly] = useState(false);
+  const found = (data ?? []).filter((i) => matches(i.name, search) && (!lowOnly || i.status !== 'aman'));
+  const list = found.filter((i) => station === 'all' || i.station === station);
+  const lowCount = (data ?? []).filter((i) => i.status !== 'aman').length;
   const value = list.reduce((s, i) => s + Math.max(0, i.stock) * i.costPerUnit, 0);
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="w-80">
-          <Segmented
-            value={station}
-            onChange={setStation}
-            options={[{ value: 'all' as const, label: 'Semua' }, ...(['bar', 'kitchen', 'umum'] as Station[]).map((s) => ({ value: s, label: STATION_LABEL[s] }))]}
-          />
-        </div>
-        <Button icon={<Plus className="size-5" />} onClick={() => setEditing('new')}>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <SearchBox value={search} onChange={setSearch} label="Cari bahan" placeholder="Cari nama bahan..." className="max-w-md" />
+        <button className="pill bg-surface shadow-card" aria-pressed={lowOnly} onClick={() => setLowOnly((v) => !v)}>
+          Menipis / habis
+          <span className="rounded-full bg-black/8 px-2 py-0.5 text-xs tabular">{lowCount}</span>
+        </button>
+        <Button className="ml-auto" icon={<Plus className="size-5" />} onClick={() => setEditing('new')}>
           Tambah bahan
         </Button>
-        <span className="ml-auto text-sm text-fg-muted">Nilai stok ± {formatRupiah(value)}</span>
+      </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <PillNav
+          label="Lokasi bahan"
+          value={station}
+          onChange={setStation}
+          options={[{ value: 'all' as const, label: 'Semua lokasi', count: found.length }, ...(['bar', 'kitchen', 'umum'] as Station[]).map((st) => ({ value: st, label: STATION_LABEL[st], count: found.filter((i) => i.station === st).length }))]}
+        />
+        <span className="text-sm text-fg-muted">Nilai stok ± {formatRupiah(value)}</span>
       </div>
       <ErrorNote>{error}</ErrorNote>
       {loading && !data && <Spinner className="mx-auto my-10" />}
-      {data && !list.length && <Empty title="Belum ada bahan" />}
+      {data && !list.length && <Empty title={data.length ? 'Tidak ada bahan yang cocok' : 'Belum ada bahan'} />}
       {list.length > 0 && (
         <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
           <table className="w-full min-w-[720px] text-sm">
