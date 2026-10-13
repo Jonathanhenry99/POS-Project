@@ -34,7 +34,7 @@ export function setUnauthorizedHandler(fn: () => void) {
 
 export async function api<T = unknown>(
   path: string,
-  opts: { method?: string; body?: unknown; operatorId?: string; timeoutMs?: number; raw?: boolean; asDevice?: boolean } = {},
+  opts: { method?: string; body?: unknown; operatorId?: string; timeoutMs?: number; raw?: boolean; asDevice?: boolean; anonymous?: boolean } = {},
 ): Promise<T> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 15_000);
@@ -43,7 +43,7 @@ export async function api<T = unknown>(
     res = await fetch(`/api${path}`, {
       method: opts.method ?? 'GET',
       headers: {
-        ...authHeaders(opts.operatorId, opts.asDevice),
+        ...(opts.anonymous ? {} : authHeaders(opts.operatorId, opts.asDevice)),
         ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,

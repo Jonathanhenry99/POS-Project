@@ -133,6 +133,9 @@ export async function pairDevice(username: string, pin: string, name: string) {
   const res = await api<{ device: Omit<DeviceInfo, 'token'>; token: string }>('/devices/pair', {
     method: 'POST',
     body: { username, pin, name },
+    // Aktivasi dibuktikan dengan PIN owner di isi permintaan. Token perangkat lama (bila tablet diaktifkan ulang
+    // setelah aksesnya dicabut) tidak boleh ikut, karena server menolak permintaan bertoken tak dikenal.
+    anonymous: true,
   });
   const device: DeviceInfo = { ...res.device, token: res.token };
   await kvSet('device', device);

@@ -80,6 +80,8 @@ function initials(name: string) {
 function TabletLogin() {
   const users = useApp((s) => s.data?.users) ?? NO_USERS;
   const deviceName = useApp((s) => s.device?.name);
+  const deviceCode = useApp((s) => s.device?.code);
+  const dataError = useApp((s) => s.dataError);
   const [selected, setSelected] = useState<CachedUser | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -106,6 +108,23 @@ function TabletLogin() {
       </Hero>
       <div className="flex min-h-0 flex-col gap-6 overflow-y-auto p-6 lg:flex-row lg:items-center lg:p-8">
         <div className="flex-1">
+          {dataError && (
+            <div className="mb-4 rounded-2xl border border-danger/30 bg-danger/10 p-4 text-sm">
+              <p className="font-bold text-danger">{dataError.rejected ? 'Server menolak tablet ini' : 'Menu dan pengaturan tidak bisa diperbarui'}</p>
+              {dataError.rejected ? (
+                <>
+                  <p className="mt-1">
+                    Akses perangkat dengan kode struk <b>{deviceCode}</b> sudah dicabut, jadi menu tidak diperbarui dan transaksi tidak terkirim. Owner bisa mengaktifkannya lagi dengan PIN.
+                  </p>
+                  <Link to="/aktivasi" className="press mt-3 inline-flex h-12 items-center gap-2 rounded-xl bg-danger px-4 font-semibold text-white">
+                    <Tablet className="size-5" /> Aktifkan ulang tablet ini
+                  </Link>
+                </>
+              ) : (
+                <p className="mt-1">{dataError.message}</p>
+              )}
+            </div>
+          )}
           <h1 className="text-2xl font-extrabold tracking-tight">Siapa yang bertugas?</h1>
           <p className="mb-4 text-fg-muted">Pilih nama, lalu masukkan PIN.</p>
           <div className="grid grid-cols-2 gap-3">

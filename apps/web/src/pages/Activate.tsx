@@ -10,6 +10,8 @@ import { useApp } from '../lib/state';
 /** Owner mengaktifkan tablet sebagai perangkat kasir (sekali saja, butuh internet). */
 export function ActivatePage() {
   const mode = useApp((s) => s.mode);
+  // Tablet yang aksesnya dicabut server boleh diaktifkan ulang dari sini; data lokalnya tidak dihapus.
+  const rejected = useApp((s) => !!s.dataError?.rejected);
   const [name, setName] = useState('Tablet Kasir');
   const [username, setUsername] = useState('owner');
   const [pin, setPin] = useState('');
@@ -17,7 +19,7 @@ export function ActivatePage() {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
 
-  if (mode === 'tablet') return <Navigate to="/login" replace />;
+  if (mode === 'tablet' && !rejected && !busy) return <Navigate to="/login" replace />;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,8 +44,13 @@ export function ActivatePage() {
         </Link>
         <div className="flex items-center gap-3">
           <ShieldCheck className="size-8 text-success" />
-          <h1 className="text-xl font-bold">Aktifkan tablet kasir</h1>
+          <h1 className="text-xl font-bold">{rejected ? 'Aktifkan ulang tablet kasir' : 'Aktifkan tablet kasir'}</h1>
         </div>
+        {rejected && (
+          <p className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+            Akses tablet ini di server sudah dicabut. Setelah diaktifkan ulang, menu dan pengaturan terbaru langsung diambil. Transaksi yang tersimpan di tablet tidak dihapus.
+          </p>
+        )}
         <p className="text-sm text-fg-muted">
           Setelah aktif, tablet ini bisa dipakai berjualan dan mencetak struk walau internet putus. Kasir cukup login dengan PIN. Hanya owner
           yang bisa mengaktifkan.

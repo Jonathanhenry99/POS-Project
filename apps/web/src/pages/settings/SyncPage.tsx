@@ -43,10 +43,15 @@ export function SyncPage() {
             <p className="font-bold text-danger">{dataError.rejected ? 'Server menolak tablet ini' : 'Menu dan pengaturan tidak bisa diperbarui'}</p>
             {dataError.rejected ? (
               <p className="mt-1 text-fg">
-                Akses perangkat dengan kode struk <b>{device?.code}</b> sudah dicabut atau belum aktif di server. Selama begini menu tidak diperbarui dan transaksi tidak terkirim (tetap tersimpan di tablet). Minta owner login di tablet ini, tekan <b>Lepas aktivasi perangkat</b> di bawah, lalu aktifkan lagi.
+                Akses perangkat dengan kode struk <b>{device?.code}</b> sudah dicabut atau belum aktif di server. Selama begini menu tidak diperbarui dan transaksi tidak terkirim (tetap tersimpan di tablet). Owner bisa mengaktifkannya lagi dengan PIN; transaksi di tablet tidak dihapus.
               </p>
             ) : (
               <p className="mt-1 text-fg">{dataError.message}</p>
+            )}
+            {dataError.rejected && (
+              <Button className="mt-3" variant="danger" onClick={() => navigate('/aktivasi')}>
+                Aktifkan ulang tablet ini
+              </Button>
             )}
           </div>
         )}
