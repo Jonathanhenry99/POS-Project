@@ -1,7 +1,7 @@
 // Absensi karyawan: dicatat dari tablet kasir (PIN + selfie), dilihat owner di back office.
 import { Router } from 'express';
 import { z } from 'zod';
-import { businessDate, formatTime, lateLabel, lateMinutes, minutesOfDay, clockToMinutes, type AttendanceSettings } from '@mourden/shared';
+import { businessDate, checkLocation, clockToMinutes, formatTime, lateLabel, lateMinutes, minutesOfDay, type AttendanceSettings, type GeoPoint, type PublicUser } from '@mourden/shared';
 import { need, needDevice, needUser } from '../auth';
 import { pool } from '../db';
 import { badRequest, dateRangeQuery, forbidden, notFound, parse } from '../http';
@@ -21,28 +21,90 @@ const body = z.object({
 attendanceRouter.put('/tablet/attendance/:id', needDevice, needUser, async (req, res) => {
   const id = parse(uuid, req.params.id);
   const b = parse(body, req.body);
-  const user = req.auth.user!;
   // Operator permintaan ini adalah orang yang memasukkan PIN-nya di tablet; tidak bisa mengabsenkan orang lain.
-  if (b.userId !== user.id) throw forbidden('Absen hanya untuk diri sendiri');
+  if (b.userId !== req.auth.user!.id) throw forbidden('Absen hanya untuk diri sendiri');
+  // Jam tablet yang terlalu maju tidak dipercaya; absen offline yang baru terkirim tetap memakai jam tabletnya.
+  const clockedAt = new Date(Math.min(new Date(b.clockedAt).getTime(), Date.now())).toISOString();
+  const result = await record({ id, user: req.auth.user!, deviceId: req.auth.device!.id, clockedAt, photo: b.photo, source: 'tablet', at: null });
+  res.status(result.status === 'created' ? 201 : 200).json(result);
+});
+
+const phoneBody = z.object({
+  photo: body.shape.photo,
+  location: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy: z.number().min(0).max(100_000) }).nullable(),
+});
+
+/**
+ * Absen dari HP karyawan (akun barista/kitchen). Jam memakai jam server, bukan jam HP. Bila owner sudah
+ * menandai titik toko, absen hanya diterima dari dalam radius toko.
+ */
+attendanceRouter.put('/me/attendance/:id', needUser, async (req, res) => {
+  const id = parse(uuid, req.params.id);
+  const b = parse(phoneBody, req.body);
+  const user = req.auth.user!;
+  if (user.role === 'owner') throw badRequest('Owner tidak perlu absen');
+  const s = await getSettings(pool);
+  const where = checkLocation(s.attendance!, b.location);
+  if (where.required && !b.location) throw badRequest('Izinkan akses lokasi untuk absen. Absen hanya bisa dilakukan di toko.');
+  if (!where.inside) throw badRequest(`Lokasi Anda sekitar ${formatDistance(where.distanceM!)} dari toko. Absen hanya bisa dilakukan di toko.`);
+  const result = await record({ id, user, deviceId: req.auth.device?.id ?? null, clockedAt: new Date().toISOString(), photo: b.photo, source: req.auth.device ? 'tablet' : 'hp', at: b.location, distanceM: where.distanceM });
+  res.status(result.status === 'created' ? 201 : 200).json(result);
+});
+
+export function formatDistance(m: number): string {
+  return m >= 1000 ? `${(m / 1000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} km` : `${m} m`;
+}
+
+/** Status absen hari ini + riwayat 14 hari untuk layar absen di HP karyawan. */
+attendanceRouter.get('/me/attendance', needUser, async (req, res) => {
+  const s = await getSettings(pool);
+  const cfg = s.attendance!;
+  const tz = s.store.timezone;
+  const today = businessDate(new Date().toISOString(), tz);
+  const { rows } = await pool.query(
+    `select business_date as date, clocked_at as "clockedAt", late_minutes as "lateMinutes", source, distance_m as "distanceM"
+     from attendance where user_id = $1 and business_date > ($2::date - 14) order by business_date desc`,
+    [req.auth.user!.id, today],
+  );
+  res.json({
+    enabled: cfg.enabled,
+    required: cfg.enabled && req.auth.user!.role !== 'owner',
+    startTime: cfg.startTime,
+    graceMinutes: cfg.graceMinutes,
+    // Titik toko ikut dikirim supaya HP bisa menunjukkan jaraknya sebelum mengirim; pemeriksaan tetap di server.
+    location: { set: cfg.storeLat !== null && cfg.storeLng !== null, radiusM: cfg.radiusM, lat: cfg.storeLat, lng: cfg.storeLng },
+    storeName: s.store.name,
+    timezone: tz,
+    today: rows.find((r) => r.date === today) ?? null,
+    history: rows,
+    serverTime: new Date().toISOString(),
+  });
+});
+
+async function record(r: { id: string; user: PublicUser; deviceId: string | null; clockedAt: string; photo: string; source: 'tablet' | 'hp'; at: GeoPoint | null; distanceM?: number | null }) {
   const s = await getSettings(pool);
   const cfg = s.attendance!;
   if (!cfg.enabled) throw badRequest('Absensi belum diaktifkan owner');
   const tz = s.store.timezone;
-  // Jam tablet yang terlalu maju tidak dipercaya; absen offline yang baru terkirim tetap memakai jam tabletnya.
-  const clockedAt = new Date(Math.min(new Date(b.clockedAt).getTime(), Date.now())).toISOString();
-  const late = lateMinutes(clockedAt, tz, cfg);
+  const late = lateMinutes(r.clockedAt, tz, cfg);
   const { rows } = await pool.query<{ id: string }>(
-    `insert into attendance (id, user_id, user_name, device_id, business_date, clocked_at, due_time, grace_minutes, late_minutes, photo, photo_mime)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'image/jpeg')
+    `insert into attendance (id, user_id, user_name, device_id, business_date, clocked_at, due_time, grace_minutes, late_minutes, photo, photo_mime, source, lat, lng, accuracy_m, distance_m)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'image/jpeg',$11,$12,$13,$14,$15)
      on conflict do nothing returning id`,
-    [id, user.id, user.name, req.auth.device!.id, businessDate(clockedAt, tz), clockedAt, cfg.startTime, cfg.graceMinutes, late, Buffer.from(b.photo.split(',')[1], 'base64')],
+    [r.id, r.user.id, r.user.name, r.deviceId, businessDate(r.clockedAt, tz), r.clockedAt, cfg.startTime, cfg.graceMinutes, late, Buffer.from(r.photo.split(',')[1], 'base64'), r.source, r.at?.lat ?? null, r.at?.lng ?? null, r.at ? Math.round(r.at.accuracy) : null, r.distanceM ?? null],
   );
   if (rows[0] && late > 0) {
-    await noticeToOwners('attendance', 'attendance', async () => `*Absen telat - ${s.store.name}*\n${user.name} absen ${formatTime(clockedAt, tz)}, ${lateLabel(late).toLowerCase()} dari jam masuk ${cfg.startTime}.`);
+    const from = r.source === 'hp' ? ' (dari HP)' : '';
+    await noticeToOwners('attendance', 'attendance', async () => `*Absen telat - ${s.store.name}*\n${r.user.name} absen ${formatTime(r.clockedAt, tz)}${from}, ${lateLabel(late).toLowerCase()} dari jam masuk ${cfg.startTime}.`);
   }
   await attendanceSummaryDue();
-  res.status(rows[0] ? 201 : 200).json({ ok: true, status: rows[0] ? 'created' : 'exists', lateMinutes: late });
-});
+  // Absen kedua di hari yang sama tidak menimpa yang pertama; kembalikan yang sudah ada.
+  if (!rows[0]) {
+    const { rows: prev } = await pool.query<{ clocked_at: Date; late_minutes: number }>('select clocked_at, late_minutes from attendance where user_id = $1 and business_date = $2', [r.user.id, businessDate(r.clockedAt, tz)]);
+    return { ok: true, status: 'exists' as const, clockedAt: (prev[0]?.clocked_at ?? new Date(r.clockedAt)).toISOString(), lateMinutes: prev[0]?.late_minutes ?? late };
+  }
+  return { ok: true, status: 'created' as const, clockedAt: r.clockedAt, lateMinutes: late };
+}
 
 /**
  * Ringkasan harian "siapa sudah/belum absen", dikirim sekali setelah jam masuk lewat.
@@ -90,7 +152,8 @@ attendanceRouter.get('/attendance', need('admin'), async (req, res) => {
     pool.query("select id, name, role from users where active and deleted_at is null and role <> 'owner' order by name"),
     pool.query(
       `select a.id, a.user_id as "userId", a.user_name as "userName", a.business_date as date, a.clocked_at as "clockedAt", a.received_at as "receivedAt",
-         a.due_time as "dueTime", a.late_minutes as "lateMinutes", d.name as "deviceName", a.photo is not null as "hasPhoto"
+         a.due_time as "dueTime", a.late_minutes as "lateMinutes", d.name as "deviceName", a.photo is not null as "hasPhoto",
+         a.source, a.distance_m as "distanceM"
        from attendance a left join devices d on d.id = a.device_id
        where a.business_date between $1 and $2 order by a.business_date desc, a.clocked_at`,
       [q.from, q.to],

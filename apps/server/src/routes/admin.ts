@@ -161,7 +161,7 @@ const settingsBody = z.object({
   goals: z.object({ monthlySales: z.number().int().min(0).max(100_000_000_000) }).partial(),
   comp: z.object({ enabled: z.boolean(), perDay: z.number().int().min(0).max(50), maxUnitPrice: z.number().int().min(0).max(100_000_000) }).partial(),
   stock: z.object({ tolerancePct: z.number().min(0).max(100) }).partial(),
-  attendance: z.object({ enabled: z.boolean(), startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Jam masuk harus HH:MM'), graceMinutes: z.number().int().min(0).max(180) }).partial(),
+  attendance: z.object({ enabled: z.boolean(), startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Jam masuk harus HH:MM'), graceMinutes: z.number().int().min(0).max(180), storeLat: z.number().min(-90).max(90).nullable(), storeLng: z.number().min(-180).max(180).nullable(), radiusM: z.number().int().min(30).max(2000) }).partial(),
 }).partial();
 
 adminRouter.put('/settings', need('admin'), async (req, res) => {

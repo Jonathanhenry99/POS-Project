@@ -163,6 +163,7 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - Diaktifkan owner di **Pengaturan → Aturan kasir → Absensi karyawan** (jam masuk + toleransi). Tombol **Absen masuk** lalu muncul di layar login tablet kasir.
 - Alur: pilih nama → PIN sendiri → selfie (kamera depan) → tercatat. Disimpan di tablet dulu dan ikut antrean offline; satu absen masuk per orang per hari.
 - Telat dihitung dari jam tablet pada zona waktu toko, dengan aturan yang sama di tablet dan server (`packages/shared/src/attendance.ts`). Jam server saat menerima ikut disimpan untuk pembanding.
+- **Absen dari HP** (akun barista/kitchen yang login di web): setiap pagi layar **Absen** jadi pintu masuk sebelum Stok. Selfie diambil dari kamera langsung (bukan galeri), jam memakai jam server. Bila owner menandai **titik toko** (Pengaturan → Aturan kasir → Absensi → Lokasi toko), absen dari HP hanya diterima dalam radius toko; ketelitian GPS ikut diperhitungkan (maks. 100 m). Lokasi & jaraknya tersimpan untuk owner.
 - Owner melihat rekap dan fotonya di menu **Absensi**. Kabar WhatsApp: tiap absen telat, dan satu ringkasan "sudah/belum absen" setelah jam masuk lewat (dipicu sinkron tablet, tanpa penjadwal).
 
 ## Menguji dari HP/laptop owner

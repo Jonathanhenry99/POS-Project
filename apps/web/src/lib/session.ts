@@ -7,6 +7,7 @@ import { loadActiveShift } from './pos';
 import { enterPreview, exitPreview, previewRequested } from './preview';
 import { appStore } from './state';
 import { refreshBootstrap, startSyncLoop } from './sync';
+import { forgetMyAttendance } from './my-attendance';
 
 const SESSION_KEY = 'mourden.session';
 const OPERATOR_KEY = 'mourden.operator';
@@ -119,6 +120,8 @@ export async function verifyOwnerPin(pin: string): Promise<PublicUser | null> {
 }
 
 export function logout() {
+  // Status absen milik akun ini tidak boleh terbawa ke akun berikutnya di HP yang sama.
+  forgetMyAttendance();
   // Keluar dari pratinjau dulu supaya sesi owner (mode online) ikut dihapus di bawah.
   if (appStore.get().preview) void exitPreview();
   const s = appStore.get();

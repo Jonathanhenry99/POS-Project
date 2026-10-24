@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { clockToMinutes, lateLabel, lateMinutes, minutesOfDay } from './attendance';
+import { checkLocation, clockToMinutes, distanceMeters, lateLabel, lateMinutes, minutesOfDay } from './attendance';
 
 const cfg = { startTime: '09:00', graceMinutes: 0 };
 
@@ -25,4 +25,18 @@ it('label telat mudah dibaca', () => {
   expect(lateLabel(12)).toBe('Telat 12 menit');
   expect(lateLabel(60)).toBe('Telat 1 jam');
   expect(lateLabel(65)).toBe('Telat 1 jam 5 menit');
+});
+
+it('jarak & pemeriksaan lokasi toko: ketelitian GPS diperhitungkan tetapi dibatasi', () => {
+  const store = { lat: -6.2, lng: 106.816666 };
+  // 0,001 derajat lintang ~ 111 m.
+  expect(distanceMeters(store, { lat: -6.201, lng: 106.816666 })).toBe(111);
+  const cfg = { storeLat: store.lat, storeLng: store.lng, radiusM: 150 };
+  expect(checkLocation(cfg, { lat: -6.201, lng: 106.816666, accuracy: 10 })).toEqual({ required: true, inside: true, distanceM: 111 });
+  // 222 m, ketelitian 80 m -> 142 m <= 150: masih dianggap di toko.
+  expect(checkLocation(cfg, { lat: -6.202, lng: 106.816666, accuracy: 80 }).inside).toBe(true);
+  // Ketelitian 5 km tidak membuat lokasi 1 km lolos (kredit maksimal 100 m).
+  expect(checkLocation(cfg, { lat: -6.209, lng: 106.816666, accuracy: 5000 })).toMatchObject({ inside: false, distanceM: 1001 });
+  expect(checkLocation(cfg, null)).toEqual({ required: true, inside: false, distanceM: null });
+  expect(checkLocation({ storeLat: null, storeLng: null, radiusM: 150 }, null)).toEqual({ required: false, inside: true, distanceM: null });
 });

@@ -20,6 +20,8 @@ interface AttendanceRow {
   lateMinutes: number;
   deviceName: string | null;
   hasPhoto: boolean;
+  source: 'tablet' | 'hp';
+  distanceM: number | null;
 }
 interface AttendanceData {
   settings: AttendanceSettings;
@@ -49,7 +51,7 @@ export function AttendancePage() {
 
   return (
     <div className="p-4">
-      <PageHeader title="Absensi" subtitle="Absen masuk karyawan dari tablet kasir: PIN sendiri, selfie, dan jam kedatangan." />
+      <PageHeader title="Absensi" subtitle="Absen masuk karyawan dari tablet kasir atau HP masing-masing: selfie, jam kedatangan, dan lokasinya." />
       {data && !data.settings.enabled && (
         <p className="mb-4 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm">
           Absensi belum diaktifkan. Nyalakan dan atur jam masuk di{' '}
@@ -118,7 +120,8 @@ export function AttendancePage() {
                           <p className="text-2xl leading-tight font-bold tabular">{formatTime(r.clockedAt, data.timezone)}</p>
                           <p className="mt-1 flex flex-wrap items-center gap-1.5">
                             <Badge tone={r.lateMinutes ? 'amber' : 'green'}>{lateLabel(r.lateMinutes)}</Badge>
-                            {delayed && <span className="text-[11px] text-fg-muted">terkirim {formatTime(r.receivedAt, data.timezone)}</span>}
+                            <span className="text-[11px] text-fg-muted">{r.source === 'hp' ? `HP${r.distanceM !== null ? ` · ${r.distanceM} m dari toko` : ''}` : (r.deviceName ?? 'Tablet')}</span>
+                            {delayed && <span className="text-[11px] text-fg-muted">· terkirim {formatTime(r.receivedAt, data.timezone)}</span>}
                           </p>
                         </div>
                       </li>

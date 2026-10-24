@@ -113,6 +113,17 @@ export interface AttendanceSettings {
   /** Jam masuk "HH:MM" pada zona waktu toko. Absen setelah jam ini + toleransi dihitung telat. */
   startTime: string;
   graceMinutes: number;
+  /** Titik toko untuk absen dari HP. Bila diisi, absen dari HP harus berada dalam radius ini. */
+  storeLat: number | null;
+  storeLng: number | null;
+  radiusM: number;
+}
+
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+  /** Perkiraan ketelitian dari perangkat, dalam meter. */
+  accuracy: number;
 }
 
 export interface PosSettings {

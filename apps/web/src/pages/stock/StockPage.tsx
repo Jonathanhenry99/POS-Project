@@ -24,6 +24,7 @@ import { logout } from '../../lib/session';
 import { BrandLogo } from '../../components/BrandLogo';
 import { useApp } from '../../lib/state';
 import { TabletSidebar } from '../../components/TabletSidebar';
+import { useMyAttendance } from '../../lib/my-attendance';
 
 interface Sheet {
   station: Station;
@@ -78,6 +79,7 @@ export function StockPage() {
                 {user.name} · {ROLE_LABEL[user.role]}
               </p>
             </div>
+            <AttendanceChip />
             <button
               aria-label="Keluar"
               className="press grid size-11 place-items-center rounded-xl bg-white/12 hover:bg-white/20"
@@ -101,6 +103,20 @@ export function StockPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Status absen hari ini untuk karyawan di HP; ketuk untuk membuka layar absen dan riwayatnya. */
+function AttendanceChip() {
+  const applies = useApp((s) => s.mode === 'online' && !s.preview && !!s.user && s.user.role !== 'owner');
+  const { data } = useMyAttendance(applies);
+  if (!applies || !data?.enabled) return null;
+  const done = data.today;
+  return (
+    <Link to="/absen" className="press flex h-10 items-center gap-1.5 rounded-full bg-white/12 px-3 text-xs font-semibold hover:bg-white/20">
+      <span className={cx('size-2 rounded-full', done ? (done.lateMinutes ? 'bg-warning' : 'bg-[var(--lime)]') : 'bg-white/40')} />
+      {done ? `Absen ${formatTime(done.clockedAt, data.timezone)}` : 'Belum absen'}
+    </Link>
   );
 }
 

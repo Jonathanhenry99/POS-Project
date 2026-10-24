@@ -1,12 +1,13 @@
-import { BellRing, Fingerprint, Gift, Percent, ReceiptText, Save, ShieldCheck, Store, Tablet, Target, Utensils, type LucideIcon } from 'lucide-react';
+import { BellRing, Crosshair, Fingerprint, MapPin, Gift, Percent, ReceiptText, Save, ShieldCheck, Store, Tablet, Target, Utensils, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { computeTotals, formatDateTime, formatNumber, type AppSettings, type PricingSettings } from '@mourden/shared';
+import { computeTotals, DEFAULT_SETTINGS, formatDateTime, formatNumber, type AppSettings, type AttendanceSettings, type PricingSettings } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
 import { SearchSelect } from '../../components/SearchSelect';
 import { Badge, Button, Card, ErrorNote, Field, MoneyInput, Segmented, Spinner, TextInput, Toggle, cx, inputClass } from '../../components/ui';
 import { api, errorMessage } from '../../lib/api';
 import { setBrandLogo } from '../../lib/brand';
+import { currentLocation } from '../../lib/my-attendance';
 import { refreshBootstrap } from '../../lib/sync';
 import { PageHeader } from './AdminRoutes';
 import { storeTimezone, useApi } from './hooks';
@@ -81,7 +82,7 @@ export function SettingsPage() {
   };
 
   const num = (s: string) => parseFloat(s.replace(',', '.')) || 0;
-  const attendance = form?.attendance ?? { enabled: false, startTime: '09:00', graceMinutes: 0 };
+  const attendance = { ...DEFAULT_SETTINGS.attendance!, ...form?.attendance };
   const setAttendance = (patch: Partial<typeof attendance>) => setForm((f) => (f ? { ...f, attendance: { ...attendance, ...patch } } : f));
 
   return (
@@ -255,7 +256,8 @@ export function SettingsPage() {
                     </Field>
                   </div>
                 )}
-                <p className="text-xs text-fg-muted">Kabar telat dan ringkasan siapa yang belum absen dikirim lewat Notifikasi WhatsApp bila sudah diatur.</p>
+                {attendance.enabled && <StoreLocation value={attendance} onChange={setAttendance} />}
+                <p className="text-xs text-fg-muted">Akun barista/kitchen yang login di HP wajib absen dulu sebelum membuka Stok. Kabar telat dan ringkasan siapa yang belum absen dikirim lewat Notifikasi WhatsApp bila sudah diatur.</p>
               </div>
             </Card>
           )}
@@ -400,5 +402,61 @@ function ChangePin() {
         Ganti PIN
       </Button>
     </Card>
+  );
+}
+
+/**
+ * Titik toko untuk absen dari HP: owner menandainya sekali saat berada di toko. Tanpa titik ini, absen dari HP
+ * tetap tercatat (selfie + jam server) tetapi lokasinya tidak diperiksa.
+ */
+function StoreLocation({ value, onChange }: { value: AttendanceSettings; onChange: (patch: Partial<AttendanceSettings>) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const set = value.storeLat !== null && value.storeLng !== null;
+  const mark = async () => {
+    setBusy(true);
+    setError('');
+    const r = await currentLocation();
+    setBusy(false);
+    if (r.kind !== 'ok') return setError(r.kind === 'denied' ? 'Izin lokasi ditolak browser. Izinkan lokasi untuk situs ini lalu coba lagi.' : 'Lokasi tidak didapat. Nyalakan GPS lalu coba lagi.');
+    if (r.at.accuracy > 100) setError(`Ketelitian lokasi masih ± ${Math.round(r.at.accuracy)} m. Titik tetap disimpan; coba lagi di dekat jendela agar lebih tepat.`);
+    onChange({ storeLat: Math.round(r.at.lat * 1e6) / 1e6, storeLng: Math.round(r.at.lng * 1e6) / 1e6 });
+  };
+  return (
+    <div className="rounded-2xl border border-line bg-surface-2 p-4">
+      <p className="flex items-center gap-2 font-semibold">
+        <MapPin className="size-4 text-primary" /> Lokasi toko untuk absen dari HP
+      </p>
+      {set ? (
+        <p className="mt-1 text-sm text-fg-muted">
+          Tersimpan ({value.storeLat!.toFixed(5)}, {value.storeLng!.toFixed(5)}).{' '}
+          <a href={`https://www.google.com/maps?q=${value.storeLat},${value.storeLng}`} target="_blank" rel="noreferrer" className="font-semibold text-primary underline-offset-2 hover:underline">
+            Lihat di peta
+          </a>
+          . Absen dari HP hanya diterima dalam radius di bawah.
+        </p>
+      ) : (
+        <p className="mt-1 text-sm text-fg-muted">Belum diatur: lokasi tidak diperiksa. Tandai saat Anda berada di dalam toko.</p>
+      )}
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <Button variant="outline" icon={<Crosshair className="size-5" />} loading={busy} onClick={() => void mark()}>
+          {set ? 'Perbarui dari lokasi saya' : 'Tandai lokasi toko dari sini'}
+        </Button>
+        {set && (
+          <Button variant="ghost" className="text-danger!" onClick={() => onChange({ storeLat: null, storeLng: null })}>
+            Hapus titik
+          </Button>
+        )}
+        {set && (
+          <div className="w-36">
+            <Field label="Radius (meter)">
+              {(id) => <TextInput id={id} inputMode="numeric" value={String(value.radiusM)} onChange={(e) => onChange({ radiusM: Math.max(30, Math.min(2000, Number(e.target.value.replace(/\D/g, '')) || 30)) })} />}
+            </Field>
+          </div>
+        )}
+      </div>
+      {error && <p className="mt-2 text-sm text-warning">{error}</p>}
+      <p className="mt-2 text-xs text-fg-subtle">Jangan lupa tekan Simpan. GPS di dalam ruangan bisa meleset puluhan meter; radius 100–200 m biasanya pas.</p>
+    </div>
   );
 }

@@ -1,9 +1,9 @@
-import { Camera, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, Clock } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, ROLE_LABEL, formatTime, lateLabel, verifyPin, type CachedUser } from '@mourden/shared';
+import { SelfieCamera } from '../components/SelfieCamera';
 import { Button, ErrorNote, Modal, PinPad, cx } from '../components/ui';
 import { clockIn, todaysAttendance, type LocalClockIn } from '../lib/attendance';
-import { compressSelfie } from '../lib/photo';
 import { useApp } from '../lib/state';
 
 /**
@@ -22,7 +22,6 @@ export function AttendanceSheet({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<LocalClockIn | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const file = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void todaysAttendance().then(setDone);
@@ -33,20 +32,6 @@ export function AttendanceSheet({ onClose }: { onClose: () => void }) {
     setVerified(false);
     setPhoto('');
     setError('');
-  };
-
-  const onPhoto = async (f: File | undefined) => {
-    if (!f) return;
-    setBusy(true);
-    setError('');
-    try {
-      setPhoto(await compressSelfie(f));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-      if (file.current) file.current.value = '';
-    }
   };
 
   const save = async () => {
@@ -84,31 +69,11 @@ export function AttendanceSheet({ onClose }: { onClose: () => void }) {
     return (
       <Modal open size="sm" onClose={back} dismissable={!busy} title={`Selfie ${picked.name}`}>
         <div className="flex flex-col gap-4">
-          <input ref={file} type="file" accept="image/*" capture="user" className="hidden" aria-label="Kamera selfie" onChange={(e) => void onPhoto(e.target.files?.[0])} />
-          {photo ? (
-            <img src={photo} alt={`Selfie ${picked.name}`} className="mx-auto max-h-72 rounded-2xl border border-line object-cover" />
-          ) : (
-            <button onClick={() => file.current?.click()} disabled={busy} className="press grid h-56 place-items-center rounded-2xl border-2 border-dashed border-line-strong bg-surface-2 text-fg-muted">
-              <span className="flex flex-col items-center gap-2">
-                <Camera className="size-10" />
-                <span className="font-semibold">Ambil selfie</span>
-                <span className="text-sm">Wajah terlihat jelas, di dalam toko.</span>
-              </span>
-            </button>
-          )}
+          <SelfieCamera size={240} photo={photo} onPhoto={(p) => { setPhoto(p); setError(''); }} />
           <ErrorNote>{error}</ErrorNote>
-          {photo ? (
-            <div className="flex gap-3">
-              <Button variant="outline" size="lg" icon={<RotateCcw className="size-5" />} disabled={busy} onClick={() => file.current?.click()}>
-                Ulangi
-              </Button>
-              <Button variant="success" size="lg" className="flex-1" loading={busy} onClick={() => void save()}>
-                Simpan absen
-              </Button>
-            </div>
-          ) : (
-            <Button size="lg" icon={<Camera className="size-5" />} loading={busy} onClick={() => file.current?.click()}>
-              Buka kamera
+          {photo && (
+            <Button variant="success" size="lg" className="animate-float-up" loading={busy} onClick={() => void save()}>
+              Simpan absen
             </Button>
           )}
         </div>

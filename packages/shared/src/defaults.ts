@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   goals: { monthlySales: 0 },
   comp: { enabled: true, perDay: 1, maxUnitPrice: 0 },
   stock: { tolerancePct: 3 },
-  attendance: { enabled: false, startTime: '09:00', graceMinutes: 0 },
+  attendance: { enabled: false, startTime: '09:00', graceMinutes: 0, storeLat: null, storeLng: null, radiusM: 150 },
 };
 
 /** Menggabungkan pengaturan tersimpan dengan default, supaya kunci baru selalu terisi. */

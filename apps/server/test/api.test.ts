@@ -1017,7 +1017,7 @@ describe('absensi karyawan', () => {
     await request(app).put('/api/settings').set(asDevice('kasir')).send({ attendance: { enabled: true } }).expect(403);
     await request(app).put('/api/settings').set(asOwner()).send({ attendance: { enabled: true, startTime: '09:00', graceMinutes: 5 } }).expect(200);
     const boot = (await request(app).get('/api/sync/bootstrap').set(asDevice())).body;
-    expect(boot.settings.attendance).toEqual({ enabled: true, startTime: '09:00', graceMinutes: 5 });
+    expect(boot.settings.attendance).toEqual({ enabled: true, startTime: '09:00', graceMinutes: 5, storeLat: null, storeLng: null, radiusM: 150 });
   });
 
   it('absen dengan PIN sendiri + selfie: tepat waktu / telat dihitung di zona waktu toko, sekali per orang per hari', async () => {
@@ -1047,6 +1047,33 @@ describe('absensi karyawan', () => {
     expect(Buffer.from(photo.body).toString()).toBe('selfie');
     await request(app).get(`/api/attendance?from=${DAY}&to=${DAY}`).set(asDevice('kasir')).expect(403);
     await request(app).get(`/api/attendance/${res.body.rows[0].id}/photo`).set(asDevice('kasir')).expect(403);
+  });
+
+  it('absen dari HP barista: jam server, wajib di dalam radius toko bila titik toko diisi, sekali per hari; owner tidak absen', async () => {
+    const barista = (await request(app).post('/api/auth/login').send({ username: 'barista', pin: '1111' })).body.token;
+    const asBarista = { Authorization: `Bearer ${barista}` };
+    const before = (await request(app).get('/api/me/attendance').set(asBarista).expect(200)).body;
+    expect(before).toMatchObject({ enabled: true, required: true, startTime: '09:00', location: { set: false, radiusM: 150 }, today: null });
+    // Titik toko diisi owner -> lokasi wajib & diperiksa.
+    await request(app).put('/api/settings').set(asOwner()).send({ attendance: { storeLat: -6.2, storeLng: 106.816666, radiusM: 150 } }).expect(200);
+    const noLoc = await request(app).put(`/api/me/attendance/${randomUUID()}`).set(asBarista).send({ photo: PHOTO, location: null }).expect(400);
+    expect(noLoc.body.error).toContain('Izinkan akses lokasi');
+    const far = await request(app).put(`/api/me/attendance/${randomUUID()}`).set(asBarista).send({ photo: PHOTO, location: { lat: -6.209, lng: 106.816666, accuracy: 20 } }).expect(400);
+    expect(far.body.error).toContain('1 km dari toko');
+    const ok = await request(app).put(`/api/me/attendance/${randomUUID()}`).set(asBarista).send({ photo: PHOTO, location: { lat: -6.2005, lng: 106.816666, accuracy: 15 } }).expect(201);
+    expect(ok.body.status).toBe('created');
+    expect(Math.abs(new Date(ok.body.clockedAt).getTime() - Date.now())).toBeLessThan(10_000);
+    const again = await request(app).put(`/api/me/attendance/${randomUUID()}`).set(asBarista).send({ photo: PHOTO, location: { lat: -6.2005, lng: 106.816666, accuracy: 15 } }).expect(200);
+    expect(again.body).toMatchObject({ status: 'exists', clockedAt: ok.body.clockedAt });
+    const after = (await request(app).get('/api/me/attendance').set(asBarista).expect(200)).body;
+    expect(after.today).toMatchObject({ source: 'hp', distanceM: 56 });
+    expect(after.history[0].date).toBe(after.today.date);
+    const owner = await request(app).put(`/api/me/attendance/${randomUUID()}`).set(asOwner()).send({ photo: PHOTO, location: null }).expect(400);
+    expect(owner.body.error).toContain('Owner tidak perlu absen');
+    expect((await request(app).get('/api/me/attendance').set(asOwner()).expect(200)).body.required).toBe(false);
+    const list = (await request(app).get(`/api/attendance?from=${after.today.date}&to=${after.today.date}`).set(asOwner()).expect(200)).body.rows;
+    expect(list.find((r: { userName: string }) => r.userName === 'Barista')).toMatchObject({ source: 'hp', distanceM: 56 });
+    await request(app).put('/api/settings').set(asOwner()).send({ attendance: { storeLat: null, storeLng: null } }).expect(200);
   });
 
   it('ringkasan harian dikirim sekali setelah jam masuk lewat, dipicu sinkron tablet', async () => {

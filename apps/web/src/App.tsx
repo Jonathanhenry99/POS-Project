@@ -13,6 +13,7 @@ import { TabletShell } from './pages/TabletShell';
 
 // Halaman kasir dimuat langsung (harus cepat & tersedia offline); admin dimuat saat dibuka.
 import { PosPage } from './pages/pos/PosPage';
+import { AttendanceGate } from './pages/attendance/AttendanceGate';
 // Semua chunk tetap di-precache PWA. Pemisahan ini mengurangi beban awal tablet saat membuka kasir.
 const HistoryPage = lazy(() => import('./pages/pos/HistoryPage').then((m) => ({ default: m.HistoryPage })));
 const BusinessDayPage = lazy(() => import('./pages/pos/BusinessDayPage').then((m) => ({ default: m.BusinessDayPage })));
@@ -21,6 +22,7 @@ const PrinterPage = lazy(() => import('./pages/settings/PrinterPage').then((m) =
 const PrintQueuePage = lazy(() => import('./pages/settings/PrintQueuePage').then((m) => ({ default: m.PrintQueuePage })));
 const SyncPage = lazy(() => import('./pages/settings/SyncPage').then((m) => ({ default: m.SyncPage })));
 const StockPage = lazy(() => import('./pages/stock/StockPage').then((m) => ({ default: m.StockPage })));
+const MyAttendancePage = lazy(() => import('./pages/attendance/MyAttendancePage').then((m) => ({ default: m.MyAttendancePage })));
 
 const AdminRoutes = lazy(() => import('./pages/admin/AdminRoutes'));
 
@@ -105,7 +107,9 @@ export function App() {
           <Route path="/antrean-cetak" element={<PrintQueuePage />} />
           <Route path="/sinkron" element={<SyncPage />} />
         </Route>
-        <Route path="/stok/*" element={<Guard perm="stock.opname"><Suspense fallback={<Splash />}><StockPage /></Suspense></Guard>} />
+        {/* Karyawan di HP: absen dulu tiap pagi (bila diaktifkan owner), baru membuka stok. */}
+        <Route path="/stok/*" element={<Guard perm="stock.opname"><AttendanceGate><Suspense fallback={<Splash />}><StockPage /></Suspense></AttendanceGate></Guard>} />
+        <Route path="/absen" element={<Guard><Suspense fallback={<Splash />}><MyAttendancePage /></Suspense></Guard>} />
         <Route
           path="/admin/*"
           element={
