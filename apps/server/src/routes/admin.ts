@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { hashPin, mergeSettings, verifyPin } from '@mourden/shared';
-import { need, needUser, userColumns } from '../auth';
+import { checkLock, clearFails, need, needUser, recordFail, signSession, userColumns } from '../auth';
 import { audit, pool, tx } from '../db';
 import { badRequest, notFound, parse } from '../http';
 import { getSettings } from '../repo';
@@ -58,6 +58,8 @@ adminRouter.patch('/users/:id', need('admin'), async (req, res) => {
     if (body.role !== undefined) set('role', body.role);
     if (body.active !== undefined) set('active', body.active);
     if (body.pin !== undefined) set('pin_hash', await hashPin(body.pin));
+    // PIN diatur ulang owner, atau akun dinonaktifkan: sesi lama orang itu di HP berakhir.
+    if (body.pin !== undefined || body.active === false) sets.push('session_version = session_version + 1');
     vals.push(req.params.id);
     const { rows } = await c.query(
       `update users set ${[...sets, 'updated_at = now()'].join(', ')} where id = $${vals.length} returning ${userColumns}`,
@@ -69,7 +71,6 @@ adminRouter.patch('/users/:id', need('admin'), async (req, res) => {
   res.json(user);
 });
 
-/** Pengguna mengganti PIN sendiri (perlu PIN lama). */
 /**
  * Hapus pengguna. Akunnya tidak bisa login lagi dan hilang dari daftar; transaksi, shift dan opname lama
  * tetap atas namanya. Username dibebaskan supaya bisa dipakai lagi.
@@ -92,12 +93,20 @@ adminRouter.delete('/users/:id', need('admin'), async (req, res) => {
   res.json({ ok: true });
 });
 
+/** Pengguna mengganti PIN sendiri (perlu PIN lama). Sesi lain berakhir; perangkat ini mendapat sesi baru. */
 adminRouter.post('/me/pin', needUser, async (req, res) => {
   const body = parse(z.object({ oldPin: pin, newPin: pin }), req.body);
+  const key = `pin|${req.auth.user!.id}`;
+  await checkLock(key);
   const { rows } = await pool.query<{ pin_hash: string }>('select pin_hash from users where id = $1', [req.auth.user!.id]);
-  if (!rows[0] || !(await verifyPin(body.oldPin, rows[0].pin_hash))) throw badRequest('PIN lama salah');
-  await pool.query('update users set pin_hash = $1, updated_at = now() where id = $2', [await hashPin(body.newPin), req.auth.user!.id]);
-  res.json({ ok: true });
+  if (!rows[0] || !(await verifyPin(body.oldPin, rows[0].pin_hash))) {
+    await recordFail(key);
+    throw badRequest('PIN lama salah');
+  }
+  await clearFails(key);
+  const { rows: v } = await pool.query<{ v: number }>('update users set pin_hash = $1, session_version = session_version + 1, updated_at = now() where id = $2 returning session_version as v', [await hashPin(body.newPin), req.auth.user!.id]);
+  await audit(pool, req.auth.user!.id, 'change-pin', 'user', req.auth.user!.id);
+  res.json({ ok: true, token: req.auth.device ? null : signSession(req.auth.user!.id, v[0].v) });
 });
 
 // ---------- Pengaturan ----------

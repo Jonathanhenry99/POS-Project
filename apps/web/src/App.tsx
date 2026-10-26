@@ -14,6 +14,7 @@ import { TabletShell } from './pages/TabletShell';
 // Halaman kasir dimuat langsung (harus cepat & tersedia offline); admin dimuat saat dibuka.
 import { PosPage } from './pages/pos/PosPage';
 import { AttendanceGate } from './pages/attendance/AttendanceGate';
+import { SetPasswordPage } from './pages/SetPasswordPage';
 // Semua chunk tetap di-precache PWA. Pemisahan ini mengurangi beban awal tablet saat membuka kasir.
 const HistoryPage = lazy(() => import('./pages/pos/HistoryPage').then((m) => ({ default: m.HistoryPage })));
 const BusinessDayPage = lazy(() => import('./pages/pos/BusinessDayPage').then((m) => ({ default: m.BusinessDayPage })));
@@ -78,6 +79,13 @@ function Home() {
   );
 }
 
+/** Owner yang masuk online dengan PIN dan belum punya kata sandi diarahkan membuatnya dulu. */
+function MustSetPassword() {
+  const must = useApp((s) => s.mode === 'online' && !s.preview && s.mustSetPassword && s.user?.role === 'owner');
+  const { pathname } = useLocation();
+  return must && pathname !== '/kata-sandi' ? <Navigate to="/kata-sandi" replace /> : null;
+}
+
 export function App() {
   const ready = useApp((s) => s.ready);
   const { pathname } = useLocation();
@@ -87,8 +95,10 @@ export function App() {
   return (
     <ErrorBoundary>
       <div className={cashier ? 'h-full' : 'workspace-theme h-full'}>
+      <MustSetPassword />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/kata-sandi" element={<Guard perm="admin"><SetPasswordPage /></Guard>} />
         <Route path="/aktivasi" element={<ActivatePage />} />
         <Route
           element={

@@ -23,6 +23,10 @@ export interface AppState {
   user: PublicUser | null;
   /** Token sesi untuk mode online. */
   token: string | null;
+  /** Bukti PIN operator tablet dari server (12 jam), dibutuhkan untuk menu owner di tablet. Hanya di memori. */
+  operatorToken: { userId: string; token: string } | null;
+  /** Owner login online dengan PIN tetapi belum punya kata sandi: wajib membuatnya dulu. */
+  mustSetPassword: boolean;
   online: boolean;
   activeShift: Shift | null;
   sync: { pending: number; failed: number; syncing: boolean; lastSyncAt: string | null; lastError: string };
@@ -39,6 +43,8 @@ export const appStore = createStore<AppState>({
   data: null,
   user: null,
   token: null,
+  operatorToken: null,
+  mustSetPassword: false,
   online: typeof navigator === 'undefined' ? true : navigator.onLine,
   activeShift: null,
   sync: { pending: 0, failed: 0, syncing: false, lastSyncAt: null, lastError: '' },

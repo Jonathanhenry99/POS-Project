@@ -1,6 +1,7 @@
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router';
+import { PasswordInput } from '../components/PasswordFields';
 import { Button, ErrorNote, Field, TextInput } from '../components/ui';
 import { toast } from '../components/feedback';
 import { errorMessage } from '../lib/api';
@@ -59,19 +60,8 @@ export function ActivatePage() {
         <Field label="Username owner">
           {(id) => <TextInput id={id} autoCapitalize="none" value={username} onChange={(e) => setUsername(e.target.value)} required />}
         </Field>
-        <Field label="PIN owner">
-          {(id) => (
-            <TextInput
-              id={id}
-              type="password"
-              inputMode="numeric"
-              pattern="\d{4,6}"
-              maxLength={6}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              required
-            />
-          )}
+        <Field label="PIN atau kata sandi owner" hint="Owner yang sudah membuat kata sandi wajib memakai kata sandi.">
+          {(id) => <PasswordInput id={id} autoComplete="current-password" value={pin} onChange={(e) => setPin(e.target.value)} required />}
         </Field>
         <ErrorNote>{error}</ErrorNote>
         <Button type="submit" size="lg" variant="success" loading={busy} disabled={pin.length < 4}>

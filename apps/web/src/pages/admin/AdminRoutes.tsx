@@ -14,15 +14,16 @@ import {
   Fingerprint,
   Users,
   X,
+  ShieldCheck,
 } from 'lucide-react';
 import { Fragment, useState, type ReactNode } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { ROLE_LABEL, userLabel } from '@mourden/shared';
 import { toast } from '../../components/feedback';
-import { cx } from '../../components/ui';
+import { cx, PinPad } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import { enterPreview } from '../../lib/preview';
-import { logout } from '../../lib/session';
+import { logout, verifyOperator } from '../../lib/session';
 import { BrandLogo } from '../../components/BrandLogo';
 import { AppModeButton } from '../../components/AppModeButton';
 import { Sidebar, SidebarProfile, SidebarToggle, useSidebarPreference } from '../../components/ui/sidebar';
@@ -186,6 +187,8 @@ export default function AdminRoutes() {
   const user = useApp((s) => s.user)!;
   const mode = useApp((s) => s.mode);
   const online = useApp((s) => s.online);
+  // Di tablet, menu owner butuh PIN owner yang dibuktikan ke server (bukan hanya login PIN lokal di tablet).
+  const needsOperatorProof = useApp((s) => s.mode === 'tablet' && !s.preview && !!s.user && s.operatorToken?.userId !== s.user.id);
   const settings = useApi<{ store: { name: string } }>('/settings');
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -275,6 +278,9 @@ export default function AdminRoutes() {
         {!online && mode === 'tablet' && <p className="bg-warning px-4 py-2 text-sm font-semibold text-on-warning">Offline: halaman admin butuh internet.</p>}
         {user.role === 'owner' && online && <ApprovalBanner />}
         <main className="admin-content min-h-0 flex-1 overflow-y-auto pb-20 lg:pb-0">
+          {needsOperatorProof ? (
+            <OperatorProof />
+          ) : (
           <div key={pathname}>
             <Routes>
               <Route index element={<DashboardPage />} />
@@ -291,6 +297,7 @@ export default function AdminRoutes() {
               <Route path="*" element={<Navigate to="/admin" replace />} />
             </Routes>
           </div>
+          )}
         </main>
         <MobileNav onMore={() => setDrawer(true)} />
       </div>
@@ -360,6 +367,44 @@ export function PageHeader({ title, subtitle, children }: { title: string; subti
         {subtitle && <p className="text-fg-muted">{subtitle}</p>}
       </div>
       {children && <div className="flex flex-wrap gap-2">{children}</div>}
+    </div>
+  );
+}
+
+/** Konfirmasi PIN owner ke server sebelum back office terbuka di tablet (sekali per 12 jam). */
+function OperatorProof() {
+  const online = useApp((s) => s.online);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="flex min-h-full items-center justify-center p-4">
+      <div className="animate-rise w-full max-w-sm rounded-3xl border border-line bg-surface p-6 shadow-card">
+        <span className="mx-auto mb-3 grid size-14 place-items-center rounded-2xl bg-primary/10 text-primary">
+          <ShieldCheck className="size-7" />
+        </span>
+        <h1 className="text-center text-xl font-extrabold tracking-tight">Konfirmasi PIN owner</h1>
+        <p className="mt-1 mb-5 text-center text-sm text-fg-muted">
+          {online ? 'Menu owner di tablet butuh PIN yang diperiksa server. Berlaku 12 jam di tablet ini.' : 'Butuh internet untuk membuka menu owner di tablet.'}
+        </p>
+        {online && (
+          <PinPad
+            submitLabel="Buka back office"
+            busy={busy}
+            error={error}
+            onSubmit={async (pin) => {
+              setBusy(true);
+              setError('');
+              try {
+                await verifyOperator(pin);
+              } catch (e) {
+                setError(errorMessage(e));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }

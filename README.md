@@ -166,6 +166,16 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - **Absen dari HP** (akun barista/kitchen yang login di web): setiap pagi layar **Absen** jadi pintu masuk sebelum Stok. Selfie diambil dari kamera langsung (bukan galeri), jam memakai jam server. Bila owner menandai **titik toko** (Pengaturan → Aturan kasir → Absensi → Lokasi toko), absen dari HP hanya diterima dalam radius toko; ketelitian GPS ikut diperhitungkan (maks. 100 m). Lokasi & jaraknya tersimpan untuk owner.
 - Owner melihat rekap dan fotonya di menu **Absensi**. Kabar WhatsApp: tiap absen telat, dan satu ringkasan "sudah/belum absen" setelah jam masuk lewat (dipicu sinkron tablet, tanpa penjadwal).
 
+## Keamanan
+
+- **Login owner online pakai kata sandi.** Owner yang masuk dengan PIN dan belum punya kata sandi wajib membuatnya dulu (min. 8 karakter, huruf + angka, bukan username/kata umum; PBKDF2 210.000 iterasi). Setelah itu login online dan aktivasi tablet hanya menerima kata sandi; **PIN owner tetap dipakai di tablet** (login offline, persetujuan void/diskon).
+- **Lupa kata sandi:** diatur ulang dari tablet kasir yang aktif setelah PIN owner dibuktikan ke server (Pengaturan → Perangkat & PIN). Karyawan yang lupa PIN diatur ulang owner di Hak Akses. Tanpa email/SMS.
+- **Menu owner di tablet butuh bukti ke server.** Permintaan dari tablet hanya menyebut operator; fungsi owner (`need('admin')`) menuntut sesi online atau **token operator** (PIN dicek server, berlaku 12 jam, terikat ke satu tablet). Jualan, shift dan opname di tablet tetap jalan offline.
+- **Sesi berversi:** ganti kata sandi/PIN, PIN diatur ulang owner, akun dinonaktifkan/dihapus, atau "Keluar dari semua perangkat lain" langsung membatalkan sesi lama.
+- **Batas percobaan:** 5 kali per username+IP (kunci 5 menit) dan 10 kali per akun dari IP mana pun (kunci 30 menit, tercatat di log). PIN tablet dibatasi juga di tablet.
+- **Header:** CSP ketat (skrip hanya dari situs ini, tanpa iframe), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` (kamera/lokasi hanya untuk situs ini). Nilainya sama di Express dan konfigurasi Vercel (dijaga tes).
+- Dependensi diaudit (`npm audit`: 0 celah saat rilis ini).
+
 ## Menguji dari HP/laptop owner
 
 - **Pratinjau kasir** (tombol di back office): layar kasir dengan menu asli. Bawaan **simulasi**: tidak ada yang tersimpan, cetak hanya tampil di layar.

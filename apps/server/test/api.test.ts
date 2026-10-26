@@ -1091,3 +1091,77 @@ describe('absensi karyawan', () => {
     expect(summaries[0]).not.toContain('Owner');
   });
 });
+
+describe('keamanan login & sesi', () => {
+  const login = (body: Record<string, string>, ip = '10.0.0.1') => request(app).post('/api/auth/login').set('X-Forwarded-For', ip).send(body);
+
+  it('tablet tidak bisa memakai fungsi owner hanya dengan menyebut ID owner; butuh token operator dari PIN yang dicek server', async () => {
+    const asOwnerOnTablet = { ...asDevice('owner') };
+    await request(app).get('/api/users').set(asOwnerOnTablet).expect(403);
+    await request(app).put('/api/settings').set(asOwnerOnTablet).send({ store: { name: 'Dibajak' } }).expect(403);
+    await request(app).post('/api/tablet/operator-token').set(asOwnerOnTablet).send({ pin: '000000' }).expect(401);
+    const { token } = (await request(app).post('/api/tablet/operator-token').set(asOwnerOnTablet).send({ pin: '123456' }).expect(200)).body;
+    await request(app).get('/api/users').set({ ...asOwnerOnTablet, 'X-Operator-Token': token }).expect(200);
+    // Token terikat ke operator & tablet: tidak berlaku untuk kasir, tablet lain, atau sebagai sesi Bearer.
+    await request(app).get('/api/users').set({ ...asDevice('kasir'), 'X-Operator-Token': token }).expect(403);
+    await request(app).get('/api/users').set({ Authorization: `Bearer ${token}` }).expect(401);
+    const other = await request(app).post('/api/devices/pair').send({ username: 'owner', pin: '123456', name: 'Tablet lain 2' }).expect(201);
+    await request(app).get('/api/users').set({ Authorization: `Device ${other.body.token}`, 'X-Operator': userId('owner'), 'X-Operator-Token': token }).expect(403);
+    await request(app).post(`/api/devices/${other.body.device.id}/revoke`).set(asOwner()).expect(200);
+    // Jualan biasa di tablet tetap jalan tanpa token operator.
+    await request(app).get('/api/sync/bootstrap').set(asDevice('kasir')).expect(200);
+  });
+
+  it('PIN diatur ulang owner: sesi HP lama orang itu berakhir', async () => {
+    const barista = (await login({ username: 'barista', pin: '1111' })).body.token;
+    await request(app).get('/api/auth/me').set({ Authorization: `Bearer ${barista}` }).expect(200);
+    await request(app).patch(`/api/users/${userId('barista')}`).set(asOwner()).send({ pin: '1111' }).expect(200);
+    await request(app).get('/api/auth/me').set({ Authorization: `Bearer ${barista}` }).expect(401);
+  });
+
+  it('owner membuat kata sandi: login online & aktivasi tablet wajib kata sandi, sesi lama berakhir, PIN tetap untuk tablet', async () => {
+    const first = (await login({ username: 'owner', pin: '123456' }).expect(200)).body;
+    expect(first.mustSetPassword).toBe(true);
+    expect((await request(app).get('/api/auth/method?username=owner').expect(200)).body.method).toBe('pin');
+    const H = { Authorization: `Bearer ${first.token}` };
+    await request(app).post('/api/auth/password').set(H).send({ password: 'pendek1' }).expect(400);
+    await request(app).post('/api/auth/password').set(asDevice('owner')).send({ password: 'Kopi-susu-77' }).expect(403);
+    const set = (await request(app).post('/api/auth/password').set(H).send({ password: 'Kopi-susu-77' }).expect(200)).body;
+    await request(app).get('/api/auth/me').set(H).expect(401);
+    await request(app).get('/api/auth/me').set(asOwner()).expect(401);
+    await request(app).get('/api/auth/me').set({ Authorization: `Bearer ${set.token}` }).expect(200);
+    expect((await request(app).get('/api/auth/method?username=owner').expect(200)).body.method).toBe('password');
+    expect((await login({ username: 'owner', pin: '123456' }).expect(401)).body.error).toBe('Akun owner masuk dengan kata sandi');
+    const viaPassword = (await login({ username: 'owner', password: 'Kopi-susu-77' }).expect(200)).body;
+    expect(viaPassword.mustSetPassword).toBe(false);
+    await request(app).post('/api/devices/pair').send({ username: 'owner', pin: '123456', name: 'Tablet PIN' }).expect(401);
+    const paired = await request(app).post('/api/devices/pair').send({ username: 'owner', password: 'Kopi-susu-77', name: 'Tablet sandi' }).expect(201);
+    await request(app).post(`/api/devices/${paired.body.device.id}/revoke`).set({ Authorization: `Bearer ${viaPassword.token}` }).expect(200);
+    // Ganti kata sandi butuh yang lama.
+    await request(app).post('/api/auth/password').set({ Authorization: `Bearer ${viaPassword.token}` }).send({ current: 'salah', password: 'Teh-tarik-88' }).expect(400);
+    // Keluar dari semua perangkat.
+    const other = (await login({ username: 'owner', password: 'Kopi-susu-77' }).expect(200)).body.token;
+    const fresh = (await request(app).post('/api/auth/logout-all').set({ Authorization: `Bearer ${viaPassword.token}` }).expect(200)).body.token;
+    await request(app).get('/api/auth/me').set({ Authorization: `Bearer ${other}` }).expect(401);
+    await request(app).get('/api/auth/me').set({ Authorization: `Bearer ${fresh}` }).expect(200);
+  });
+
+  it('lupa kata sandi: diatur ulang dari tablet aktif setelah PIN owner dibuktikan ke server', async () => {
+    await request(app).post('/api/tablet/owner/password').set(asDevice('owner')).send({ password: 'Teh-tarik-88' }).expect(403);
+    const { token } = (await request(app).post('/api/tablet/operator-token').set(asDevice('owner')).send({ pin: '123456' }).expect(200)).body;
+    await request(app).post('/api/tablet/owner/password').set({ ...asDevice('owner'), 'X-Operator-Token': token }).send({ password: 'Teh-tarik-88' }).expect(200);
+    await login({ username: 'owner', password: 'Kopi-susu-77' }).expect(401);
+    await login({ username: 'owner', password: 'Teh-tarik-88' }).expect(200);
+    // Token operator lama ikut berakhir karena versi sesi naik.
+    await request(app).get('/api/users').set({ ...asDevice('owner'), 'X-Operator-Token': token }).expect(403);
+  });
+
+  it('percobaan PIN dari banyak IP tetap mengunci akun', async () => {
+    // Mulai dari hitungan bersih (tes lebih awal sudah mencoba PIN salah untuk akun ini).
+    await pool.query("delete from login_attempts where key like '%kitchen%'");
+    for (let i = 0; i < 10; i++) await login({ username: 'kitchen', pin: '0000' }, `10.1.0.${i + 1}`).expect(401);
+    const locked = await login({ username: 'kitchen', pin: '2222' }, '10.9.9.9');
+    expect(locked.status).toBe(429);
+    expect(locked.body.error).toContain('Terlalu banyak percobaan');
+  });
+});

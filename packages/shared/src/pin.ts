@@ -43,3 +43,23 @@ export async function verifyPin(pin: string, stored: string): Promise<boolean> {
   for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i];
   return diff === 0;
 }
+
+/** Kata sandi owner untuk login online: lebih panjang dari PIN dan di-hash lebih berat. Diverifikasi dengan verifyPin. */
+const PASSWORD_ITERATIONS = 210_000;
+
+export async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derive(password, salt, PASSWORD_ITERATIONS);
+  return `pbkdf2$${PASSWORD_ITERATIONS}$${toB64(salt)}$${toB64(hash)}`;
+}
+
+/** Alasan kata sandi ditolak, atau null bila cukup kuat. */
+export function passwordProblem(password: string, username = ''): string | null {
+  if (password.length < 8) return 'Kata sandi minimal 8 karakter';
+  if (password.length > 128) return 'Kata sandi terlalu panjang';
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return 'Kata sandi harus memuat huruf dan angka';
+  if (/^(.)\1+$/.test(password)) return 'Kata sandi terlalu mudah ditebak';
+  if (username && password.toLowerCase().includes(username.toLowerCase())) return 'Kata sandi tidak boleh memuat username';
+  if (/^(password|katasandi|mourden|12345678|qwerty)/i.test(password)) return 'Kata sandi terlalu umum';
+  return null;
+}

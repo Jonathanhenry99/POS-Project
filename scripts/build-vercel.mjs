@@ -61,12 +61,38 @@ writeFileSync(
 
 // 3) Routing
 const noCache = { 'Cache-Control': 'no-cache' };
+// Header keamanan halaman web (API sudah memakai helmet di Express). Harus sama dengan CONTENT_SECURITY_POLICY di
+// apps/server/src/config.ts; tes server memeriksa keduanya tetap sama.
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "media-src 'self' blob:",
+  "connect-src 'self' https: http://localhost:* http://127.0.0.1:*",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join('; ');
+const security = {
+  'Content-Security-Policy': CONTENT_SECURITY_POLICY,
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Permissions-Policy': 'camera=(self), geolocation=(self), microphone=(), payment=(), usb=(self), serial=(self), bluetooth=(self)',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+};
 writeFileSync(
   `${out}/config.json`,
   JSON.stringify(
     {
       version: 3,
       routes: [
+        { src: '^/(?!api(?:/|$)).*$', headers: security, continue: true },
         // Service worker & index harus selalu dicek ulang agar update aplikasi cepat sampai ke tablet.
         { src: '^/(sw\\.js|index\\.html|manifest\\.webmanifest|registerSW\\.js)$', headers: noCache, continue: true },
         { src: '^/assets/(.*)$', headers: { 'Cache-Control': 'public, max-age=31536000, immutable' }, continue: true },

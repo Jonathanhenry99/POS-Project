@@ -17,3 +17,11 @@ describe('restoreUrl (penerusan Vercel)', () => {
     expect(restoreUrl('/api/orders?status=void')).toBe('/api/orders?status=void');
   });
 });
+
+it('header keamanan halaman web di Vercel sama dengan yang dipakai server', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { CONTENT_SECURITY_POLICY } = await import('../src/config');
+  const script = readFileSync(new URL('../../../scripts/build-vercel.mjs', import.meta.url), 'utf8');
+  const lines = [...script.matchAll(/^  "([^"]+)",$/gm)].map((m) => m[1]);
+  expect(lines.join('; ')).toBe(CONTENT_SECURITY_POLICY);
+});

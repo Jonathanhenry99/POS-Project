@@ -8,7 +8,10 @@ import { Badge, Button, Card, ErrorNote, Field, MoneyInput, Segmented, Spinner, 
 import { api, errorMessage } from '../../lib/api';
 import { setBrandLogo } from '../../lib/brand';
 import { currentLocation } from '../../lib/my-attendance';
+import { replaceSessionToken } from '../../lib/session';
+import { useApp } from '../../lib/state';
 import { refreshBootstrap } from '../../lib/sync';
+import { NewPasswordFields, PasswordInput, passwordReady } from '../../components/PasswordFields';
 import { PageHeader } from './AdminRoutes';
 import { storeTimezone, useApi } from './hooks';
 import { NotifyCard } from './NotifyCard';
@@ -32,7 +35,7 @@ const SECTIONS: { value: Section; label: string; icon: LucideIcon; hint: string;
   { value: 'kasir', label: 'Aturan kasir', icon: ShieldCheck, hint: 'Void, diskon, tutup kasir, komplimen, toleransi selisih dan absensi karyawan.', form: true, layout: TWO_COL },
   { value: 'operasional', label: 'Meja & catatan', icon: Utensils, hint: 'Daftar meja, template catatan, alasan pembatalan dan tujuan checker.', form: true, layout: TWO_COL },
   { value: 'notifikasi', label: 'Notifikasi', icon: BellRing, hint: 'Kabar stok ke WhatsApp. Tersimpan otomatis.', form: false, layout: 'max-w-3xl' },
-  { value: 'perangkat', label: 'Perangkat & PIN', icon: Tablet, hint: 'Tablet kasir yang aktif dan PIN Anda. Tersimpan otomatis.', form: false, layout: TWO_COL },
+  { value: 'perangkat', label: 'Perangkat & PIN', icon: Tablet, hint: 'Tablet kasir, kata sandi dan PIN Anda. Tersimpan otomatis.', form: false, layout: TWO_COL },
 ];
 
 interface DeviceRow {
@@ -267,7 +270,10 @@ export function SettingsPage() {
           {section === 'perangkat' && (
             <>
               <Devices />
-              <ChangePin />
+              <div className="flex flex-col gap-4">
+                <OwnerPassword />
+                <ChangePin />
+              </div>
             </>
           )}
         </div>
@@ -387,8 +393,10 @@ function ChangePin() {
         onClick={async () => {
           setBusy(true);
           try {
-            await api('/me/pin', { method: 'POST', body: { oldPin, newPin } });
-            toast('PIN diganti');
+            const res = await api<{ token: string | null }>('/me/pin', { method: 'POST', body: { oldPin, newPin } });
+            // Sesi lain berakhir; perangkat ini memakai sesi baru dari server.
+            if (res.token) replaceSessionToken(res.token);
+            toast('PIN diganti. Sesi di perangkat lain berakhir.');
             setOldPin('');
             setNewPin('');
             void refreshBootstrap();
@@ -458,5 +466,87 @@ function StoreLocation({ value, onChange }: { value: AttendanceSettings; onChang
       {error && <p className="mt-2 text-sm text-warning">{error}</p>}
       <p className="mt-2 text-xs text-fg-subtle">Jangan lupa tekan Simpan. GPS di dalam ruangan bisa meleset puluhan meter; radius 100–200 m biasanya pas.</p>
     </div>
+  );
+}
+
+/**
+ * Kata sandi login online owner. Di HP/laptop: ganti (butuh kata sandi lama) dan keluar dari semua perangkat.
+ * Di tablet kasir (setelah PIN owner dibuktikan ke server): atur ulang tanpa kata sandi lama, untuk "lupa kata sandi".
+ */
+function OwnerPassword() {
+  const user = useApp((s) => s.user);
+  const tablet = useApp((s) => s.mode === 'tablet');
+  const [current, setCurrent] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState('');
+  if (user?.role !== 'owner') return null;
+  const ready = passwordReady(password, confirm, user.username) && (tablet || !!current);
+
+  const save = async () => {
+    setBusy('save');
+    try {
+      if (tablet) {
+        await api('/tablet/owner/password', { method: 'POST', body: { password }, asDevice: true });
+        toast('Kata sandi owner diatur ulang. Login online berikutnya memakai kata sandi baru.');
+      } else {
+        const { token } = await api<{ token: string }>('/auth/password', { method: 'POST', body: { current, password } });
+        replaceSessionToken(token, { mustSetPassword: false });
+        toast('Kata sandi diganti. Sesi di perangkat lain berakhir.');
+      }
+      setCurrent('');
+      setPassword('');
+      setConfirm('');
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const logoutAll = async () => {
+    const ok = await confirmDialog({ title: 'Keluar dari semua perangkat lain?', message: 'Semua HP/laptop lain yang sedang login dengan akun ini harus login ulang. Perangkat ini tetap masuk. Tablet kasir tidak terpengaruh.', confirmLabel: 'Keluarkan semua' });
+    if (!ok) return;
+    setBusy('all');
+    try {
+      const { token } = await api<{ token: string }>('/auth/logout-all', { method: 'POST' });
+      replaceSessionToken(token);
+      toast('Perangkat lain sudah dikeluarkan');
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return (
+    <Card title={tablet ? 'Atur ulang kata sandi owner' : 'Kata sandi owner'}>
+      <p className="mb-3 text-sm text-fg-muted">
+        {tablet
+          ? 'Untuk lupa kata sandi: buat kata sandi baru dari tablet toko ini. Semua sesi owner di HP/laptop berakhir.'
+          : 'Dipakai untuk login owner dari HP/laptop dan mengaktifkan tablet. PIN owner tetap untuk tablet kasir.'}
+      </p>
+      <div className="flex flex-col gap-3">
+        {!tablet && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="pw-current" className="text-sm font-semibold text-fg-muted">
+              Kata sandi sekarang
+            </label>
+            <PasswordInput id="pw-current" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+          </div>
+        )}
+        <NewPasswordFields value={password} confirm={confirm} onChange={setPassword} onConfirm={setConfirm} username={user.username} />
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button loading={busy === 'save'} disabled={!ready || !!busy} onClick={() => void save()}>
+          {tablet ? 'Atur ulang kata sandi' : 'Ganti kata sandi'}
+        </Button>
+        {!tablet && (
+          <Button variant="outline" loading={busy === 'all'} disabled={!!busy} onClick={() => void logoutAll()}>
+            Keluar dari semua perangkat lain
+          </Button>
+        )}
+      </div>
+    </Card>
   );
 }

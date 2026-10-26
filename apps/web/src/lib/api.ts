@@ -22,6 +22,7 @@ export function authHeaders(operatorId?: string, asDevice = false): Record<strin
     const h: Record<string, string> = { Authorization: `Device ${s.device.token}` };
     const op = operatorId ?? s.user?.id;
     if (op) h['X-Operator'] = op;
+    if (op && s.operatorToken?.userId === op) h['X-Operator-Token'] = s.operatorToken.token;
     return h;
   }
   return s.token ? { Authorization: `Bearer ${s.token}` } : {};

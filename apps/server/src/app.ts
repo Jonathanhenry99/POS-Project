@@ -4,7 +4,7 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import { authenticate } from './auth';
-import { config } from './config';
+import { CONTENT_SECURITY_POLICY, config } from './config';
 import { errorHandler } from './http';
 import { adminRouter } from './routes/admin';
 import { authRouter } from './routes/auth';
@@ -18,12 +18,26 @@ import { notifyRouter } from './routes/notify';
 import { approvalsRouter } from './routes/approvals';
 import { attendanceRouter } from './routes/attendance';
 
+/** Kamera (selfie absen) dan lokasi (absen dari HP) hanya untuk situs ini; fitur lain dimatikan. */
+export const PERMISSIONS_POLICY = 'camera=(self), geolocation=(self), microphone=(), payment=(), usb=(self), serial=(self), bluetooth=(self)';
+
+function cspDirectives(): Record<string, string[]> {
+  return Object.fromEntries(CONTENT_SECURITY_POLICY.split('; ').map((d) => {
+    const [name, ...values] = d.split(' ');
+    return [name, values];
+  }));
+}
+
 export function createApp() {
   const app = express();
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
-  // CSP dimatikan karena web app disajikan dari sini dan butuh service worker + inline style React.
-  app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+  // CSP yang sama dengan produksi (Vercel): skrip hanya dari situs ini; kamera & lokasi hanya untuk situs ini.
+  app.use(helmet({ contentSecurityPolicy: { useDefaults: false, directives: cspDirectives() }, crossOriginEmbedderPolicy: false, frameguard: { action: 'deny' } }));
+  app.use((_req, res, next) => {
+    res.setHeader('Permissions-Policy', PERMISSIONS_POLICY);
+    next();
+  });
   if (config.corsOrigins.length) app.use(cors({ origin: config.corsOrigins }));
   app.use(express.json({ limit: '1mb' }));
 

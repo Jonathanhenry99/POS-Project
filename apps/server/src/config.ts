@@ -10,6 +10,27 @@ function required(name: string, devDefault: string): string {
   return devDefault;
 }
 
+/**
+ * Kebijakan keamanan konten untuk halaman web: skrip hanya dari situs ini (tidak ada skrip sisipan/pihak ketiga),
+ * tidak boleh dibingkai situs lain. Gaya inline diizinkan karena React memakai atribut style. Koneksi ke
+ * https/localhost tetap boleh untuk bridge printer LAN eksperimen. Dipakai Express dan konfigurasi Vercel.
+ */
+export const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "media-src 'self' blob:",
+  "connect-src 'self' https: http://localhost:* http://127.0.0.1:*",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join('; ');
+
 export const config = {
   isProd,
   port: parseInt(process.env.PORT ?? '8787', 10),

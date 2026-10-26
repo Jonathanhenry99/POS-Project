@@ -44,6 +44,10 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     res.status(400).json({ error: 'Data terkait tidak ditemukan' });
     return;
   }
+  if (err?.type === 'entity.too.large') {
+    res.status(413).json({ error: 'Data terlalu besar' });
+    return;
+  }
   if (err?.type === 'entity.parse.failed') {
     res.status(400).json({ error: 'JSON tidak valid' });
     return;

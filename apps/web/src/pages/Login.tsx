@@ -3,9 +3,10 @@ import { BrandLogo } from '../components/BrandLogo';
 import { useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router';
 import { ROLE_LABEL, type CachedUser } from '@mourden/shared';
-import { Button, ErrorNote, Field, PinPad, TextInput, cx } from '../components/ui';
+import { PasswordInput } from '../components/PasswordFields';
+import { Button, ErrorNote, Field, Modal, PinPad, TextInput, cx } from '../components/ui';
 import { errorMessage } from '../lib/api';
-import { loginOnline, loginTablet } from '../lib/session';
+import { loginMethod, loginOnline, loginTablet } from '../lib/session';
 import { useApp } from '../lib/state';
 import { AttendanceSheet } from './AttendanceSheet';
 
@@ -189,22 +190,38 @@ function TabletLogin() {
   );
 }
 
-/** HP/laptop owner & barista: username + PIN dicek di server. */
+/** HP/laptop owner & barista: username lalu PIN (karyawan) atau kata sandi (owner), dicek di server. */
 function OnlineLogin() {
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [step, setStep] = useState<'user' | 'pin'>('user');
+  const [step, setStep] = useState<'user' | 'pin' | 'password'>('user');
+  const [help, setHelp] = useState(false);
   const navigate = useNavigate();
 
-  const submit = async (pin: string) => {
+  const submit = async (secret: { pin: string } | { password: string }) => {
     setBusy(true);
     setError('');
     try {
-      await loginOnline(username.trim(), pin);
+      await loginOnline(username.trim(), secret);
       navigate('/', { replace: true });
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const next = async () => {
+    if (!username.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      setStep(await loginMethod(username.trim()));
+    } catch {
+      // Server tidak terjangkau: tetap lanjut ke PIN, pesan galatnya muncul saat masuk.
+      setStep('pin');
     } finally {
       setBusy(false);
     }
@@ -228,29 +245,72 @@ function OnlineLogin() {
               className="flex flex-col gap-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (username.trim()) setStep('pin');
+                void next();
               }}
             >
               <Field label="Username">
                 {(id) => <TextInput id={id} autoFocus autoCapitalize="none" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />}
               </Field>
-              <Button type="submit" size="lg" disabled={!username.trim()}>
+              <Button type="submit" size="lg" loading={busy} disabled={!username.trim()}>
                 Lanjut
               </Button>
             </form>
           ) : (
-            <div className="animate-fade-in">
-              <button className="mb-3 flex items-center gap-1 text-sm font-semibold text-fg-muted hover:text-fg" onClick={() => setStep('user')}>
+            <div key={step} className="animate-fade-in">
+              <button className="mb-3 flex items-center gap-1 text-sm font-semibold text-fg-muted hover:text-fg" onClick={() => { setStep('user'); setError(''); setPassword(''); }}>
                 <ArrowLeft className="size-4" /> {username}
               </button>
-              <PinPad onSubmit={submit} busy={busy} error={error} />
+              {step === 'pin' ? (
+                <PinPad onSubmit={(pin) => submit({ pin })} busy={busy} error={error} />
+              ) : (
+                <form
+                  className="flex flex-col gap-4"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (password) void submit({ password });
+                  }}
+                >
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="login-password" className="text-sm font-semibold text-fg-muted">
+                      Kata sandi
+                    </label>
+                    <PasswordInput id="login-password" autoFocus autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  </div>
+                  <ErrorNote>{error}</ErrorNote>
+                  <Button type="submit" size="lg" loading={busy} disabled={!password}>
+                    Masuk
+                  </Button>
+                </form>
+              )}
+              <button className="mt-4 w-full text-center text-sm font-semibold text-primary" onClick={() => setHelp(true)}>
+                {step === 'password' ? 'Lupa kata sandi?' : 'Lupa PIN?'}
+              </button>
             </div>
           )}
           <Link to="/aktivasi" className="mt-6 flex items-center justify-center gap-2 text-sm font-semibold text-primary">
             <Tablet className="size-4" /> Jadikan perangkat ini tablet kasir
           </Link>
+          {help && <ForgotHelp owner={step === 'password'} onClose={() => setHelp(false)} />}
         </div>
       </div>
     </div>
+  );
+}
+
+/** Pemulihan tanpa email/SMS: karyawan lewat owner, owner lewat tablet kasir yang aktif + PIN owner. */
+function ForgotHelp({ owner, onClose }: { owner: boolean; onClose: () => void }) {
+  return (
+    <Modal open size="sm" onClose={onClose} title={owner ? 'Lupa kata sandi owner' : 'Lupa PIN'}>
+      {owner ? (
+        <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
+          <li>Buka <b>tablet kasir</b> toko yang sudah aktif, lalu masuk sebagai Owner dengan PIN owner.</li>
+          <li>Buka <b>Back office → Pengaturan → Perangkat &amp; PIN</b>.</li>
+          <li>Pada kartu <b>Kata sandi owner</b>, buat kata sandi baru.</li>
+        </ol>
+      ) : (
+        <p className="text-sm">Minta owner mengatur ulang PIN Anda di <b>Back office → Hak Akses</b>. Setelah diganti, login lagi dengan PIN baru.</p>
+      )}
+      <p className="mt-4 text-xs text-fg-muted">Demi keamanan, pemulihan tidak dilakukan lewat pesan. Semua penggantian tercatat di log.</p>
+    </Modal>
   );
 }
