@@ -4,7 +4,7 @@
 import { can, type AppSettings, type Catalog, type Ingredient, type PublicUser } from '@mourden/shared';
 import { api } from './api';
 import { LIVE_TEST_DB, MAIN_DB, PREVIEW_DB, deleteDatabase, useDatabase, type BootstrapData, type DeviceInfo } from './idb';
-import { startSyncLoop, updateCounts } from './sync';
+import { refreshPreviewEpoch, startSyncLoop, updateCounts } from './sync';
 import { loadActiveShift } from './pos';
 import { appStore } from './state';
 
@@ -91,6 +91,7 @@ export async function enterPreview(opts: { live?: boolean } = {}) {
   appStore.set({ preview: true, previewLive: !!opts.live, mode: 'tablet', device, data, activeShift: null, sync: IDLE_SYNC });
   await loadActiveShift();
   if (opts.live) {
+    await refreshPreviewEpoch();
     await updateCounts();
     startSyncLoop();
   }
@@ -110,6 +111,7 @@ export async function setPreviewLive(live: boolean) {
   appStore.set({ previewLive: live, device, activeShift: null, sync: IDLE_SYNC });
   await loadActiveShift();
   if (live) {
+    await refreshPreviewEpoch();
     await updateCounts();
     startSyncLoop();
   }

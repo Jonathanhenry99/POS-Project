@@ -173,7 +173,7 @@ describe('transaksi offline-first', () => {
   });
 
   it('tutup kasir menghitung kas seharusnya dan menutup shift', async () => {
-    mockFetch([offline, offline, offline, offline]);
+    mockFetch(Array.from({ length: 10 }, () => offline));
     const a = await checkout({ lines: [line(20000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
     await checkout({ lines: [line(40000)], discount: null, customerName: '', orderType: 'dine_in', method: 'card', tendered: 0, reference: '' });
     const c = await checkout({ lines: [line(10000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 10500, reference: '' });
@@ -300,5 +300,44 @@ describe('perbarui data menu di tablet', () => {
     mockFetch([() => new Response(JSON.stringify({ ...data, serverTime: new Date().toISOString() }), { status: 200 })]);
     expect(await refreshBootstrap()).toBe(true);
     expect(appStore.get()).toMatchObject({ dataError: null, online: true });
+  });
+});
+
+describe('owner mengosongkan data penjualan', () => {
+  it('versi data baru: penjualan, shift, antrean & nomor struk lokal dibuang; perangkat & menu tetap; versi sama tidak membuang apa pun', async () => {
+    const { adoptDataEpoch } = await import('./sync');
+    const { kvGet, kvSet } = await import('./idb');
+    mockFetch(Array.from({ length: 10 }, () => offline));
+    await openShift(100000);
+    await checkout({ lines: [line(20000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
+    await kvSet('device', { id: 'dev-1' });
+    expect(await listOrders()).toHaveLength(1);
+    expect((await listOutbox()).length).toBeGreaterThan(0);
+
+    expect(await adoptDataEpoch(null)).toBe(false);
+    expect(await adoptDataEpoch('epoch-1')).toBe(true);
+    expect(await listOrders()).toHaveLength(0);
+    expect(await listOutbox()).toHaveLength(0);
+    expect(await kvGet('activeShiftId')).toBeUndefined();
+    expect((await (await db()).getAllKeys('kv')).filter((k) => String(k).startsWith('seq:'))).toEqual([]);
+    expect(await kvGet('device')).toEqual({ id: 'dev-1' });
+    expect(appStore.get().activeShift).toBeNull();
+    expect(await adoptDataEpoch('epoch-1')).toBe(false);
+  });
+
+  it('kiriman ditolak karena data lama: berhenti tanpa menandai gagal, lalu menyegarkan data', async () => {
+    mockFetch(Array.from({ length: 10 }, () => offline));
+    await openShift(100000);
+    await checkout({ lines: [line(20000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
+    await flushOutbox();
+    expect((await listOutbox()).length).toBeGreaterThan(0);
+    const calls = mockFetch([
+      () => new Response(JSON.stringify({ error: 'Data tablet berasal dari sebelum data penjualan dikosongkan. Tablet sedang menyegarkan data.' }), { status: 409 }),
+      () => new Response(JSON.stringify({ ...data, dataEpoch: null, serverTime: new Date().toISOString() }), { status: 200 }),
+    ]);
+    await flushOutbox();
+    const outbox = await listOutbox();
+    expect(outbox.every((o) => o.status === 'pending')).toBe(true);
+    expect(calls.map((c) => c.url)).toContain('/api/sync/bootstrap');
   });
 });

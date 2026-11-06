@@ -23,6 +23,8 @@ export function authHeaders(operatorId?: string, asDevice = false): Record<strin
     const op = operatorId ?? s.user?.id;
     if (op) h['X-Operator'] = op;
     if (op && s.operatorToken?.userId === op) h['X-Operator-Token'] = s.operatorToken.token;
+    // Data lokal tablet ini milik versi data penjualan yang mana; server menolak kiriman dari versi lama.
+    if (s.data?.dataEpoch) h['X-Data-Epoch'] = s.data.dataEpoch;
     return h;
   }
   return s.token ? { Authorization: `Bearer ${s.token}` } : {};

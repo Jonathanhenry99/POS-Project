@@ -14,6 +14,8 @@ export interface BootstrapData {
   catalog: Catalog;
   ingredients: Ingredient[];
   users: CachedUser[];
+  /** Versi data penjualan di server; berganti saat owner mengosongkan data penjualan. */
+  dataEpoch?: string | null;
   fetchedAt: string;
 }
 

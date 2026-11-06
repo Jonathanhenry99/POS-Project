@@ -176,6 +176,11 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - **Header:** CSP ketat (skrip hanya dari situs ini, tanpa iframe), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` (kamera/lokasi hanya untuk situs ini). Nilainya sama di Express dan konfigurasi Vercel (dijaga tes).
 - Dependensi diaudit (`npm audit`: 0 celah saat rilis ini).
 
+## Mengosongkan data penjualan uji
+
+- **Pengaturan → Data** (owner, dari HP/laptop, wajib kata sandi + ketik `KOSONGKAN`): menghapus transaksi, void, shift/tutup kasir (+foto bukti), hari usaha, pemakaian stok dari penjualan, daftar Perlu Ditinjau dan permintaan persetujuan. Pengaturan, menu, resep, bahan, pengguna, opname/barang masuk/terbuang, absensi dan log keamanan tetap. Cadangan JSON diunduh otomatis lebih dulu.
+- Reset menyimpan **versi data** baru. Tablet yang masih membawa data lama ditolak saat mengirim (409, tidak ditandai gagal), lalu membersihkan salinan lokalnya (transaksi, shift, antrean, keranjang, nomor struk) saat menyegarkan data dan dimuat ulang sekali.
+
 ## Menguji dari HP/laptop owner
 
 - **Pratinjau kasir** (tombol di back office): layar kasir dengan menu asli. Bawaan **simulasi**: tidak ada yang tersimpan, cetak hanya tampil di layar.

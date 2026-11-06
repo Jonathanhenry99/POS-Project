@@ -17,6 +17,8 @@ import { reviewRouter } from './routes/review';
 import { notifyRouter } from './routes/notify';
 import { approvalsRouter } from './routes/approvals';
 import { attendanceRouter } from './routes/attendance';
+import { currentEpoch, maintenanceRouter } from './routes/maintenance';
+import { HttpError } from './http';
 
 /** Kamera (selfie absen) dan lokasi (absen dari HP) hanya untuk situs ini; fitur lain dimatikan. */
 export const PERMISSIONS_POLICY = 'camera=(self), geolocation=(self), microphone=(), payment=(), usb=(self), serial=(self), bluetooth=(self)';
@@ -27,6 +29,8 @@ function cspDirectives(): Record<string, string[]> {
     return [name, values];
   }));
 }
+
+export const STALE_EPOCH = 'Data tablet berasal dari sebelum data penjualan dikosongkan. Tablet sedang menyegarkan data.';
 
 export function createApp() {
   const app = express();
@@ -46,7 +50,16 @@ export function createApp() {
     res.json({ ok: true, time: new Date().toISOString() });
   });
   api.use(authenticate);
-  api.use(authRouter, adminRouter, catalogRouter, ordersRouter, inventoryRouter, reportsRouter, businessDaysRouter, reviewRouter, notifyRouter, approvalsRouter, attendanceRouter);
+  // Tablet yang masih membawa data dari sebelum data penjualan dikosongkan tidak boleh mengirimnya lagi.
+  // Ia akan menyegarkan diri lewat /sync/bootstrap (GET, tetap diizinkan) lalu mencoba ulang.
+  api.use(async (req, _res, next) => {
+    if (req.auth.device && req.method !== 'GET') {
+      const epoch = await currentEpoch();
+      if (epoch && req.get('x-data-epoch') !== epoch.id) throw new HttpError(409, STALE_EPOCH);
+    }
+    next();
+  });
+  api.use(authRouter, adminRouter, catalogRouter, ordersRouter, inventoryRouter, reportsRouter, businessDaysRouter, reviewRouter, notifyRouter, approvalsRouter, attendanceRouter, maintenanceRouter);
   api.use((_req, res) => {
     res.status(404).json({ error: 'Endpoint tidak ditemukan' });
   });

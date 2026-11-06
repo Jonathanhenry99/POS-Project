@@ -1,6 +1,6 @@
 // Sinkronisasi tablet kasir: tarik data awal (menu, pengguna, pengaturan) dan kirim antrean (outbox).
 import { ApiError, api, errorMessage } from './api';
-import { db, kvSet, type BootstrapData, type OutboxItem } from './idb';
+import { db, kvGet, kvSet, type BootstrapData, type OutboxItem } from './idb';
 import { appStore } from './state';
 
 export async function refreshBootstrap(): Promise<boolean> {
@@ -9,6 +9,12 @@ export async function refreshBootstrap(): Promise<boolean> {
     const data = await api<Omit<BootstrapData, 'fetchedAt'> & { serverTime: string }>('/sync/bootstrap', { operatorId: '' });
     const { serverTime: _, ...rest } = data;
     const next: BootstrapData = { ...rest, fetchedAt: new Date().toISOString() };
+    // Owner mengosongkan data penjualan: data lokal dari sebelum itu dibuang dulu, lalu aplikasi dimuat ulang.
+    if (await adoptDataEpoch(next.dataEpoch ?? null)) {
+      await kvSet('bootstrap', next);
+      reloadAfterWipe();
+      return true;
+    }
     await kvSet('bootstrap', next);
     appStore.set({ data: next, online: true, dataError: null });
     // Pengguna yang sedang login dinonaktifkan owner -> keluar.
@@ -20,6 +26,58 @@ export async function refreshBootstrap(): Promise<boolean> {
     // kalau tidak menu lama terus dipakai tanpa ada yang tahu sebabnya.
     if (e instanceof ApiError && e.status === 0) appStore.set({ online: false });
     else appStore.set({ dataError: { rejected: e instanceof ApiError && e.status === 401, message: errorMessage(e) } });
+    return false;
+  }
+}
+
+const EPOCH_KEY = 'dataEpoch';
+const WIPED_FLAG = 'mourden.data-wiped';
+
+/** Pesan server bila tablet mengirim data dari sebelum data penjualan dikosongkan (lihat STALE_EPOCH di server). */
+export function isStaleEpoch(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 409 && e.message.includes('sebelum data penjualan dikosongkan');
+}
+
+/**
+ * Bila versi data server berbeda dari versi data lokal, hapus salinan lokal penjualan & buka/tutup toko
+ * (transaksi, shift, hari usaha, antrean kirim, antrean cetak, keranjang, nomor struk). Perangkat, menu,
+ * pengaturan printer dan absensi lokal tetap. Mengembalikan true bila ada yang dihapus.
+ */
+export async function adoptDataEpoch(epoch: string | null): Promise<boolean> {
+  if (!epoch) return false;
+  const local = await kvGet<string>(EPOCH_KEY);
+  if (local === epoch) return false;
+  const d = await db();
+  const t = d.transaction(['kv', 'orders', 'shifts', 'businessDays', 'outbox', 'printJobs'], 'readwrite');
+  await Promise.all([t.objectStore('orders').clear(), t.objectStore('shifts').clear(), t.objectStore('businessDays').clear(), t.objectStore('outbox').clear(), t.objectStore('printJobs').clear()]);
+  const kv = t.objectStore('kv');
+  for (const key of await kv.getAllKeys()) {
+    const k = String(key);
+    if (k.startsWith('seq:') || ['activeShiftId', 'activeBusinessDayId', 'lastClosedShiftId'].includes(k)) await kv.delete(key);
+  }
+  await kv.put(epoch, EPOCH_KEY);
+  await t.done;
+  try {
+    for (const k of ['mourden.cart', 'mourden.saved', 'mourden.order-session']) localStorage.removeItem(k);
+    sessionStorage.setItem(WIPED_FLAG, '1');
+  } catch {
+    /* penyimpanan diblokir: keranjang di memori hilang saat dimuat ulang */
+  }
+  appStore.set({ activeShift: null });
+  return true;
+}
+
+function reloadAfterWipe() {
+  if (typeof window !== 'undefined') window.location.reload();
+}
+
+/** Satu kali setelah dimuat ulang karena data penjualan dikosongkan: beri tahu pengguna tablet. */
+export function consumeWipedNotice(): boolean {
+  try {
+    const was = sessionStorage.getItem(WIPED_FLAG) === '1';
+    sessionStorage.removeItem(WIPED_FLAG);
+    return was;
+  } catch {
     return false;
   }
 }
@@ -60,6 +118,7 @@ export function flushOutbox(): Promise<void> {
   // Mode pratinjau (simulasi): antrean tetap lokal, tidak pernah dikirim. "Uji langsung" mengirim seperti tablet.
   if (appStore.get().mode !== 'tablet' || (appStore.get().preview && !appStore.get().previewLive)) return Promise.resolve();
   flushing ??= (async () => {
+    let stale = false;
     appStore.set((s) => ({ ...s, sync: { ...s.sync, syncing: true } }));
     try {
       const d = await db();
@@ -73,6 +132,11 @@ export function flushOutbox(): Promise<void> {
           appStore.set((s) => ({ ...s, online: true, sync: { ...s.sync, lastSyncAt: new Date().toISOString(), lastError: '' } }));
         } catch (e) {
           const msg = errorMessage(e);
+          if (isStaleEpoch(e)) {
+            // Data lokal dari sebelum reset: berhenti, segarkan (membuang data lama), jangan tandai gagal.
+            stale = true;
+            break;
+          }
           if (e instanceof ApiError && !e.retryable) {
             // Ditolak server (data tidak valid): tandai gagal, lanjutkan antrean lain.
             await d.put('outbox', { ...item, status: 'failed', attempts: item.attempts + 1, lastError: msg });
@@ -89,6 +153,7 @@ export function flushOutbox(): Promise<void> {
       appStore.set((s) => ({ ...s, sync: { ...s.sync, syncing: false } }));
       flushing = null;
     }
+    if (stale) await (appStore.get().previewLive ? refreshPreviewEpoch() : refreshBootstrap());
   })();
   return flushing;
 }
@@ -122,9 +187,23 @@ export function startSyncLoop() {
   });
   window.addEventListener('offline', () => appStore.set({ online: false }));
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') kick();
+    if (document.visibilityState !== 'visible') return;
+    // Saat tablet dibuka lagi: ambil data terbaru dulu (termasuk versi data bila owner mengosongkan penjualan).
+    void refreshBootstrap().then(kick);
   });
   setInterval(kick, 20_000);
   setInterval(() => void refreshBootstrap(), 5 * 60_000);
   void updateCounts().then(kick);
+}
+
+/** Pratinjau "Uji langsung" owner: data uji lokal juga mengikuti versi data penjualan server. */
+export async function refreshPreviewEpoch(): Promise<void> {
+  try {
+    const { id } = await api<{ id: string | null }>('/data-epoch');
+    const s = appStore.get();
+    if (s.data && id) appStore.set({ data: { ...s.data, dataEpoch: id } });
+    if (await adoptDataEpoch(id)) reloadAfterWipe();
+  } catch {
+    /* coba lagi pada pengiriman berikutnya */
+  }
 }

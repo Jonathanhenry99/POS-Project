@@ -1165,3 +1165,47 @@ describe('keamanan login & sesi', () => {
     expect(locked.body.error).toContain('Terlalu banyak percobaan');
   });
 });
+
+describe('kosongkan data penjualan uji', () => {
+  let owner = '';
+  const asReal = () => ({ Authorization: `Bearer ${owner}` });
+
+  it('hanya owner online dengan kata sandi; penjualan & buka/tutup toko hilang, pengaturan & master tetap; tablet lama ditolak sampai menyegarkan', async () => {
+    owner = (await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token;
+    const before = (await request(app).get('/api/admin/reset-sales').set(asReal()).expect(200)).body;
+    expect(before.counts.orders).toBeGreaterThan(0);
+    expect(before.counts.shifts).toBeGreaterThan(0);
+    const settingsBefore = (await request(app).get('/api/settings').set(asReal())).body;
+    const productsBefore = (await request(app).get('/api/admin/catalog').set(asReal())).body.products.length;
+    const otherMoves = (await pool.query("select count(*)::int as n from stock_movements where ref_type is distinct from 'order'")).rows[0].n;
+
+    await request(app).post('/api/admin/reset-sales').set(asDevice('kasir')).send({ secret: '1234', confirm: 'KOSONGKAN' }).expect(403);
+    await request(app).post('/api/admin/reset-sales').set(asDevice('owner')).send({ secret: '123456', confirm: 'KOSONGKAN' }).expect(403);
+    await request(app).post('/api/admin/reset-sales').set(asReal()).send({ secret: 'salah-123', confirm: 'KOSONGKAN' }).expect(401);
+    await request(app).post('/api/admin/reset-sales').set(asReal()).send({ secret: 'Teh-tarik-88', confirm: 'hapus' }).expect(400);
+
+    const backup = (await request(app).get('/api/admin/backup/sales').set(asReal()).expect(200)).body;
+    expect(backup.tables.orders.length).toBe(before.counts.orders);
+    expect(backup.tables.shift_proofs.every((p: Record<string, unknown>) => !('image' in p))).toBe(true);
+
+    const res = (await request(app).post('/api/admin/reset-sales').set(asReal()).send({ secret: 'Teh-tarik-88', confirm: 'KOSONGKAN' }).expect(200)).body;
+    expect(res.removed.orders).toBe(before.counts.orders);
+    const after = (await request(app).get('/api/admin/reset-sales').set(asReal()).expect(200)).body;
+    expect(after.counts).toEqual({ orders: 0, voids: 0, total: 0, shifts: 0, days: 0, stockMovements: 0 });
+    expect(after.lastReset.id).toBe(res.epoch.id);
+    expect((await pool.query("select count(*)::int as n from stock_movements where ref_type is distinct from 'order'")).rows[0].n).toBe(otherMoves);
+    expect((await request(app).get('/api/settings').set(asReal())).body).toEqual(settingsBefore);
+    expect((await request(app).get('/api/admin/catalog').set(asReal())).body.products.length).toBe(productsBefore);
+
+    // Tablet dengan data dari sebelum reset: kiriman ditolak (tidak dihitung gagal permanen), bootstrap tetap jalan.
+    const order = makeOrder('Americano', [], 1, { shiftId: randomUUID() });
+    const stale = await request(app).put(`/api/orders/${order.id}`).set(asDevice('kasir')).send(order).expect(409);
+    expect(stale.body.error).toContain('sebelum data penjualan dikosongkan');
+    const boot = (await request(app).get('/api/sync/bootstrap').set(asDevice()).expect(200)).body;
+    expect(boot.dataEpoch).toBe(res.epoch.id);
+    expect((await request(app).get('/api/data-epoch').set(asReal()).expect(200)).body.id).toBe(res.epoch.id);
+    await request(app).put(`/api/orders/${order.id}`).set({ ...asDevice('kasir'), 'X-Data-Epoch': res.epoch.id }).send(order).expect(201);
+    const log = await pool.query("select data from audit_log where action = 'reset-sales'");
+    expect(log.rows[0].data.orders).toBe(before.counts.orders);
+  });
+});

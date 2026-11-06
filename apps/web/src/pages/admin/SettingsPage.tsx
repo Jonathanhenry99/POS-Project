@@ -1,4 +1,4 @@
-import { BellRing, Crosshair, Fingerprint, MapPin, Gift, Percent, ReceiptText, Save, ShieldCheck, Store, Tablet, Target, Utensils, type LucideIcon } from 'lucide-react';
+import { BellRing, Crosshair, Database, Download, Fingerprint, MapPin, TriangleAlert, Gift, Percent, ReceiptText, Save, ShieldCheck, Store, Tablet, Target, Utensils, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { computeTotals, DEFAULT_SETTINGS, formatDateTime, formatNumber, type AppSettings, type AttendanceSettings, type PricingSettings } from '@mourden/shared';
@@ -26,7 +26,7 @@ const TIMEZONES = [
 ];
 
 const TWO_COL = 'lg:grid-cols-2';
-type Section = 'toko' | 'struk' | 'harga' | 'kasir' | 'operasional' | 'notifikasi' | 'perangkat';
+type Section = 'toko' | 'struk' | 'harga' | 'kasir' | 'operasional' | 'notifikasi' | 'perangkat' | 'data';
 /** `form` = bagian yang disimpan lewat tombol Simpan; bagian lain menyimpan sendiri per tindakan. */
 const SECTIONS: { value: Section; label: string; icon: LucideIcon; hint: string; form: boolean; layout: string }[] = [
   { value: 'toko', label: 'Toko', icon: Store, hint: 'Identitas toko di struk dan target penjualan.', form: true, layout: TWO_COL },
@@ -36,6 +36,7 @@ const SECTIONS: { value: Section; label: string; icon: LucideIcon; hint: string;
   { value: 'operasional', label: 'Meja & catatan', icon: Utensils, hint: 'Daftar meja, template catatan, alasan pembatalan dan tujuan checker.', form: true, layout: TWO_COL },
   { value: 'notifikasi', label: 'Notifikasi', icon: BellRing, hint: 'Kabar stok ke WhatsApp. Tersimpan otomatis.', form: false, layout: 'max-w-3xl' },
   { value: 'perangkat', label: 'Perangkat & PIN', icon: Tablet, hint: 'Tablet kasir, kata sandi dan PIN Anda. Tersimpan otomatis.', form: false, layout: TWO_COL },
+  { value: 'data', label: 'Data', icon: Database, hint: 'Cadangan dan pengosongan data penjualan uji.', form: false, layout: 'max-w-3xl' },
 ];
 
 interface DeviceRow {
@@ -267,6 +268,7 @@ export function SettingsPage() {
 
           {section === 'operasional' && <PosMasterCard value={form.pos} onChange={(pos) => setForm((f) => (f ? { ...f, pos } : f))} />}
           {section === 'notifikasi' && <NotifyCard />}
+          {section === 'data' && <ResetSales />}
           {section === 'perangkat' && (
             <>
               <Devices />
@@ -548,5 +550,143 @@ function OwnerPassword() {
         )}
       </div>
     </Card>
+  );
+}
+
+interface ResetInfo {
+  counts: { orders: number; voids: number; total: number; shifts: number; days: number; stockMovements: number };
+  openShifts: { openedByName: string; openedAt: string; deviceName: string | null }[];
+  lastReset: { id: string; at: string } | null;
+}
+
+async function downloadSalesBackup() {
+  const res = await api<Response>('/admin/backup/sales', { raw: true, timeoutMs: 60_000 });
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `cadangan-penjualan-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/**
+ * Mengosongkan data penjualan uji sebelum dipakai sungguhan. Hanya penjualan dan buka/tutup toko yang hilang;
+ * cadangan diunduh otomatis lebih dulu. Tablet membersihkan salinan lokalnya sendiri saat tersambung.
+ */
+function ResetSales() {
+  const tablet = useApp((s) => s.mode === 'tablet');
+  const tz = storeTimezone();
+  const { data, error, reload } = useApi<ResetInfo>(tablet ? null : '/admin/reset-sales');
+  const [secret, setSecret] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState('');
+  const [done, setDone] = useState<ResetInfo['counts'] | null>(null);
+
+  if (tablet) {
+    return (
+      <Card title="Kosongkan data penjualan">
+        <p className="text-sm text-fg-muted">Demi keamanan, data hanya bisa dikosongkan dari HP/laptop owner yang login dengan kata sandi.</p>
+      </Card>
+    );
+  }
+
+  const run = async () => {
+    const ok = await confirmDialog({
+      title: 'Kosongkan data penjualan?',
+      message: `${formatNumber(data?.counts.orders ?? 0)} transaksi, ${formatNumber(data?.counts.shifts ?? 0)} shift dan ${formatNumber(data?.counts.days ?? 0)} hari usaha akan dihapus permanen. Cadangan diunduh lebih dulu.`,
+      confirmLabel: 'Kosongkan sekarang',
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy('reset');
+    try {
+      await downloadSalesBackup();
+      const res = await api<{ removed: ResetInfo['counts'] }>('/admin/reset-sales', { method: 'POST', body: { secret, confirm } });
+      setDone(res.removed);
+      setSecret('');
+      setConfirm('');
+      reload();
+      toast('Data penjualan dikosongkan. Tablet kasir akan membersihkan datanya saat tersambung.');
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card title="Cadangan data penjualan" icon={<Download className="size-4" />}>
+        <p className="mb-3 text-sm text-fg-muted">Unduh semua transaksi, shift dan hari usaha dalam satu berkas JSON (tanpa foto bukti).</p>
+        <Button variant="outline" icon={<Download className="size-5" />} loading={busy === 'backup'} onClick={async () => {
+          setBusy('backup');
+          try {
+            await downloadSalesBackup();
+          } catch (e) {
+            toast(errorMessage(e), 'error');
+          } finally {
+            setBusy('');
+          }
+        }}>
+          Unduh cadangan
+        </Button>
+      </Card>
+
+      <section className="rounded-3xl border-2 border-danger/30 bg-surface p-5 shadow-card">
+        <h3 className="flex items-center gap-2 font-bold text-danger">
+          <TriangleAlert className="size-5" /> Kosongkan data penjualan uji
+        </h3>
+        <p className="mt-1 text-sm text-fg-muted">Untuk memulai pemakaian sungguhan setelah masa uji coba. Tidak bisa dibatalkan, tetapi cadangan diunduh otomatis lebih dulu.</p>
+        <ErrorNote>{error}</ErrorNote>
+        {data && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl bg-danger/8 p-4 text-sm">
+              <p className="mb-2 font-semibold text-danger">Dihapus</p>
+              <ul className="flex flex-col gap-1">
+                <li>{formatNumber(data.counts.orders)} transaksi ({formatNumber(data.counts.voids)} void), total Rp {formatNumber(data.counts.total)}</li>
+                <li>{formatNumber(data.counts.shifts)} shift & tutup kasir (beserta foto bukti)</li>
+                <li>{formatNumber(data.counts.days)} hari usaha (buka/tutup toko)</li>
+                <li>Pemakaian stok dari penjualan uji ({formatNumber(data.counts.stockMovements)} catatan)</li>
+                <li>Daftar Perlu Ditinjau & permintaan persetujuan</li>
+              </ul>
+            </div>
+            <div className="rounded-2xl bg-success/8 p-4 text-sm">
+              <p className="mb-2 font-semibold text-success">Tetap</p>
+              <ul className="flex flex-col gap-1">
+                <li>Pengaturan, logo, jam masuk, pajak & service</li>
+                <li>Menu, kategori, varian, resep & bahan</li>
+                <li>Pengguna, PIN, kata sandi, tablet aktif</li>
+                <li>Opname, barang masuk, terbuang, absensi</li>
+                <li>Log keamanan</li>
+              </ul>
+            </div>
+          </div>
+        )}
+        {!!data?.openShifts.length && (
+          <p className="mt-3 rounded-2xl border border-warning/40 bg-warning/10 p-3 text-sm">
+            Masih ada shift terbuka: {data.openShifts.map((o) => `${o.openedByName} di ${o.deviceName ?? 'tablet'} sejak ${formatDateTime(o.openedAt, tz)}`).join('; ')}. Shift ini ikut terhapus; tablet akan membersihkannya sendiri.
+          </p>
+        )}
+        {data?.lastReset && <p className="mt-3 text-xs text-fg-muted">Terakhir dikosongkan {formatDateTime(data.lastReset.at, tz)}.</p>}
+        {done && (
+          <div className="animate-rise mt-4 rounded-2xl bg-success/10 p-4 text-sm">
+            <p className="font-semibold text-success">Selesai. {formatNumber(done.orders)} transaksi, {formatNumber(done.shifts)} shift dan {formatNumber(done.days)} hari usaha dihapus.</p>
+            <p className="mt-1">Di tablet kasir: buka aplikasinya (atau tekan Sinkron sekarang). Tablet membersihkan data ujinya lalu dimuat ulang; setelah itu buka shift seperti biasa.</p>
+          </div>
+        )}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="reset-secret" className="text-sm font-semibold text-fg-muted">
+              Kata sandi owner
+            </label>
+            <PasswordInput id="reset-secret" autoComplete="current-password" value={secret} onChange={(e) => setSecret(e.target.value)} />
+          </div>
+          <Field label="Ketik KOSONGKAN">{(id) => <TextInput id={id} autoCapitalize="characters" value={confirm} onChange={(e) => setConfirm(e.target.value.toUpperCase())} />}</Field>
+        </div>
+        <Button className="mt-4" variant="danger" size="lg" loading={busy === 'reset'} disabled={!data || secret.length < 4 || confirm !== 'KOSONGKAN' || !!busy} onClick={() => void run()}>
+          Kosongkan data penjualan
+        </Button>
+      </section>
+    </div>
   );
 }

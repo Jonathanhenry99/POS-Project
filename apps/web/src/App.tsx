@@ -1,7 +1,8 @@
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode, useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { can, type Permission } from '@mourden/shared';
-import { ConfirmHost, Toaster } from './components/feedback';
+import { ConfirmHost, Toaster, toast } from './components/feedback';
+import { consumeWipedNotice } from './lib/sync';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { Button, Spinner } from './components/ui';
@@ -88,6 +89,9 @@ function MustSetPassword() {
 
 export function App() {
   const ready = useApp((s) => s.ready);
+  useEffect(() => {
+    if (ready && consumeWipedNotice()) toast('Data penjualan uji di tablet ini sudah dibersihkan mengikuti owner. Silakan buka shift lagi.', 'info');
+  }, [ready]);
   const { pathname } = useLocation();
   // Kasir keeps its existing palette and layout; only TabletShell's header is redesigned.
   const cashier = /^\/kasir\/?$/i.test(pathname);

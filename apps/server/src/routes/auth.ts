@@ -7,6 +7,7 @@ import { audit, pool, tx } from '../db';
 import { HttpError, badRequest, forbidden, notFound, parse } from '../http';
 import { getCatalog, getIngredients, getSettings } from '../repo';
 import { attendanceSummaryDue } from './attendance';
+import { currentEpoch } from './maintenance';
 
 export const authRouter = Router();
 
@@ -254,5 +255,5 @@ authRouter.get('/sync/bootstrap', needDevice, async (req, res) => {
     getIngredients(pool),
     pool.query(`select ${userColumns}, pin_hash as "pinHash" from users where active order by name`),
   ]);
-  res.json({ device: req.auth.device, settings, catalog, ingredients, users: users.rows, serverTime: new Date().toISOString() });
+  res.json({ device: req.auth.device, settings, catalog, ingredients, users: users.rows, dataEpoch: (await currentEpoch())?.id ?? null, serverTime: new Date().toISOString() });
 });
