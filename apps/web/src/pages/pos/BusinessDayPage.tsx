@@ -163,7 +163,7 @@ export function BusinessDayPage() {
               </div>
 
               <section className="tile flex flex-col gap-3 p-5 lg:sticky lg:top-4">
-                <h3 className="font-semibold">Akhiri shift atau tutup toko</h3>
+                <h3 className="font-semibold">{shift ? 'Selesai bertugas?' : activeDay ? 'Shift sudah diakhiri' : 'Akhiri shift atau tutup toko'}</h3>
                 {shift ? (
                   <>
                     <ul className="flex flex-col gap-2 text-sm">
@@ -171,15 +171,22 @@ export function BusinessDayPage() {
                       <Check ok={!sync.pending && !sync.failed} text={sync.pending || sync.failed ? `Sinkron: ${sync.pending} menunggu, ${sync.failed} gagal` : 'Semua data sudah tersinkron'} />
                       <Check ok text="Siapkan: uang tunai di laci dan struk settlement EDC" />
                     </ul>
-                    <Button size="lg" variant="outline" onClick={() => setCloseMode('shift')}>Akhiri shift</Button>
-                    <p className="-mt-1 text-xs text-fg-muted">Ganti petugas: hitung kas dan settlement shift ini. Hari usaha tetap berjalan.</p>
                     <Button size="lg" icon={<Lock className="size-5" />} onClick={() => setCloseMode('day')}>Tutup toko</Button>
-                    <p className="-mt-1 text-xs text-fg-muted">Tutup shift terakhir lalu simpan rekap hari ini.</p>
+                    <p className="-mt-1 text-xs text-fg-muted">Selesai jualan hari ini: hitung kas & settlement, shift diakhiri dan rekap hari disimpan sekaligus. Ini yang di ESB disebut "Akhiri Shift" di akhir hari.</p>
+                    <Button size="lg" variant="outline" onClick={() => setCloseMode('shift')}>Ganti petugas</Button>
+                    <p className="-mt-1 text-xs text-fg-muted">Hanya untuk serah terima ke petugas berikutnya di tengah hari. Toko tetap buka.</p>
                   </>
                 ) : (
                   <>
-                    <Button onClick={() => navigate('/kasir')}>{activeDay ? 'Buka shift berikutnya' : 'Ke layar kasir'}</Button>
-                    {activeDay && <Button variant="outline" loading={busy} onClick={finishWithoutShift}>Tutup toko (shift terakhir sudah diakhiri)</Button>}
+                    {activeDay ? (
+                      <>
+                        <p className="text-sm text-fg-muted">Toko masih tercatat buka. Kalau jualan hari ini sudah selesai, tutup toko sekarang; tidak perlu membuka shift lagi.</p>
+                        <Button size="lg" icon={<Lock className="size-5" />} loading={busy} onClick={finishWithoutShift}>Tutup toko sekarang</Button>
+                        <Button variant="outline" onClick={() => navigate('/kasir')}>Buka shift petugas berikutnya</Button>
+                      </>
+                    ) : (
+                      <Button onClick={() => navigate('/kasir')}>Ke layar kasir</Button>
+                    )}
                   </>
                 )}
                 {shift && tab === 'current' && <Button variant="ghost" onClick={() => setCashSheet(true)}>Catat kas masuk / keluar</Button>}
@@ -217,7 +224,7 @@ export function BusinessDayPage() {
         <PrintStatusCard />
       </div>
       {cashSheet && <CashMovementSheet onClose={() => setCashSheet(false)} />}
-      {closeMode && <ClosingSheet mode={closeMode} drafts={draftCount} onClose={() => setCloseMode(null)} onFinished={load} />}
+      {closeMode && <ClosingSheet mode={closeMode} drafts={draftCount} onClose={() => setCloseMode(null)} onFinished={load} onSwitchMode={setCloseMode} />}
     </div>
   );
 }

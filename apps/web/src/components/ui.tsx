@@ -1,4 +1,5 @@
 import { Delete, Loader2, Trash2, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 import { formatNumber, parseRupiah } from '@mourden/shared';
 
@@ -121,7 +122,8 @@ export function Modal({
   }, [open, onClose, dismissable]);
   if (!open) return null;
   const widths = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-3xl', xl: 'sm:max-w-5xl' };
-  return (
+  // Selalu digambar di lapisan teratas halaman: induk yang beranimasi (transform) tidak boleh mengurung atau menimpanya.
+  return createPortal(
     <div
       className="animate-fade-in fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center sm:p-4"
       onPointerDown={(e) => dismissable && e.target === e.currentTarget && onClose()}
@@ -147,7 +149,8 @@ export function Modal({
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && <div className="flex gap-3 border-t border-line bg-surface-2/50 px-5 py-3">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

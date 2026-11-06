@@ -5,7 +5,7 @@ import { confirmDialog, toast } from '../../components/feedback';
 import { Button, Empty, Modal, MoneyInput, cx } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import { db, kvSet, type LocalOrder } from '../../lib/idb';
-import { cartTotals, listOrders, openShift, type CartLine } from '../../lib/pos';
+import { cartTotals, ensureBusinessDay, listOrders, openShift, type CartLine } from '../../lib/pos';
 import { appStore, useApp } from '../../lib/state';
 import { enqueue } from '../../lib/sync';
 import { printBill, printStatusStore } from '../../printing/service';
@@ -325,9 +325,25 @@ function OpenShiftPanel() {
   const timezone = useApp((s) => s.data?.settings.store.timezone) ?? 'Asia/Jakarta';
   const [cash, setCash] = useState(0);
   const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  // Hari usaha yang masih buka (shift sebelumnya sudah diakhiri): mungkin yang dimaksud adalah tutup toko.
+  const [openDay, setOpenDay] = useState<{ openedAt: string } | null>(null);
+  useEffect(() => {
+    void ensureBusinessDay().then((d) => setOpenDay(d && !d.closedAt ? d : null)).catch(() => {});
+  }, []);
   return (
     <Modal open dismissable={false} size="sm" onClose={() => {}} title="Buka shift">
       <div className="flex flex-col gap-4">
+        {openDay && (
+          <div className="rounded-2xl border border-warning/40 bg-warning/10 p-3 text-sm">
+            <p>
+              Toko masih buka sejak {formatTime(openDay.openedAt, timezone)}. <b>Jualan hari ini sudah selesai?</b> Tidak perlu membuka shift; langsung tutup toko.
+            </p>
+            <Button className="mt-2 w-full" variant="outline" onClick={() => navigate('/hari')}>
+              Tutup toko
+            </Button>
+          </div>
+        )}
         <div className="flex items-center gap-3 rounded-2xl bg-primary/8 p-3">
           <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-grad-primary text-white">
             <Wallet className="size-5" />
@@ -364,6 +380,11 @@ function OpenShiftPanel() {
         >
           Buka shift
         </Button>
+        {!openDay && (
+          <button className="text-sm font-semibold text-fg-muted underline-offset-2 hover:underline" onClick={() => navigate('/hari')}>
+            Ke Ganti Shift / Hari
+          </button>
+        )}
       </div>
     </Modal>
   );
