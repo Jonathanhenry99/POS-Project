@@ -7,7 +7,7 @@ import { audit, pool } from '../db';
 import { badRequest, dateRangeQuery, forbidden, notFound, parse } from '../http';
 import { noticeToOwners } from '../notify';
 import { getSettings } from '../repo';
-import { scheduledStart, scheduleToday } from './team';
+import { attendanceDuty, OFF_LABEL, scheduleToday } from './team';
 
 export const attendanceRouter = Router();
 
@@ -67,10 +67,13 @@ attendanceRouter.get('/me/attendance', needUser, async (req, res) => {
      from attendance where user_id = $1 and business_date > ($2::date - 14) order by business_date desc`,
     [req.auth.user!.id, today],
   );
-  const shift = await scheduledStart(pool, req.auth.user!.id, today);
+  const { shift, off } = await attendanceDuty(pool, req.auth.user!.id, today);
+  const done = rows.find((r) => r.date === today) ?? null;
   res.json({
     enabled: cfg.enabled,
-    required: cfg.enabled && req.auth.user!.role !== 'owner',
+    // Yang tidak terjadwal masuk hari ini tidak perlu (dan tidak bisa) absen.
+    required: cfg.enabled && req.auth.user!.role !== 'owner' && !off,
+    offToday: done ? null : off,
     startTime: shift?.startTime ?? cfg.startTime,
     shiftName: shift?.templateName ?? null,
     graceMinutes: cfg.graceMinutes,
@@ -78,7 +81,7 @@ attendanceRouter.get('/me/attendance', needUser, async (req, res) => {
     location: { set: cfg.storeLat !== null && cfg.storeLng !== null, radiusM: cfg.radiusM, lat: cfg.storeLat, lng: cfg.storeLng },
     storeName: s.store.name,
     timezone: tz,
-    today: rows.find((r) => r.date === today) ?? null,
+    today: done,
     history: rows,
     serverTime: new Date().toISOString(),
   });
@@ -89,8 +92,18 @@ async function record(r: { id: string; user: PublicUser; deviceId: string | null
   const cfg = s.attendance!;
   if (!cfg.enabled) throw badRequest('Absensi belum diaktifkan owner');
   const tz = s.store.timezone;
+  const date = businessDate(r.clockedAt, tz);
+  // Absen kedua di hari yang sama tidak menimpa yang pertama; kembalikan yang sudah ada.
+  const existing = async () => {
+    const { rows: prev } = await pool.query<{ clocked_at: Date; late_minutes: number }>('select clocked_at, late_minutes from attendance where user_id = $1 and business_date = $2', [r.user.id, date]);
+    return prev[0] ? { ok: true, status: 'exists' as const, clockedAt: prev[0].clocked_at.toISOString(), lateMinutes: prev[0].late_minutes } : null;
+  };
+  const before = await existing();
+  if (before) return before;
   // Terjadwal hari ini? Telat dihitung dari jam mulai shift-nya (mis. Shift 2 15:00), bukan jam masuk umum.
-  const shift = await scheduledStart(pool, r.user.id, businessDate(r.clockedAt, tz));
+  // Yang tidak terjadwal masuk (libur/izin/sakit) tidak bisa absen.
+  const { shift, off } = await attendanceDuty(pool, r.user.id, date);
+  if (off) throw badRequest(`${r.user.name} ${OFF_LABEL[off]} hari ini, jadi tidak perlu absen. Bila menggantikan shift, minta owner menambahkannya di Jadwal.`);
   const due = { startTime: shift?.startTime ?? cfg.startTime, graceMinutes: cfg.graceMinutes };
   const late = lateMinutes(r.clockedAt, tz, due);
   const { rows } = await pool.query<{ id: string }>(
@@ -104,11 +117,7 @@ async function record(r: { id: string; user: PublicUser; deviceId: string | null
     await noticeToOwners('attendance', 'attendance', async () => `*Absen telat - ${s.store.name}*\n${r.user.name} absen ${formatTime(r.clockedAt, tz)}${from}, ${lateLabel(late).toLowerCase()} dari jam masuk ${due.startTime}${shift ? ` (${shift.templateName})` : ''}.`);
   }
   await attendanceSummaryDue();
-  // Absen kedua di hari yang sama tidak menimpa yang pertama; kembalikan yang sudah ada.
-  if (!rows[0]) {
-    const { rows: prev } = await pool.query<{ clocked_at: Date; late_minutes: number }>('select clocked_at, late_minutes from attendance where user_id = $1 and business_date = $2', [r.user.id, businessDate(r.clockedAt, tz)]);
-    return { ok: true, status: 'exists' as const, clockedAt: (prev[0]?.clocked_at ?? new Date(r.clockedAt)).toISOString(), lateMinutes: prev[0]?.late_minutes ?? late };
-  }
+  if (!rows[0]) return (await existing()) ?? { ok: true, status: 'exists' as const, clockedAt: r.clockedAt, lateMinutes: late };
   return { ok: true, status: 'created' as const, clockedAt: r.clockedAt, lateMinutes: late };
 }
 

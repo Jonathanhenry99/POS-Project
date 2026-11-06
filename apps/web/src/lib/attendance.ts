@@ -56,9 +56,21 @@ export function dueStartFor(userId: string): { startTime: string; shiftName: str
   return { startTime: mine?.startTime ?? cfg.startTime, shiftName: mine?.templateName ?? null };
 }
 
+/**
+ * Libur hari ini? Bila hari ini ada jadwal shift, hanya yang terjadwal masuk yang absen (sama dengan aturan server).
+ * Tanpa jadwal sama sekali, semua karyawan absen seperti biasa.
+ */
+export function isOffToday(userId: string): boolean {
+  const { tz } = context();
+  const sched = appStore.get().data?.scheduleToday;
+  if (!sched || sched.date !== businessDate(new Date().toISOString(), tz) || !sched.entries.length) return false;
+  return !sched.entries.some((e) => e.userId === userId);
+}
+
 export async function clockIn(user: CachedUser, photo: string): Promise<LocalClockIn> {
   const { cfg, tz } = context();
   if (!cfg.enabled) throw new Error('Absensi belum diaktifkan owner');
+  if (isOffToday(user.id)) throw new Error(`${user.name} tidak terjadwal masuk hari ini, jadi tidak perlu absen. Bila menggantikan shift, minta owner menambahkannya di Jadwal.`);
   const at = new Date().toISOString();
   const entries = await todaysAttendance();
   if (entries[user.id]) throw new Error(`${user.name} sudah absen hari ini pukul ${formatTime(entries[user.id].at, tz)}`);

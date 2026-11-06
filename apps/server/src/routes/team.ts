@@ -63,6 +63,25 @@ export async function scheduledStart(db: Db, userId: string, date: string): Prom
   return rows[0] ?? null;
 }
 
+/**
+ * Wajib absen hari ini? Bila hari itu ada jadwal shift (minimal satu orang "masuk"), hanya yang terjadwal masuk
+ * yang absen; yang libur/izin/sakit/tidak masuk tidak bisa absen (dan tidak dihitung telat). Bila hari itu belum
+ * ada jadwal sama sekali, semua karyawan absen dengan jam masuk umum seperti sebelum fitur jadwal ada.
+ */
+export async function attendanceDuty(db: Db, userId: string, date: string): Promise<{ shift: { startTime: string; templateName: string } | null; off: null | 'libur' | 'izin' | 'sakit' | 'alpa' }> {
+  const shift = await scheduledStart(db, userId, date);
+  if (shift) return { shift, off: null };
+  const { rows } = await db.query<{ inUse: boolean; status: string | null }>(
+    `select exists (select 1 from schedule_entries where date = $2 and status = 'masuk') as "inUse",
+       (select status from schedule_entries where date = $2 and user_id = $1 order by status limit 1) as status`,
+    [userId, date],
+  );
+  if (!rows[0].inUse) return { shift: null, off: null };
+  return { shift: null, off: (rows[0].status as 'izin' | 'sakit' | 'alpa' | null) ?? 'libur' };
+}
+
+export const OFF_LABEL = { libur: 'tidak terjadwal masuk', izin: 'tercatat izin', sakit: 'tercatat sakit', alpa: 'tercatat tidak masuk' } as const;
+
 /** Jadwal hari ini untuk semua orang (tablet menghitung telat absen secara lokal, juga saat offline). */
 export async function scheduleToday(db: Db, date: string) {
   const { rows } = await db.query<{ userId: string; startTime: string; templateName: string }>(

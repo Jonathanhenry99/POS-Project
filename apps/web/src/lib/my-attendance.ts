@@ -17,6 +17,8 @@ export interface MyAttendance {
   enabled: boolean;
   /** Akun ini wajib absen dulu sebelum membuka halaman kerja (owner tidak). */
   required: boolean;
+  /** Tidak terjadwal masuk hari ini (libur/izin/sakit/tidak masuk): tidak ada absen. null = wajib absen seperti biasa. */
+  offToday?: null | 'libur' | 'izin' | 'sakit' | 'alpa';
   startTime: string;
   graceMinutes: number;
   location: { set: boolean; radiusM: number; lat: number | null; lng: number | null };

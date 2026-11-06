@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, ROLE_LABEL, formatTime, lateLabel, verifyPin, type CachedUser } from '@mourden/shared';
 import { SelfieCamera } from '../components/SelfieCamera';
 import { Button, ErrorNote, Modal, PinPad, cx } from '../components/ui';
-import { clockIn, dueStartFor, reconcileAttendance, type LocalClockIn } from '../lib/attendance';
+import { clockIn, dueStartFor, isOffToday, reconcileAttendance, type LocalClockIn } from '../lib/attendance';
 import { useApp } from '../lib/state';
 
 /**
@@ -14,7 +14,8 @@ export function AttendanceSheet({ onClose }: { onClose: () => void }) {
   const users = useApp((s) => s.data?.users ?? NO_USERS);
   const cfg = useApp((s) => s.data?.settings.attendance) ?? DEFAULT_SETTINGS.attendance!;
   const tz = useApp((s) => s.data?.settings.store.timezone) ?? 'Asia/Jakarta';
-  const staff = users.filter((u) => u.role !== 'owner');
+  // Yang terjadwal hari ini di atas; yang libur tampil redup dan tidak bisa dipilih.
+  const staff = users.filter((u) => u.role !== 'owner').sort((a, b) => Number(isOffToday(a.id)) - Number(isOffToday(b.id)));
   const [done, setDone] = useState<Record<string, LocalClockIn>>({});
   const [picked, setPicked] = useState<CachedUser | null>(null);
   const [verified, setVerified] = useState(false);
@@ -112,15 +113,18 @@ export function AttendanceSheet({ onClose }: { onClose: () => void }) {
       <ul className="grid gap-2 sm:grid-cols-2">
         {staff.map((u) => {
           const mine = done[u.id];
+          const off = !mine && isOffToday(u.id);
           return (
             <li key={u.id}>
-              <button disabled={!!mine} onClick={() => { setError(''); setPicked(u); }} className="press flex min-h-16 w-full items-center gap-3 rounded-2xl border border-line bg-surface p-3 text-left hover:border-primary/50 disabled:opacity-70">
+              <button disabled={!!mine || off} onClick={() => { setError(''); setPicked(u); }} className="press flex min-h-16 w-full items-center gap-3 rounded-2xl border border-line bg-surface p-3 text-left hover:border-primary/50 disabled:opacity-70">
                 <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/12 text-sm font-bold text-primary">{u.name.trim().slice(0, 2).toUpperCase()}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold">{u.name}</span>
-                  <span className="block text-xs text-fg-muted">{ROLE_LABEL[u.role]}</span>
+                  <span className="block text-xs text-fg-muted">{ROLE_LABEL[u.role]}{!off && !mine && dueStartFor(u.id).shiftName ? ` · ${dueStartFor(u.id).shiftName} ${dueStartFor(u.id).startTime}` : ''}</span>
                 </span>
-                {mine ? (
+                {off ? (
+                  <span className="rounded-full bg-surface-3 px-2.5 py-1 text-xs font-bold whitespace-nowrap text-fg-subtle">Libur</span>
+                ) : mine ? (
                   <span className={cx('rounded-full px-2.5 py-1 text-xs font-bold whitespace-nowrap', mine.lateMinutes ? 'bg-warning/15 text-warning' : 'bg-success/12 text-success')}>Absen {formatTime(mine.at, tz)}</span>
                 ) : (
                   <span className="rounded-full bg-surface-3 px-2.5 py-1 text-xs font-bold whitespace-nowrap text-fg-muted">Belum</span>

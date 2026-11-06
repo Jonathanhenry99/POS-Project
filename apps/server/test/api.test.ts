@@ -1513,3 +1513,26 @@ describe('impor penjualan ESB', () => {
     await request(app).post('/api/admin/import/esb/delete').set(H).send({ from: '2027-02-10', to: '2027-02-10' }).expect(200);
   });
 });
+
+describe('absen hanya untuk yang terjadwal', () => {
+  it('hari yang ada jadwal: yang libur/izin tidak bisa absen; hari tanpa jadwal: semua bisa seperti biasa', async () => {
+    const H = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token}` };
+    const epoch = (await request(app).get('/api/data-epoch').set(H)).body.id;
+    const PHOTO = `data:image/jpeg;base64,${Buffer.from('selfie').toString('base64')}`;
+    const clock = (username: string, clockedAt: string) =>
+      request(app).put(`/api/tablet/attendance/${randomUUID()}`).set({ ...asDevice(username), ...(epoch ? { 'X-Data-Epoch': epoch } : {}) }).send({ userId: userId(username), clockedAt, photo: PHOTO });
+    await request(app).put('/api/settings').set(H).send({ attendance: { enabled: true, startTime: '09:00', graceMinutes: 5, storeLat: null, storeLng: null } }).expect(200);
+    const shift2 = (await request(app).get('/api/schedule?from=2026-10-05&to=2026-10-05').set(H)).body.templates.find((t: { name: string }) => t.name === 'Shift 2').id;
+    // Senin 5 Okt 2026: hanya kitchen terjadwal Shift 2 (15:00); barista izin, kasir tidak dijadwalkan.
+    await request(app).put('/api/schedule/entries').set(H).send({ date: '2026-10-05', templateId: shift2, userId: userId('kitchen') }).expect(200);
+    await request(app).put('/api/schedule/entries').set(H).send({ date: '2026-10-05', templateId: shift2, userId: userId('barista'), status: 'izin' }).expect(200);
+
+    const kasir = await clock('kasir', '2026-10-05T09:30:00.000Z').expect(400);
+    expect(kasir.body.error).toMatch(/tidak terjadwal masuk hari ini/);
+    expect((await clock('barista', '2026-10-05T09:30:00.000Z').expect(400)).body.error).toMatch(/tercatat izin/);
+    // Yang terjadwal: telat dihitung dari jam shift-nya (15:00 WIB = 08:00 UTC), 16:30 WIB -> 90 menit, dikurangi toleransi 5 menit.
+    expect((await clock('kitchen', '2026-10-05T09:30:00.000Z').expect(201)).body.lateMinutes).toBe(85);
+    // Hari tanpa jadwal sama sekali: semua bisa absen dengan jam masuk umum.
+    await clock('kasir', '2026-10-06T01:50:00.000Z').expect(201);
+  });
+});

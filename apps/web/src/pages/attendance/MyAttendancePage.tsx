@@ -1,4 +1,4 @@
-import { ArrowRight, Camera, CheckCircle2, LoaderCircle, LogOut, MapPin, MapPinOff, Navigation, TriangleAlert, X } from 'lucide-react';
+import { ArrowRight, Camera, CheckCircle2, LoaderCircle, LogOut, MapPin, MapPinOff, Navigation, Thermometer, TreePalm, TriangleAlert, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { checkLocation, clockToMinutes, lateLabel, ROLE_LABEL } from '@mourden/shared';
@@ -105,11 +105,52 @@ export function MyAttendancePage() {
             </Link>
           </div>
         )}
-        {data?.enabled && <Ready data={data} name={user.name} onCapture={() => setCapturing(true)} />}
+        {data?.enabled && data.offToday && <OffToday data={data} name={user.name} />}
+        {data?.enabled && !data.offToday && <Ready data={data} name={user.name} onCapture={() => setCapturing(true)} />}
       </main>
 
       {capturing && data && <CaptureSheet data={data} onClose={() => setCapturing(false)} onContinue={() => navigate('/stok', { replace: true })} />}
     </div>
+  );
+}
+
+const OFF_TEXT = {
+  libur: { title: 'Anda libur hari ini', note: 'Tidak ada shift untuk Anda hari ini, jadi tidak perlu absen.' },
+  izin: { title: 'Izin hari ini', note: 'Owner mencatat Anda izin hari ini, jadi tidak perlu absen.' },
+  sakit: { title: 'Sakit hari ini', note: 'Owner mencatat Anda sakit hari ini. Semoga lekas sembuh.' },
+  alpa: { title: 'Tidak masuk hari ini', note: 'Owner mencatat Anda tidak masuk hari ini.' },
+} as const;
+
+/** Tidak terjadwal masuk: tidak ada tombol absen, cukup kabar libur dan jadwal tim hari ini. */
+function OffToday({ data, name }: { data: MyAttendance; name: string }) {
+  const clock = useClock(data.timezone);
+  const text = OFF_TEXT[data.offToday ?? 'libur'];
+  const dateLabel = new Intl.DateTimeFormat('id-ID', { timeZone: data.timezone, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(clock.iso));
+  return (
+    <>
+      <section className="bg-grad-header relative overflow-hidden rounded-[28px] px-5 pt-5 pb-7 text-white shadow-[0_30px_60px_-30px_rgb(16_21_19/0.8)] animate-rise">
+        <div aria-hidden="true" className="bg-grid pointer-events-none absolute inset-0" />
+        <div aria-hidden="true" className="animate-orbit pointer-events-none absolute -top-24 -right-20 size-64 rounded-full opacity-40 blur-3xl" style={{ background: 'rgb(167 139 250 / 0.7)' }} />
+        <div className="relative">
+          <p className="text-sm text-white/70">{greeting(clock.hour)},</p>
+          <p className="text-xl font-extrabold tracking-tight">{name}</p>
+          <p className="mt-0.5 text-sm text-white/70">{dateLabel}</p>
+        </div>
+        <div className="relative mt-8 flex flex-col items-center text-center">
+          <span className="animate-float-up grid size-20 place-items-center rounded-full bg-white/10 backdrop-blur" aria-hidden="true">
+            {data.offToday === 'sakit' ? <Thermometer className="size-9" style={{ color: LIME }} /> : <TreePalm className="size-9" style={{ color: LIME }} />}
+          </span>
+          <p className="mt-4 text-2xl font-extrabold tracking-tight">{text.title}</p>
+          <p className="mt-1 max-w-xs text-sm text-white/70">{text.note}</p>
+          <p className="mt-4 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80">Menggantikan shift? Minta owner menambahkan Anda di Jadwal.</p>
+        </div>
+      </section>
+      <Link to="/stok" className="press animate-float-up flex h-14 items-center justify-center gap-2 rounded-2xl bg-surface text-base font-bold shadow-card">
+        Buka Stok <ArrowRight className="size-5" />
+      </Link>
+      <TodaySchedule />
+      <History data={data} />
+    </>
   );
 }
 
