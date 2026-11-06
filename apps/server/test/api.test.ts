@@ -1393,3 +1393,32 @@ describe('tempel jadwal', () => {
     expect(next.find((e: { userName: string }) => e.userName === 'Kitchen')).toMatchObject({ startTime: '14:00', endTime: '20:30' });
   });
 });
+
+describe('lembur', () => {
+  let H: Record<string, string> = {};
+  let shift1 = '';
+  beforeAll(async () => {
+    H = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token}` };
+    shift1 = (await request(app).get('/api/schedule?from=2027-01-04&to=2027-01-04').set(H)).body.templates.find((t: { name: string }) => t.name === 'Shift 1').id;
+  });
+
+  it('jam lembur x tarif per jam (bawaan 10 rb) masuk gaji; tarif dibekukan saat dicatat; karyawan tidak melihatnya', async () => {
+    const put = (date: string, extra: Record<string, unknown>) => request(app).put('/api/schedule/entries').set(H).send({ date, templateId: shift1, userId: userId('barista'), ...extra }).expect(200);
+    await put('2027-01-04', { overtimeHours: 2, overtimeNote: 'sampai 18:00' });
+    await put('2027-01-05', {});
+    await request(app).put('/api/schedule/entries').set(H).send({ date: '2027-01-05', templateId: shift1, userId: userId('barista'), overtimeHours: 0.3 }).expect(400);
+    await request(app).put('/api/payroll/settings').set(H).send({ overtimeRate: 15000 }).expect(200);
+    await put('2027-01-05', { overtimeHours: 1.5 });
+    // Mengubah status/catatan tanpa menyentuh lembur tidak menghapus lemburnya, dan tarif lamanya tetap.
+    await put('2027-01-04', { note: '' });
+    const pay = (await request(app).get('/api/payroll?month=2027-01').set(H).expect(200)).body;
+    const b = pay.people.find((p: { name: string }) => p.name === 'Barista');
+    expect(b.overtime.map((o: { date: string; hours: number; rate: number; amount: number }) => [o.date, o.hours, o.rate, o.amount])).toEqual([['2027-01-04', 2, 10000, 20000], ['2027-01-05', 1.5, 15000, 22500]]);
+    expect(b.overtimeTotal).toBe(42500);
+    expect(b.takeHome).toBe(b.gross + 42500 - b.kasbonTotal + b.bonusTotal);
+    expect(pay.overtimeRate).toBe(15000);
+    const staff = (await request(app).get('/api/schedule?from=2027-01-04&to=2027-01-04').set({ Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'barista', pin: '1111' })).body.token}` })).body;
+    expect(staff.entries[0].overtimeHours).toBeUndefined();
+    await request(app).put('/api/payroll/settings').set(H).send({ overtimeRate: 10000 }).expect(200);
+  });
+});

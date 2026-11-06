@@ -61,3 +61,15 @@ it('gaji bulanan = shift masuk x tarif - kasbon + bonus; izin/sakit tidak dihitu
   expect(daffa).toMatchObject({ gross: 155000, kasbonTotal: 80000, bonusTotal: 125000, takeHome: 155000 - 80000 + 125000 });
   expect(res[1]).toMatchObject({ gross: 70000, bonusTotal: 125000 });
 });
+
+it('lembur: jam x tarif saat dicatat, masuk gaji; lembur di hari izin tidak dibayar', () => {
+  const lembur = { ...entry('restu', '2026-11-04'), overtimeHours: 2, overtimeRate: 10_000, overtimeNote: 'sampai 18:00' };
+  const izin = { ...entry('restu', '2026-11-05', 's1', 'izin'), overtimeHours: 1, overtimeRate: 10_000 };
+  const setengah = { ...entry('restu', '2026-11-06'), overtimeHours: 1.5, overtimeRate: 12_000 };
+  const [restu] = computePayroll({ month: '2026-11', users: [{ id: 'restu', name: 'Restu', role: 'barista' }], templates: [shift1], entries: [lembur, izin, setengah], kasbon: [], weeks: [] });
+  expect(restu.overtime).toEqual([
+    { date: '2026-11-04', templateName: 'Shift 1', hours: 2, rate: 10_000, amount: 20_000, note: 'sampai 18:00' },
+    { date: '2026-11-06', templateName: 'Shift 1', hours: 1.5, rate: 12_000, amount: 18_000, note: '' },
+  ]);
+  expect(restu).toMatchObject({ gross: 150_000, overtimeTotal: 38_000, takeHome: 188_000 });
+});

@@ -9,6 +9,7 @@ import {
   computePayroll,
   computeWeekBonus,
   DEFAULT_BONUS_TIERS,
+  DEFAULT_OVERTIME_RATE,
   monthRange,
   type BonusTier,
   type Kasbon,
@@ -43,7 +44,8 @@ export async function loadTemplates(db: Db = pool, includeInactive = true): Prom
 async function loadEntries(db: Db, from: string, to: string): Promise<ScheduleEntry[]> {
   const { rows } = await db.query(
     `select e.id, to_char(e.date, 'YYYY-MM-DD') as date, e.template_id as "templateId", e.user_id as "userId", u.name as "userName", e.status, e.note,
-       e.start_time as "startTime", e.end_time as "endTime"
+       e.start_time as "startTime", e.end_time as "endTime",
+       e.overtime_hours::float8 as "overtimeHours", e.overtime_rate as "overtimeRate", e.overtime_note as "overtimeNote"
      from schedule_entries e join users u on u.id = e.user_id join shift_templates t on t.id = e.template_id
      where e.date between $1 and $2 order by e.date, t.sort, u.name`,
     [from, to],
@@ -72,9 +74,9 @@ export async function scheduleToday(db: Db, date: string) {
   return rows;
 }
 
-async function payrollSettings(db: Db = pool): Promise<{ bonusTiers: BonusTier[] }> {
-  const { rows } = await db.query<{ value: { bonusTiers?: BonusTier[] } }>("select value from settings where key = 'payroll'");
-  return { bonusTiers: rows[0]?.value?.bonusTiers ?? DEFAULT_BONUS_TIERS };
+async function payrollSettings(db: Db = pool): Promise<{ bonusTiers: BonusTier[]; overtimeRate: number }> {
+  const { rows } = await db.query<{ value: { bonusTiers?: BonusTier[]; overtimeRate?: number } }>("select value from settings where key = 'payroll'");
+  return { bonusTiers: rows[0]?.value?.bonusTiers ?? DEFAULT_BONUS_TIERS, overtimeRate: rows[0]?.value?.overtimeRate ?? DEFAULT_OVERTIME_RATE };
 }
 
 /** Penjualan bersih (setelah diskon, tanpa service & pajak), sama dengan "Penjualan Bersih" di dashboard. */
@@ -114,7 +116,7 @@ export async function computeMonth(db: Db, month: string) {
     }),
   );
   const people = computePayroll({ month, users: users.rows.filter((u) => !owners.has(u.id)), templates, entries: paid, kasbon: kasbonRows.rows, weeks });
-  return { month, templates, weeks, people, bonusTiers: settings.bonusTiers };
+  return { month, templates, weeks, people, bonusTiers: settings.bonusTiers, overtimeRate: settings.overtimeRate };
 }
 
 // ---------------------------------------------------------------- jadwal (semua karyawan boleh melihat)
@@ -130,7 +132,9 @@ teamRouter.get('/schedule', async (req, res) => {
     ...(admin ? { aliases: await scheduleAliases() } : {}),
     today: businessDate(new Date().toISOString(), await getTimezone(pool)),
     templates: admin ? templates : templates.map(({ rates: _, ...t }) => ({ ...t, rates: [] })),
-    entries: admin ? entries : entries.map((e) => ({ ...e, note: e.status === 'masuk' ? '' : e.note })),
+    // Karyawan tidak melihat tarif maupun lembur orang lain.
+    entries: admin ? entries : entries.map(({ overtimeHours: _h, overtimeRate: _r, overtimeNote: _n, ...e }) => ({ ...e, note: e.status === 'masuk' ? '' : e.note })),
+    ...(admin ? { overtimeRate: (await payrollSettings()).overtimeRate } : {}),
     me: req.auth.user?.id ?? null,
   });
 });
@@ -144,18 +148,29 @@ const entryBody = z.object({
   // undefined = jam tidak diubah; null = kembali ke jam shift.
   startTime: clock.nullable().optional(),
   endTime: clock.nullable().optional(),
+  // undefined = lembur tidak diubah. Kelipatan 15 menit, maksimal 12 jam.
+  overtimeHours: z.number().min(0).max(12).multipleOf(0.25).optional(),
+  overtimeNote: z.string().trim().max(200).optional(),
 });
 
 teamRouter.put('/schedule/entries', need('admin'), async (req, res) => {
   const b = parse(entryBody, req.body);
   const setTimes = b.startTime !== undefined || b.endTime !== undefined;
+  const setOvertime = b.overtimeHours !== undefined;
+  // Tarif lembur dibekukan pada catatan ini; perubahan tarif kemudian tidak mengubah gaji yang sudah lewat.
+  const rate = setOvertime && b.overtimeHours! > 0 ? (await payrollSettings()).overtimeRate : 0;
   const { rows } = await pool.query(
-    `insert into schedule_entries (date, template_id, user_id, status, note, start_time, end_time) values ($1,$2,$3,$4,$5,$6,$7)
+    `insert into schedule_entries (date, template_id, user_id, status, note, start_time, end_time, overtime_hours, overtime_rate, overtime_note)
+     values ($1,$2,$3,$4,$5,$6,$7,$9,$10,$11)
      on conflict (date, template_id, user_id) do update set status = excluded.status, note = excluded.note,
        start_time = case when $8 then excluded.start_time else schedule_entries.start_time end,
-       end_time = case when $8 then excluded.end_time else schedule_entries.end_time end, updated_at = now()
+       end_time = case when $8 then excluded.end_time else schedule_entries.end_time end,
+       overtime_hours = case when $12 then excluded.overtime_hours else schedule_entries.overtime_hours end,
+       overtime_rate = case when $12 then (case when excluded.overtime_hours = schedule_entries.overtime_hours and schedule_entries.overtime_rate > 0 then schedule_entries.overtime_rate else excluded.overtime_rate end) else schedule_entries.overtime_rate end,
+       overtime_note = case when $12 then excluded.overtime_note else schedule_entries.overtime_note end,
+       updated_at = now()
      returning id`,
-    [b.date, b.templateId, b.userId, b.status, b.note, b.startTime ?? null, b.endTime ?? null, setTimes],
+    [b.date, b.templateId, b.userId, b.status, b.note, b.startTime ?? null, b.endTime ?? null, setTimes, b.overtimeHours ?? 0, rate, b.overtimeNote ?? '', setOvertime],
   );
   await audit(pool, req.auth.user!.id, 'set', 'schedule', rows[0].id, b);
   res.json({ id: rows[0].id });
@@ -315,11 +330,12 @@ teamRouter.put('/bonus-weeks/:weekStart', need('admin'), async (req, res) => {
 });
 
 teamRouter.put('/payroll/settings', need('admin'), async (req, res) => {
-  const b = parse(z.object({ bonusTiers: z.array(z.object({ min: money, bonus: money })).max(20) }), req.body);
-  const tiers = [...b.bonusTiers].sort((x, y) => x.min - y.min);
-  await pool.query(`insert into settings (key, value) values ('payroll', $1) on conflict (key) do update set value = excluded.value, updated_at = now()`, [JSON.stringify({ bonusTiers: tiers })]);
-  await audit(pool, req.auth.user!.id, 'update', 'payroll-settings', null, { bonusTiers: tiers });
-  res.json({ bonusTiers: tiers });
+  const b = parse(z.object({ bonusTiers: z.array(z.object({ min: money, bonus: money })).max(20), overtimeRate: money }).partial(), req.body);
+  const cur = await payrollSettings();
+  const next = { bonusTiers: [...(b.bonusTiers ?? cur.bonusTiers)].sort((x, y) => x.min - y.min), overtimeRate: b.overtimeRate ?? cur.overtimeRate };
+  await pool.query(`insert into settings (key, value) values ('payroll', $1) on conflict (key) do update set value = excluded.value, updated_at = now()`, [JSON.stringify(next)]);
+  await audit(pool, req.auth.user!.id, 'update', 'payroll-settings', null, b);
+  res.json(next);
 });
 
 // ---------------------------------------------------------------- slip gaji

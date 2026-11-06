@@ -252,9 +252,14 @@ input[type='number']::-webkit-outer-spin-button {
   }
 }
 
-/* Cetak slip gaji: hanya slip yang tercetak (tombol, latar & halaman di belakang modal disembunyikan). */
+/* Cetak slip gaji: salinan slip di luar aplikasi (bukan di dalam modal yang tingginya terbatas) dicetak utuh
+   di A4. Margin halaman 0 menghilangkan tanggal/URL bawaan browser; jaraknya diberikan oleh .print-root. */
+.print-root { display: none; }
 @media print {
-  body * { visibility: hidden !important; }
-  .print-area, .print-area * { visibility: visible !important; }
-  .print-area { position: absolute; inset: 0 auto auto 0; width: 100%; max-width: none; border: 0; box-shadow: none; }
+  @page { size: A4 portrait; margin: 0; }
+  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+  body > *:not(.print-root) { display: none !important; }
+  .print-root { display: block !important; padding: 16mm 18mm; }
+  .print-root .print-area { max-width: none; border: 0; border-radius: 0; padding: 0; box-shadow: none; }
+  .print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

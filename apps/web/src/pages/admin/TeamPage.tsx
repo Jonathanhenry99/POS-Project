@@ -1,5 +1,6 @@
 import { Banknote, CalendarDays, ClipboardCopy, ClipboardPaste, Copy, FileText, Gift, Plus, Printer, Settings2, Trash2, Wallet } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router';
 import {
   addDaysIso,
@@ -32,10 +33,10 @@ import { PillNav } from './PillNav';
 type Tab = 'jadwal' | 'gaji' | 'bonus' | 'slip' | 'tarif';
 const TABS: { value: Tab; label: string; icon: typeof CalendarDays; hint: string }[] = [
   { value: 'jadwal', label: 'Jadwal', icon: CalendarDays, hint: 'Atur siapa masuk di tiap shift. Karyawan melihatnya di HP dan tablet kasir.' },
-  { value: 'gaji', label: 'Gaji & kasbon', icon: Wallet, hint: 'Gaji bulanan = shift masuk × tarif − kasbon + bonus.' },
+  { value: 'gaji', label: 'Gaji & kasbon', icon: Wallet, hint: 'Gaji bulanan = shift masuk × tarif + lembur − kasbon + bonus.' },
   { value: 'bonus', label: 'Bonus tim', icon: Gift, hint: 'Bonus mingguan dari omset, dibagi rata per shift (Team Bonus Program 2026).' },
   { value: 'slip', label: 'Slip gaji', icon: FileText, hint: 'Buat, cetak, salin untuk WhatsApp, atau hapus slip gaji.' },
-  { value: 'tarif', label: 'Shift & tarif', icon: Settings2, hint: 'Jam shift dan tarif per shift; tarif baru berlaku mulai tanggal tertentu.' },
+  { value: 'tarif', label: 'Shift & tarif', icon: Settings2, hint: 'Jam shift, tarif per shift (berlaku mulai tanggal tertentu) dan tarif lembur per jam.' },
 ];
 
 interface PayrollData {
@@ -155,6 +156,7 @@ function ScheduleTab() {
           template={cell.template}
           entries={data.entries.filter((e) => e.date === cell.date && e.templateId === cell.template.id)}
           staff={people}
+          overtimeRate={(data as WeekWithAliases).overtimeRate ?? 10000}
           onClose={() => setCell(null)}
           onChanged={reload}
         />
@@ -165,13 +167,13 @@ function ScheduleTab() {
 
 const STATUS_OPTIONS = (Object.keys(SCHEDULE_STATUS_LABEL) as ScheduleStatus[]).map((s) => ({ value: s, label: SCHEDULE_STATUS_LABEL[s] }));
 
-function CellEditor({ date, template, entries, staff, onClose, onChanged }: { date: string; template: ShiftTemplate; entries: WeekEntry[]; staff: PublicUser[]; onClose: () => void; onChanged: () => void }) {
+function CellEditor({ date, template, entries, staff, overtimeRate, onClose, onChanged }: { date: string; template: ShiftTemplate; entries: WeekEntry[]; staff: PublicUser[]; overtimeRate: number; onClose: () => void; onChanged: () => void }) {
   const [add, setAdd] = useState('');
   const [busy, setBusy] = useState('');
-  const save = async (userId: string, status: ScheduleStatus, note: string, times?: { startTime: string | null; endTime: string | null }) => {
+  const save = async (userId: string, status: ScheduleStatus, note: string, patch?: EntryPatch) => {
     setBusy(userId);
     try {
-      await api('/schedule/entries', { method: 'PUT', body: { date, templateId: template.id, userId, status, note, ...times } });
+      await api('/schedule/entries', { method: 'PUT', body: { date, templateId: template.id, userId, status, note, ...patch } });
       onChanged();
     } catch (e) {
       toast(errorMessage(e), 'error');
@@ -202,7 +204,7 @@ function CellEditor({ date, template, entries, staff, onClose, onChanged }: { da
       </p>
       <ul className="flex flex-col gap-2">
         {entries.map((e) => (
-          <EntryRow key={e.id} entry={e} template={template} busy={busy === e.userId || busy === e.id} onSave={(status, note, times) => void save(e.userId, status, note, times)} onRemove={() => void remove(e.id)} />
+          <EntryRow key={e.id} entry={e} template={template} overtimeRate={overtimeRate} busy={busy === e.userId || busy === e.id} onSave={(status, note, patch) => void save(e.userId, status, note, patch)} onRemove={() => void remove(e.id)} />
         ))}
         {!entries.length && <li className="rounded-xl bg-surface-2 p-3 text-sm text-fg-muted">Belum ada yang dijadwalkan.</li>}
       </ul>
@@ -216,10 +218,20 @@ function CellEditor({ date, template, entries, staff, onClose, onChanged }: { da
   );
 }
 
-type WeekEntry = { id: string; userId: string; userName: string; status: ScheduleStatus; note: string; startTime?: string | null; endTime?: string | null };
-type WeekWithAliases = { aliases?: Record<string, string> };
+type WeekEntry = { id: string; userId: string; userName: string; status: ScheduleStatus; note: string; startTime?: string | null; endTime?: string | null; overtimeHours?: number; overtimeRate?: number; overtimeNote?: string };
+type WeekWithAliases = { aliases?: Record<string, string>; overtimeRate?: number };
+type EntryPatch = { startTime?: string | null; endTime?: string | null; overtimeHours?: number; overtimeNote?: string };
 
-function EntryRow({ entry, template, busy, onSave, onRemove }: { entry: WeekEntry; template: ShiftTemplate; busy: boolean; onSave: (status: ScheduleStatus, note: string, times?: { startTime: string | null; endTime: string | null }) => void; onRemove: () => void }) {
+function EntryRow({ entry, template, overtimeRate, busy, onSave, onRemove }: { entry: WeekEntry; template: ShiftTemplate; overtimeRate: number; busy: boolean; onSave: (status: ScheduleStatus, note: string, patch?: EntryPatch) => void; onRemove: () => void }) {
+  const [ot, setOt] = useState(entry.overtimeHours ? String(entry.overtimeHours).replace('.', ',') : '');
+  const [otNote, setOtNote] = useState(entry.overtimeNote ?? '');
+  const otHours = Math.round((parseFloat(ot.replace(',', '.')) || 0) * 4) / 4;
+  // Lembur yang sudah tercatat memakai tarif saat dicatat; yang baru memakai tarif sekarang.
+  const otRate = entry.overtimeHours && otHours === entry.overtimeHours && entry.overtimeRate ? entry.overtimeRate : overtimeRate;
+  const saveOvertime = () => {
+    if (otHours === (entry.overtimeHours ?? 0) && otNote === (entry.overtimeNote ?? '')) return;
+    onSave(entry.status, note, { overtimeHours: Math.min(12, Math.max(0, otHours)), overtimeNote: otNote });
+  };
   const [note, setNote] = useState(entry.note);
   const [start, setStart] = useState(entry.startTime ?? template.startTime);
   const [end, setEnd] = useState(entry.endTime ?? template.endTime);
@@ -228,7 +240,7 @@ function EntryRow({ entry, template, busy, onSave, onRemove }: { entry: WeekEntr
     <li className={cx('flex flex-col gap-2 rounded-2xl border p-3', entry.status === 'masuk' ? 'border-line' : 'border-danger/30 bg-danger/5')}>
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate font-semibold">{entry.userName}</span>
-        <SearchSelect label={`Status ${entry.userName}`} className="w-40" value={entry.status} onChange={(s) => onSave(s, note)} options={STATUS_OPTIONS} disabled={busy} />
+        <SearchSelect label={`Status ${entry.userName}`} className="max-w-40 shrink-0" value={entry.status} onChange={(s) => onSave(s, note)} options={STATUS_OPTIONS} disabled={busy} />
         <button aria-label={`Hapus ${entry.userName} dari shift`} onClick={onRemove} disabled={busy} className="grid size-11 place-items-center rounded-xl text-fg-subtle hover:bg-danger/10 hover:text-danger">
           <Trash2 className="size-4" />
         </button>
@@ -236,10 +248,31 @@ function EntryRow({ entry, template, busy, onSave, onRemove }: { entry: WeekEntr
       {entry.status === 'masuk' && (
         <div className="flex items-center gap-2 text-sm">
           <span className="text-fg-muted">Jam</span>
-          <input type="time" aria-label={`Jam mulai ${entry.userName}`} className={cx(inputClass, 'h-10 w-28 text-sm')} value={start} onChange={(e) => setStart(e.target.value)} onBlur={() => saveTimes(start, end)} />
+          <input type="time" aria-label={`Jam mulai ${entry.userName}`} className={cx(inputClass, 'h-10 max-w-32 shrink-0 text-sm')} value={start} onChange={(e) => setStart(e.target.value)} onBlur={() => saveTimes(start, end)} />
           <span>–</span>
-          <input type="time" aria-label={`Jam selesai ${entry.userName}`} className={cx(inputClass, 'h-10 w-28 text-sm')} value={end} onChange={(e) => setEnd(e.target.value)} onBlur={() => saveTimes(start, end)} />
+          <input type="time" aria-label={`Jam selesai ${entry.userName}`} className={cx(inputClass, 'h-10 max-w-32 shrink-0 text-sm')} value={end} onChange={(e) => setEnd(e.target.value)} onBlur={() => saveTimes(start, end)} />
           {(entry.startTime || entry.endTime) && <span className="text-xs text-primary">jam khusus</span>}
+        </div>
+      )}
+      {entry.status === 'masuk' && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-fg-muted">Lembur</span>
+          <input
+            inputMode="decimal"
+            aria-label={`Jam lembur ${entry.userName}`}
+            placeholder="0"
+            className={cx(inputClass, 'h-10 max-w-20 shrink-0 text-right text-sm')}
+            value={ot}
+            onChange={(e) => setOt(e.target.value.replace(/[^\d,.]/g, ''))}
+            onBlur={saveOvertime}
+          />
+          <span className="text-fg-muted">jam</span>
+          {otHours > 0 && (
+            <>
+              <span className="font-semibold text-[var(--violet)] tabular">= {formatRupiah(Math.round(otHours * otRate))}</span>
+              <input className={cx(inputClass, 'h-10 min-w-40 flex-1 basis-40 text-sm')} placeholder="Keterangan (mis. sampai 18:00)" maxLength={200} value={otNote} onChange={(e) => setOtNote(e.target.value)} onBlur={saveOvertime} />
+            </>
+          )}
         </div>
       )}
       {entry.status !== 'masuk' && (
@@ -266,7 +299,7 @@ function PayrollTab({ month }: { month: string }) {
   const [busy, setBusy] = useState('');
   const totals = useMemo(() => {
     const p = data?.people ?? [];
-    return { gross: sum(p.map((x) => x.gross)), kasbon: sum(p.map((x) => x.kasbonTotal)), bonus: sum(p.map((x) => x.bonusTotal)), takeHome: sum(p.map((x) => x.takeHome)) };
+    return { gross: sum(p.map((x) => x.gross)), overtime: sum(p.map((x) => x.overtimeTotal ?? 0)), kasbon: sum(p.map((x) => x.kasbonTotal)), bonus: sum(p.map((x) => x.bonusTotal)), takeHome: sum(p.map((x) => x.takeHome)) };
   }, [data]);
 
   const generate = async (userIds?: string[]) => {
@@ -287,8 +320,9 @@ function PayrollTab({ month }: { month: string }) {
       {loading && !data && <Spinner className="mx-auto my-10" />}
       {data && (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Stat label="Gaji shift" value={totals.gross} />
+            <Stat label="Lembur" value={totals.overtime} tone="text-[var(--violet)]" />
             <Stat label="Kasbon" value={-totals.kasbon} tone="text-danger" />
             <Stat label="Bonus tim" value={totals.bonus} tone="text-success" />
             <Stat label="Total dibayar" value={totals.takeHome} strong />
@@ -320,12 +354,13 @@ function PayrollTab({ month }: { month: string }) {
                     </span>
                   </span>
                   <Money label="Gaji" value={p.gross} />
+                  <Money label="Lembur" value={p.overtimeTotal ?? 0} tone="text-[var(--violet)]" />
                   <Money label="Kasbon" value={-p.kasbonTotal} tone="text-danger" />
                   <Money label="Bonus" value={p.bonusTotal} tone="text-success" />
                   <Money label="Diterima" value={p.takeHome} strong />
                 </button>
                 {open === p.userId && (
-                  <div className="animate-fade-in grid gap-4 border-t border-line bg-surface-2/50 p-4 lg:grid-cols-3">
+                  <div className="animate-fade-in grid gap-4 border-t border-line bg-surface-2/50 p-4 lg:grid-cols-2 xl:grid-cols-4">
                     <Breakdown title="Shift" empty="Belum ada shift masuk">
                       {groupShifts(p).map((g) => (
                         <Line key={g.key} label={`${g.name} × ${g.count}`} hint={`@ ${formatRupiah(g.fee)}`} value={g.count * g.fee} />
@@ -335,6 +370,11 @@ function PayrollTab({ month }: { month: string }) {
                           {dayLabel(a.date, 'short')} {a.templateName}: {SCHEDULE_STATUS_LABEL[a.status]}
                           {a.note && ` (${a.note})`}
                         </p>
+                      ))}
+                    </Breakdown>
+                    <Breakdown title="Lembur" empty="Tidak ada lembur">
+                      {(p.overtime ?? []).map((o) => (
+                        <Line key={`${o.date}${o.templateName}`} label={`${dayLabel(o.date, 'short')} · ${String(o.hours).replace('.', ',')} jam`} hint={`@ ${formatRupiah(o.rate)}${o.note ? ` · ${o.note}` : ''}`} value={o.amount} />
                       ))}
                     </Breakdown>
                     <Breakdown title="Kasbon" empty="Tidak ada kasbon" action={<Button size="sm" variant="outline" icon={<Plus className="size-4" />} onClick={() => setKasbonFor(p.userId)}>Kasbon</Button>}>
@@ -347,7 +387,7 @@ function PayrollTab({ month }: { month: string }) {
                         <Line key={b.weekStart} label={weekLabel(b.weekStart)} hint={b.disqualified ? 'tidak memenuhi syarat' : `${b.shifts} shift`} value={b.bonus} />
                       ))}
                     </Breakdown>
-                    <div className="flex justify-end lg:col-span-3">
+                    <div className="flex justify-end lg:col-span-2 xl:col-span-4">
                       <Button variant="outline" icon={<FileText className="size-4" />} loading={busy === p.userId} onClick={() => void generate([p.userId])}>
                         Buat slip gaji {p.name}
                       </Button>
@@ -704,7 +744,7 @@ function SlipModal({ id, onClose, onDeleted }: { id: string; onClose: () => void
             <Button variant="outline" icon={<ClipboardCopy className="size-5" />} disabled={!slip} onClick={() => void copy()}>
               Salin untuk WhatsApp
             </Button>
-            <Button icon={<Printer className="size-5" />} disabled={!slip} onClick={() => window.print()}>
+            <Button icon={<Printer className="size-5" />} disabled={!slip} onClick={() => printSlip(slip!)}>
               Cetak / Simpan PDF
             </Button>
           </div>
@@ -712,8 +752,27 @@ function SlipModal({ id, onClose, onDeleted }: { id: string; onClose: () => void
       }
     >
       {!slip ? <Spinner className="mx-auto my-8" /> : <Payslip slip={slip} />}
+      {slip &&
+        createPortal(
+          <div className="print-root">
+            <Payslip slip={slip} />
+          </div>,
+          document.body,
+        )}
     </Modal>
   );
+}
+
+/** Nama berkas PDF mengikuti judul halaman saat mencetak: "Slip gaji Restu November 2026". */
+function printSlip(slip: SlipData) {
+  const prev = document.title;
+  document.title = `Slip gaji ${slip.name} ${monthLabel(slip.month)}`;
+  const restore = () => {
+    document.title = prev;
+    window.removeEventListener('afterprint', restore);
+  };
+  window.addEventListener('afterprint', restore);
+  window.print();
 }
 
 function Payslip({ slip }: { slip: SlipData }) {
@@ -740,6 +799,13 @@ function Payslip({ slip }: { slip: SlipData }) {
         ))}
         <SlipLine label="Jumlah gaji shift" value={slip.gross} strong />
       </SlipSection>
+      {(slip.overtime ?? []).length > 0 && (
+        <SlipSection title="Lembur">
+          {slip.overtime.map((o) => (
+            <SlipLine key={`${o.date}${o.templateName}`} label={`${dayLabel(o.date, 'short')} · ${String(o.hours).replace('.', ',')} jam`} hint={`@ ${formatRupiah(o.rate)}/jam${o.note ? ` · ${o.note}` : ''}`} value={o.amount} />
+          ))}
+        </SlipSection>
+      )}
       {slip.bonuses.length > 0 && (
         <SlipSection title="Bonus tim">
           {slip.bonuses.map((b) => (
@@ -802,6 +868,7 @@ function slipText(s: SlipData): string {
   const lines = [`*Slip gaji ${s.storeName}*`, `${monthLabel(s.month)} · ${s.name}`, ''];
   for (const g of groupShifts(s)) lines.push(`${g.name} × ${g.count} @ ${formatRupiah(g.fee)} = ${formatRupiah(g.count * g.fee)}`);
   lines.push(`Gaji shift: ${formatRupiah(s.gross)}`);
+  if (s.overtimeTotal) lines.push(`Lembur: +${formatRupiah(s.overtimeTotal)} (${(s.overtime ?? []).map((o) => `${String(o.hours).replace('.', ',')} jam`).join(', ')})`);
   if (s.bonusTotal) lines.push(`Bonus tim: +${formatRupiah(s.bonusTotal)}`);
   if (s.kasbonTotal) lines.push(`Kasbon: −${formatRupiah(s.kasbonTotal)}`);
   lines.push('', `*Total diterima: ${formatRupiah(s.takeHome)}*`);
@@ -810,9 +877,47 @@ function slipText(s: SlipData): string {
 
 // ------------------------------------------------------------------ Shift & tarif
 
+function OvertimeRateCard({ rate, onSaved }: { rate: number; onSaved: () => void }) {
+  const [value, setValue] = useState(rate);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api('/payroll/settings', { method: 'PUT', body: { overtimeRate: value } });
+      toast('Tarif lembur disimpan');
+      onSaved();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="tile animate-rise flex flex-col gap-3 p-4">
+      <p className="flex items-center gap-2 font-bold">
+        <span className="size-2.5 rounded-full bg-[var(--violet)]" /> Lembur
+      </p>
+      <div className="rounded-2xl bg-[var(--violet-soft)] p-3">
+        <p className="text-xs font-semibold text-[var(--violet)]">Tarif lembur per jam</p>
+        <div className="mt-1 flex items-center gap-2">
+          <div className="w-40">
+            <MoneyInput aria-label="Tarif lembur per jam" value={value} onChange={setValue} />
+          </div>
+          {value !== rate && (
+            <Button size="sm" loading={busy} onClick={() => void save()}>
+              Simpan
+            </Button>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-fg-muted">Catat jam lembur di Jadwal (ketuk shift orangnya). Tarif berlaku untuk lembur yang dicatat setelah diubah; lembur yang sudah tercatat tetap memakai tarif lamanya.</p>
+    </section>
+  );
+}
+
 function RatesTab() {
   const day = today();
-  const { data, error, loading, reload } = useApi<{ templates: ShiftTemplate[] }>(`/schedule?from=${day}&to=${day}`);
+  const { data, error, loading, reload } = useApi<{ templates: ShiftTemplate[]; overtimeRate?: number }>(`/schedule?from=${day}&to=${day}`);
   const [editing, setEditing] = useState<ShiftTemplate | 'new' | null>(null);
   return (
     <div className="flex flex-col gap-4">
@@ -824,6 +929,7 @@ function RatesTab() {
       <ErrorNote>{error}</ErrorNote>
       {loading && !data && <Spinner className="mx-auto my-10" />}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {data && <OvertimeRateCard key={data.overtimeRate} rate={data.overtimeRate ?? 10000} onSaved={reload} />}
         {data?.templates.map((t, i) => {
           const tone = shiftTone(i);
           const current = feeOn(t, day);

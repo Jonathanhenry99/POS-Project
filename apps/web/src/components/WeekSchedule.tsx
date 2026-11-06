@@ -106,6 +106,7 @@ function PersonChip({ entry, template, me, dark }: { entry: ScheduleEntry; templ
       <span className={cx(off && 'line-through opacity-60')}>{entry.userName}</span>
       {me && <span>(saya)</span>}
       {(entry.startTime || entry.endTime) && <span className="font-normal opacity-75 tabular">{entry.startTime ?? template.startTime}–{entry.endTime ?? template.endTime}</span>}
+      {!!entry.overtimeHours && entry.status === 'masuk' && <span className="rounded-full bg-[var(--violet)] px-1.5 py-px text-[10px] font-bold text-white">+{String(entry.overtimeHours).replace('.', ',')}j lembur</span>}
       {off && <span className="rounded-full bg-danger px-1.5 py-px text-[10px] font-bold text-white">{SCHEDULE_STATUS_LABEL[entry.status]}</span>}
     </span>
   );

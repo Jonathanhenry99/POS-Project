@@ -180,7 +180,8 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 
 - **Jadwal:** grid Senin–Minggu per shift (bawaan Shift 1 09–16, Shift 2 15–22, Kitchen 14–21). Ketuk shift untuk menambah orang atau mencatat Izin/Sakit/Tidak masuk (+keterangan); "Salin dari minggu lalu". Karyawan melihat jadwal di HP (kartu "Jadwal hari ini" di Absen & Stok, halaman `/jadwal`) dan di tablet kasir (tombol **Jadwal shift** di layar login). Telat absen dihitung dari jam mulai shift orang itu hari ini.
 - **Shift & tarif:** tarif per shift berlaku mulai tanggal tertentu (`shift_rates`), jadi kenaikan tarif tidak mengubah gaji bulan lalu.
-- **Gaji & kasbon:** gaji bulan = shift berstatus Masuk × tarif pada tanggalnya − kasbon bulan itu (bisa berkali-kali) + bonus.
+- **Gaji & kasbon:** gaji bulan = shift berstatus Masuk × tarif pada tanggalnya + lembur − kasbon bulan itu (bisa berkali-kali) + bonus.
+- **Lembur:** jam lembur (kelipatan 15 menit) dicatat per orang per hari di editor jadwal, dikali tarif lembur per jam (bawaan Rp10.000, diatur di Shift & tarif). Tarif dibekukan pada catatan lembur. Slip gaji dicetak dari salinan slip di luar modal (A4, satu halaman).
 - **Bonus tim** (Team Bonus Program 2026): omset Senin–Minggu = Penjualan Bersih POS (bisa ditimpa manual); tingkat bonus bisa diubah; bonus per orang = bonus tim ÷ total shift minggu itu × shift orang itu; yang tidak memenuhi syarat hangus tanpa mengubah bagian orang lain. Bonus minggu dibayar di bulan hari Minggu-nya.
 - **Slip gaji:** salinan perhitungan saat dibuat (`payslips`), bisa dibuat ulang, dicetak/disimpan PDF, disalin untuk WhatsApp, dan dihapus. Perhitungan murni ada di `packages/shared/src/payroll.ts` (dites dengan contoh PDF).
 

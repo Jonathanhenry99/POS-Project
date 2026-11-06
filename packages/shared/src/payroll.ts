@@ -29,6 +29,10 @@ export interface ScheduleEntry {
   /** Jam khusus orang ini hari itu; null/kosong = ikut jam shift. */
   startTime?: string | null;
   endTime?: string | null;
+  /** Lembur: jam tambahan di luar shift, dibayar per jam dengan tarif yang berlaku saat dicatat. */
+  overtimeHours?: number;
+  overtimeRate?: number;
+  overtimeNote?: string;
 }
 export interface Kasbon {
   id: string;
@@ -44,7 +48,10 @@ export interface BonusTier {
 }
 export interface PayrollSettings {
   bonusTiers: BonusTier[];
+  /** Tarif lembur per jam untuk catatan lembur baru. */
+  overtimeRate: number;
 }
+export const DEFAULT_OVERTIME_RATE = 10_000;
 export interface BonusWeekInput {
   weekStart: string;
   /** Omset dari POS (penjualan bersih Senin-Minggu). */
@@ -142,6 +149,8 @@ export interface PersonPayroll {
   /** Shift terjadwal yang tidak dihitung (izin/sakit/tidak masuk). */
   absences: { date: string; templateName: string; status: ScheduleStatus; note: string }[];
   gross: number;
+  overtime: { date: string; templateName: string; hours: number; rate: number; amount: number; note: string }[];
+  overtimeTotal: number;
   kasbon: Kasbon[];
   kasbonTotal: number;
   bonuses: { weekStart: string; weekEnd: string; shifts: number; bonus: number; disqualified: boolean }[];
@@ -170,8 +179,13 @@ export function computePayroll(input: {
       const kasbon = input.kasbon.filter((k) => k.userId === u.id && k.date >= from && k.date <= to).sort((a, b) => a.date.localeCompare(b.date));
       const bonuses = input.weeks.filter((w) => w.people[u.id]).map((w) => ({ weekStart: w.weekStart, weekEnd: w.weekEnd, ...w.people[u.id] }));
       const gross = shifts.reduce((n, s) => n + s.fee, 0);
+      // Lembur hanya untuk shift yang benar-benar masuk.
+      const overtime = mine
+        .filter((e) => e.status === 'masuk' && (e.overtimeHours ?? 0) > 0)
+        .map((e) => ({ date: e.date, templateName: tpl.get(e.templateId)?.name ?? 'Shift', hours: e.overtimeHours!, rate: e.overtimeRate ?? 0, amount: Math.round(e.overtimeHours! * (e.overtimeRate ?? 0)), note: e.overtimeNote ?? '' }));
+      const overtimeTotal = overtime.reduce((n, o) => n + o.amount, 0);
       const kasbonTotal = kasbon.reduce((n, k) => n + k.amount, 0);
       const bonusTotal = bonuses.reduce((n, b) => n + b.bonus, 0);
-      return { userId: u.id, name: u.name, role: u.role, shifts, absences, gross, kasbon, kasbonTotal, bonuses, bonusTotal, takeHome: gross - kasbonTotal + bonusTotal };
+      return { userId: u.id, name: u.name, role: u.role, shifts, absences, gross, overtime, overtimeTotal, kasbon, kasbonTotal, bonuses, bonusTotal, takeHome: gross + overtimeTotal - kasbonTotal + bonusTotal };
     });
 }
