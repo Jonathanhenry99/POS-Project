@@ -1,9 +1,13 @@
-import { Banknote, CalendarDays, ClipboardCopy, Copy, FileText, Gift, Plus, Printer, Settings2, Trash2, Wallet } from 'lucide-react';
+import { Banknote, CalendarDays, ClipboardCopy, ClipboardPaste, Copy, FileText, Gift, Plus, Printer, Settings2, Trash2, Wallet } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import {
   addDaysIso,
   feeOn,
+  importDates,
+  matchName,
+  parseScheduleText,
+  weekStartOf,
   formatNumber,
   formatRupiah,
   ROLE_LABEL,
@@ -95,7 +99,9 @@ function ScheduleTab() {
   const staff = useApi<PublicUser[]>('/users');
   const [cell, setCell] = useState<{ date: string; template: ShiftTemplate } | null>(null);
   const [busy, setBusy] = useState(false);
-  const people = (staff.data ?? []).filter((u) => u.active && u.role !== 'owner');
+  // Owner boleh ikut dijadwalkan (mis. ikut jaga), tetapi tidak digaji dan tidak dihitung dalam bonus.
+  const people = (staff.data ?? []).filter((u) => u.active);
+  const [importing, setImporting] = useState(false);
 
   const copyLastWeek = async () => {
     const ok = await confirmDialog({ title: 'Salin jadwal minggu lalu?', message: `Jadwal ${weekLabel(addDaysIso(week, -7))} disalin ke minggu ini. Yang sudah terisi tidak ditimpa; status izin/sakit kembali Masuk.`, confirmLabel: 'Salin jadwal' });
@@ -121,11 +127,28 @@ function ScheduleTab() {
         <Button variant="outline" icon={<Copy className="size-4" />} loading={busy} onClick={() => void copyLastWeek()}>
           Salin dari minggu lalu
         </Button>
+        <Button icon={<ClipboardPaste className="size-4" />} disabled={!data || !staff.data} onClick={() => setImporting(true)}>
+          Tempel jadwal
+        </Button>
         <p className="text-xs text-fg-muted">Ketuk sebuah shift untuk menambah orang atau mencatat izin/sakit.</p>
       </div>
       <ErrorNote>{error}</ErrorNote>
       {loading && !data && <Spinner className="mx-auto my-10" />}
       {data && <WeekSchedule data={data} weekStart={week} onCell={(date, template) => setCell({ date, template })} />}
+      {importing && data && staff.data && (
+        <ImportSchedule
+          templates={data.templates.filter((t) => t.active)}
+          users={people}
+          aliases={(data as WeekWithAliases).aliases ?? {}}
+          today={data.today}
+          onClose={() => setImporting(false)}
+          onDone={(firstWeek) => {
+            setImporting(false);
+            if (firstWeek) setWeek(firstWeek);
+            reload();
+          }}
+        />
+      )}
       {cell && data && (
         <CellEditor
           date={cell.date}
@@ -145,10 +168,10 @@ const STATUS_OPTIONS = (Object.keys(SCHEDULE_STATUS_LABEL) as ScheduleStatus[]).
 function CellEditor({ date, template, entries, staff, onClose, onChanged }: { date: string; template: ShiftTemplate; entries: WeekEntry[]; staff: PublicUser[]; onClose: () => void; onChanged: () => void }) {
   const [add, setAdd] = useState('');
   const [busy, setBusy] = useState('');
-  const save = async (userId: string, status: ScheduleStatus, note: string) => {
+  const save = async (userId: string, status: ScheduleStatus, note: string, times?: { startTime: string | null; endTime: string | null }) => {
     setBusy(userId);
     try {
-      await api('/schedule/entries', { method: 'PUT', body: { date, templateId: template.id, userId, status, note } });
+      await api('/schedule/entries', { method: 'PUT', body: { date, templateId: template.id, userId, status, note, ...times } });
       onChanged();
     } catch (e) {
       toast(errorMessage(e), 'error');
@@ -179,7 +202,7 @@ function CellEditor({ date, template, entries, staff, onClose, onChanged }: { da
       </p>
       <ul className="flex flex-col gap-2">
         {entries.map((e) => (
-          <EntryRow key={e.id} entry={e} busy={busy === e.userId || busy === e.id} onSave={(status, note) => void save(e.userId, status, note)} onRemove={() => void remove(e.id)} />
+          <EntryRow key={e.id} entry={e} template={template} busy={busy === e.userId || busy === e.id} onSave={(status, note, times) => void save(e.userId, status, note, times)} onRemove={() => void remove(e.id)} />
         ))}
         {!entries.length && <li className="rounded-xl bg-surface-2 p-3 text-sm text-fg-muted">Belum ada yang dijadwalkan.</li>}
       </ul>
@@ -193,10 +216,14 @@ function CellEditor({ date, template, entries, staff, onClose, onChanged }: { da
   );
 }
 
-type WeekEntry = { id: string; userId: string; userName: string; status: ScheduleStatus; note: string };
+type WeekEntry = { id: string; userId: string; userName: string; status: ScheduleStatus; note: string; startTime?: string | null; endTime?: string | null };
+type WeekWithAliases = { aliases?: Record<string, string> };
 
-function EntryRow({ entry, busy, onSave, onRemove }: { entry: WeekEntry; busy: boolean; onSave: (status: ScheduleStatus, note: string) => void; onRemove: () => void }) {
+function EntryRow({ entry, template, busy, onSave, onRemove }: { entry: WeekEntry; template: ShiftTemplate; busy: boolean; onSave: (status: ScheduleStatus, note: string, times?: { startTime: string | null; endTime: string | null }) => void; onRemove: () => void }) {
   const [note, setNote] = useState(entry.note);
+  const [start, setStart] = useState(entry.startTime ?? template.startTime);
+  const [end, setEnd] = useState(entry.endTime ?? template.endTime);
+  const saveTimes = (s: string, e: string) => onSave(entry.status, note, { startTime: s && s !== template.startTime ? s : null, endTime: e && e !== template.endTime ? e : null });
   return (
     <li className={cx('flex flex-col gap-2 rounded-2xl border p-3', entry.status === 'masuk' ? 'border-line' : 'border-danger/30 bg-danger/5')}>
       <div className="flex items-center gap-2">
@@ -206,6 +233,15 @@ function EntryRow({ entry, busy, onSave, onRemove }: { entry: WeekEntry; busy: b
           <Trash2 className="size-4" />
         </button>
       </div>
+      {entry.status === 'masuk' && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-fg-muted">Jam</span>
+          <input type="time" aria-label={`Jam mulai ${entry.userName}`} className={cx(inputClass, 'h-10 w-28 text-sm')} value={start} onChange={(e) => setStart(e.target.value)} onBlur={() => saveTimes(start, end)} />
+          <span>–</span>
+          <input type="time" aria-label={`Jam selesai ${entry.userName}`} className={cx(inputClass, 'h-10 w-28 text-sm')} value={end} onChange={(e) => setEnd(e.target.value)} onBlur={() => saveTimes(start, end)} />
+          {(entry.startTime || entry.endTime) && <span className="text-xs text-primary">jam khusus</span>}
+        </div>
+      )}
       {entry.status !== 'masuk' && (
         <input
           className={cx(inputClass, 'h-10 text-sm')}
@@ -973,5 +1009,189 @@ function Line({ label, hint, value }: { label: string; hint?: string; value: num
       </span>
       <span className="font-semibold tabular">{formatNumber(value)}</span>
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ Tempel jadwal
+
+const SAMPLE = `JADWAL SHIFT BARISTA
+2 November - 8 November 2026
+
+Senin
+- Shift 1 (9:00-16:00) | ntu
+- Shift 2 (15:00-22:00) | dapa
+- Kitchen (14:00-20:30) | ila`;
+const SKIP = '__lewati';
+
+/**
+ * Tempel jadwal dari teks WhatsApp: dibaca otomatis, nama panggilan dicocokkan ke akun (diingat untuk minggu
+ * berikutnya), bisa diulang tiap minggu sampai akhir bulan. Owner melihat pratinjau sebelum menerapkan.
+ */
+function ImportSchedule({ templates, users, aliases, today, onClose, onDone }: { templates: ShiftTemplate[]; users: PublicUser[]; aliases: Record<string, string>; today: string; onClose: () => void; onDone: (firstWeek: string | null) => void }) {
+  const [text, setText] = useState('');
+  const [weekInput, setWeekInput] = useState('');
+  const [repeat, setRepeat] = useState(true);
+  const [replace, setReplace] = useState(true);
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const parsed = useMemo(() => (text.trim() ? parseScheduleText(text, templates) : null), [text, templates]);
+  const weekStart = weekInput ? weekStartOf(weekInput) : (parsed?.weekStart ?? weekStartOf(today));
+  const names = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const r of parsed?.rows ?? []) for (const n of r.names) if (!seen.has(n.toLowerCase())) seen.set(n.toLowerCase(), n);
+    return [...seen.entries()];
+  }, [parsed]);
+  const auto = (key: string, display: string) => matchName(display, users, aliases);
+  const resolve = (key: string, display: string) => picked[key] ?? auto(key, display) ?? '';
+  const unresolved = names.filter(([k, d]) => !resolve(k, d));
+
+  const plan = useMemo(() => {
+    const entries: { date: string; templateId: string; userId: string; startTime: string | null; endTime: string | null }[] = [];
+    const dates = new Set<string>();
+    for (const r of parsed?.rows ?? []) {
+      for (const date of importDates(weekStart, r.day, repeat)) {
+        dates.add(date);
+        for (const n of r.names) {
+          const id = resolve(n.toLowerCase(), n);
+          if (id && id !== SKIP) entries.push({ date, templateId: r.templateId, userId: id, startTime: r.startTime, endTime: r.endTime });
+        }
+      }
+    }
+    return { entries, dates: [...dates].sort() };
+    // resolve bergantung pada picked/aliases/users.
+  }, [parsed, weekStart, repeat, picked, aliases, users]);
+
+  const apply = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const learned = Object.fromEntries(names.map(([k, d]) => [k, resolve(k, d)]).filter(([, id]) => id && id !== SKIP));
+      await api('/schedule/import', { method: 'POST', body: { entries: plan.entries, replaceDates: replace ? plan.dates : [], aliases: learned } });
+      toast(`${plan.entries.length} jadwal diterapkan`);
+      onDone(weekStart);
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  };
+
+  const userOptions = [...users.map((u) => ({ value: u.id, label: u.name, hint: ROLE_LABEL[u.role] })), { value: SKIP, label: 'Lewati nama ini' }];
+  const nameOf = (id: string) => users.find((u) => u.id === id)?.name ?? '';
+  const firstRange = plan.dates.length ? `${dayLabel(plan.dates[0], 'short')} – ${dayLabel(plan.dates[plan.dates.length - 1], 'short')}` : '';
+
+  return (
+    <Modal
+      open
+      size="xl"
+      onClose={onClose}
+      dismissable={!busy}
+      title="Tempel jadwal"
+      footer={
+        <>
+          <p className="flex-1 self-center text-sm text-fg-muted">
+            {plan.entries.length ? `${plan.entries.length} jadwal di ${plan.dates.length} hari (${firstRange})` : 'Tempel teks jadwal untuk melihat pratinjau'}
+          </p>
+          <Button size="lg" loading={busy} disabled={!plan.entries.length || unresolved.length > 0} onClick={() => void apply()}>
+            Terapkan jadwal
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <label htmlFor="jadwal-teks" className="text-sm font-semibold text-fg-muted">
+            Teks jadwal (salin dari WhatsApp)
+          </label>
+          <textarea
+            id="jadwal-teks"
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={SAMPLE}
+            className="min-h-80 w-full rounded-2xl border border-line bg-surface-2 p-3 font-mono text-sm leading-relaxed outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+          />
+          <p className="text-xs text-fg-subtle">Nama hari (Senin–Minggu) di baris sendiri, lalu satu baris per shift berisi nama shift, jam (opsional), dan nama orang. Beberapa orang dipisah koma.</p>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-4">
+          {!parsed ? (
+            <div className="grid h-full place-items-center rounded-2xl border border-dashed border-line-strong p-6 text-center text-sm text-fg-muted">Pratinjau muncul di sini setelah teks ditempel.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Minggu (Senin)" hint={parsed.weekStart ? 'Terbaca dari teks' : 'Tanggal tidak ditemukan di teks'}>
+                  {(id) => <TextInput id={id} type="date" value={weekInput || weekStart} onChange={(e) => setWeekInput(e.target.value)} />}
+                </Field>
+                <div className="flex flex-col justify-end gap-1">
+                  <Toggle checked={repeat} onChange={setRepeat} label="Ulangi sampai akhir bulan" />
+                  <Toggle checked={replace} onChange={setReplace} label="Ganti jadwal lama di tanggal itu" />
+                </div>
+              </div>
+
+              {names.length > 0 && (
+                <section>
+                  <p className="mb-2 text-sm font-semibold text-fg-muted">Cocokkan nama ({names.length - unresolved.length}/{names.length})</p>
+                  <ul className="grid gap-2 sm:grid-cols-2">
+                    {names.map(([key, display]) => {
+                      const id = resolve(key, display);
+                      const isAuto = !picked[key] && !!auto(key, display);
+                      return (
+                        <li key={key} className={cx('flex items-center gap-2 rounded-xl border p-2', id ? 'border-line' : 'border-warning/50 bg-warning/8')}>
+                          <span className="w-16 shrink-0 truncate font-mono text-sm font-semibold">{display}</span>
+                          <SearchSelect label={`Akun untuk ${display}`} placeholder="Pilih akun..." value={id} onChange={(v) => setPicked((p) => ({ ...p, [key]: v }))} options={userOptions} className="min-w-0 flex-1 text-sm" />
+                          {isAuto && <span className="text-[11px] text-success">otomatis</span>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
+
+              <section>
+                <p className="mb-2 text-sm font-semibold text-fg-muted">Pratinjau minggu pertama</p>
+                <div className="max-h-72 overflow-y-auto rounded-2xl border border-line">
+                  <table className="w-full text-sm">
+                    <tbody className="divide-y divide-line">
+                      {parsed.rows.map((r, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-1.5 whitespace-nowrap capitalize">{dayLabel(addDaysIso(weekStart, r.day), 'short')}</td>
+                          <td className="px-3 py-1.5 whitespace-nowrap">
+                            {r.templateName}
+                            {(r.startTime || r.endTime) && (
+                              <span className="ml-1 text-xs text-primary tabular">
+                                {r.startTime ?? templates.find((t) => t.id === r.templateId)?.startTime}–{r.endTime ?? templates.find((t) => t.id === r.templateId)?.endTime}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            {r.names.map((n) => {
+                              const id = resolve(n.toLowerCase(), n);
+                              return (
+                                <span key={n} className={cx('mr-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold', !id ? 'bg-warning/15 text-warning' : id === SKIP ? 'bg-surface-3 text-fg-subtle line-through' : 'bg-success/12 text-success')}>
+                                  {id && id !== SKIP ? nameOf(id) : n}
+                                </span>
+                              );
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              {parsed.skipped.length > 0 && (
+                <p className="rounded-xl bg-warning/10 p-3 text-xs">
+                  Baris tidak dikenali (dilewati): {parsed.skipped.map((l) => `“${l}”`).join(', ')}. Pastikan nama shift sama dengan di tab Shift & tarif.
+                </p>
+              )}
+              {unresolved.length > 0 && <p className="text-xs text-warning">Pilih akun untuk {unresolved.map(([, d]) => d).join(', ')} (atau Lewati) sebelum menerapkan.</p>}
+            </>
+          )}
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      </div>
+    </Modal>
   );
 }

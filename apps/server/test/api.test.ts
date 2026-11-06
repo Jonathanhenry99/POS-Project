@@ -1354,3 +1354,42 @@ describe('jadwal shift, gaji, kasbon, bonus & slip gaji', () => {
     await request(app).put('/api/settings').set(H).send({ attendance: { enabled: false } }).expect(200);
   });
 });
+
+describe('tempel jadwal', () => {
+  let H: Record<string, string> = {};
+  let tpl: { id: string; name: string }[] = [];
+  beforeAll(async () => {
+    H = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token}` };
+    tpl = (await request(app).get('/api/schedule?from=2026-12-07&to=2026-12-07').set(H)).body.templates;
+  });
+  const T = (name: string) => tpl.find((t) => t.name === name)!.id;
+
+  it('menerapkan banyak jadwal sekaligus, mengganti tanggal yang sama, jam khusus, alias diingat, owner tidak digaji', async () => {
+    await request(app).put('/api/schedule/entries').set(H).send({ date: '2026-12-07', templateId: T('Shift 1'), userId: userId('kasir') }).expect(200);
+    const body = {
+      entries: [
+        { date: '2026-12-07', templateId: T('Shift 1'), userId: userId('barista'), startTime: null, endTime: null },
+        { date: '2026-12-07', templateId: T('Kitchen'), userId: userId('kitchen'), startTime: '14:00', endTime: '20:30' },
+        { date: '2026-12-08', templateId: T('Shift 1'), userId: userId('owner'), startTime: null, endTime: null },
+      ],
+      replaceDates: ['2026-12-07', '2026-12-08'],
+      aliases: { ntu: userId('barista'), Jon: userId('owner') },
+    };
+    const epoch = (await request(app).get('/api/data-epoch').set(H)).body.id;
+    await request(app).post('/api/schedule/import').set({ ...asDevice('kasir'), 'X-Data-Epoch': epoch }).send(body).expect(403);
+    expect((await request(app).post('/api/schedule/import').set(H).send(body).expect(201)).body.created).toBe(3);
+    const week = (await request(app).get('/api/schedule?from=2026-12-07&to=2026-12-13').set(H)).body;
+    expect(week.entries.map((e: { userName: string; startTime: string | null; endTime: string | null }) => [e.userName, e.startTime, e.endTime])).toEqual([
+      ['Barista', null, null],
+      ['Kitchen', '14:00', '20:30'],
+      ['Owner', null, null],
+    ]);
+    expect(week.aliases).toMatchObject({ ntu: userId('barista'), jon: userId('owner') });
+    const pay = (await request(app).get('/api/payroll?month=2026-12').set(H)).body;
+    expect(pay.people.map((p: { name: string }) => p.name).sort()).toEqual(['Barista', 'Kitchen']);
+    // Salin minggu ikut membawa jam khusus.
+    await request(app).post('/api/schedule/copy-week').set(H).send({ from: '2026-12-07', to: '2026-12-14' }).expect(200);
+    const next = (await request(app).get('/api/schedule?from=2026-12-14&to=2026-12-14').set(H)).body.entries;
+    expect(next.find((e: { userName: string }) => e.userName === 'Kitchen')).toMatchObject({ startTime: '14:00', endTime: '20:30' });
+  });
+});

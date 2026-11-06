@@ -42,7 +42,8 @@ export async function loadTemplates(db: Db = pool, includeInactive = true): Prom
 
 async function loadEntries(db: Db, from: string, to: string): Promise<ScheduleEntry[]> {
   const { rows } = await db.query(
-    `select e.id, to_char(e.date, 'YYYY-MM-DD') as date, e.template_id as "templateId", e.user_id as "userId", u.name as "userName", e.status, e.note
+    `select e.id, to_char(e.date, 'YYYY-MM-DD') as date, e.template_id as "templateId", e.user_id as "userId", u.name as "userName", e.status, e.note,
+       e.start_time as "startTime", e.end_time as "endTime"
      from schedule_entries e join users u on u.id = e.user_id join shift_templates t on t.id = e.template_id
      where e.date between $1 and $2 order by e.date, t.sort, u.name`,
     [from, to],
@@ -53,8 +54,8 @@ async function loadEntries(db: Db, from: string, to: string): Promise<ScheduleEn
 /** Jadwal shift hari ini untuk satu orang: jam mulai paling awal (dipakai untuk menghitung telat absen). */
 export async function scheduledStart(db: Db, userId: string, date: string): Promise<{ startTime: string; templateName: string } | null> {
   const { rows } = await db.query<{ startTime: string; templateName: string }>(
-    `select t.start_time as "startTime", t.name as "templateName" from schedule_entries e join shift_templates t on t.id = e.template_id
-     where e.user_id = $1 and e.date = $2 and e.status = 'masuk' order by t.start_time limit 1`,
+    `select coalesce(e.start_time, t.start_time) as "startTime", t.name as "templateName" from schedule_entries e join shift_templates t on t.id = e.template_id
+     where e.user_id = $1 and e.date = $2 and e.status = 'masuk' order by coalesce(e.start_time, t.start_time) limit 1`,
     [userId, date],
   );
   return rows[0] ?? null;
@@ -63,9 +64,9 @@ export async function scheduledStart(db: Db, userId: string, date: string): Prom
 /** Jadwal hari ini untuk semua orang (tablet menghitung telat absen secara lokal, juga saat offline). */
 export async function scheduleToday(db: Db, date: string) {
   const { rows } = await db.query<{ userId: string; startTime: string; templateName: string }>(
-    `select distinct on (e.user_id) e.user_id as "userId", t.start_time as "startTime", t.name as "templateName"
+    `select distinct on (e.user_id) e.user_id as "userId", coalesce(e.start_time, t.start_time) as "startTime", t.name as "templateName"
      from schedule_entries e join shift_templates t on t.id = e.template_id
-     where e.date = $1 and e.status = 'masuk' order by e.user_id, t.start_time`,
+     where e.date = $1 and e.status = 'masuk' order by e.user_id, coalesce(e.start_time, t.start_time)`,
     [date],
   );
   return rows;
@@ -101,15 +102,18 @@ export async function computeMonth(db: Db, month: string) {
     ),
     db.query<{ id: string; name: string; role: string }>('select id, name, role from users order by name'),
   ]);
+  // Owner boleh tercantum di jadwal (ikut jaga), tetapi tidak digaji dan tidak dihitung dalam pembagian bonus.
+  const owners = new Set(users.rows.filter((u) => u.role === 'owner').map((u) => u.id));
+  const paid = entries.filter((e) => !owners.has(e.userId));
   const stored = new Map(weekRows.rows.map((w) => [w.weekStart, w]));
   const weeks = await Promise.all(
     weekStarts.map(async (weekStart) => {
       const w = stored.get(weekStart);
       const posOmset = await omsetBetween(db, weekStart, addDaysIso(weekStart, 6));
-      return { ...computeWeekBonus({ weekStart, posOmset, omsetOverride: w?.omsetOverride === null || w?.omsetOverride === undefined ? null : Number(w.omsetOverride), disqualified: w?.disqualified ?? [] }, entries, settings.bonusTiers), posOmset, note: w?.note ?? '' };
+      return { ...computeWeekBonus({ weekStart, posOmset, omsetOverride: w?.omsetOverride === null || w?.omsetOverride === undefined ? null : Number(w.omsetOverride), disqualified: w?.disqualified ?? [] }, paid, settings.bonusTiers), posOmset, note: w?.note ?? '' };
     }),
   );
-  const people = computePayroll({ month, users: users.rows, templates, entries, kasbon: kasbonRows.rows, weeks });
+  const people = computePayroll({ month, users: users.rows.filter((u) => !owners.has(u.id)), templates, entries: paid, kasbon: kasbonRows.rows, weeks });
   return { month, templates, weeks, people, bonusTiers: settings.bonusTiers };
 }
 
@@ -123,6 +127,7 @@ teamRouter.get('/schedule', async (req, res) => {
   const admin = !!req.auth.user && can(req.auth.user.role, 'admin') && req.auth.verified;
   const [templates, entries] = await Promise.all([loadTemplates(pool, admin), loadEntries(pool, q.from, q.to)]);
   res.json({
+    ...(admin ? { aliases: await scheduleAliases() } : {}),
     today: businessDate(new Date().toISOString(), await getTimezone(pool)),
     templates: admin ? templates : templates.map(({ rates: _, ...t }) => ({ ...t, rates: [] })),
     entries: admin ? entries : entries.map((e) => ({ ...e, note: e.status === 'masuk' ? '' : e.note })),
@@ -130,15 +135,27 @@ teamRouter.get('/schedule', async (req, res) => {
   });
 });
 
-const entryBody = z.object({ date: isoDate, templateId: uuid, userId: uuid, status: z.enum(['masuk', 'izin', 'sakit', 'alpa']).default('masuk'), note: z.string().trim().max(200).default('') });
+const entryBody = z.object({
+  date: isoDate,
+  templateId: uuid,
+  userId: uuid,
+  status: z.enum(['masuk', 'izin', 'sakit', 'alpa']).default('masuk'),
+  note: z.string().trim().max(200).default(''),
+  // undefined = jam tidak diubah; null = kembali ke jam shift.
+  startTime: clock.nullable().optional(),
+  endTime: clock.nullable().optional(),
+});
 
 teamRouter.put('/schedule/entries', need('admin'), async (req, res) => {
   const b = parse(entryBody, req.body);
+  const setTimes = b.startTime !== undefined || b.endTime !== undefined;
   const { rows } = await pool.query(
-    `insert into schedule_entries (date, template_id, user_id, status, note) values ($1,$2,$3,$4,$5)
-     on conflict (date, template_id, user_id) do update set status = excluded.status, note = excluded.note, updated_at = now()
+    `insert into schedule_entries (date, template_id, user_id, status, note, start_time, end_time) values ($1,$2,$3,$4,$5,$6,$7)
+     on conflict (date, template_id, user_id) do update set status = excluded.status, note = excluded.note,
+       start_time = case when $8 then excluded.start_time else schedule_entries.start_time end,
+       end_time = case when $8 then excluded.end_time else schedule_entries.end_time end, updated_at = now()
      returning id`,
-    [b.date, b.templateId, b.userId, b.status, b.note],
+    [b.date, b.templateId, b.userId, b.status, b.note, b.startTime ?? null, b.endTime ?? null, setTimes],
   );
   await audit(pool, req.auth.user!.id, 'set', 'schedule', rows[0].id, b);
   res.json({ id: rows[0].id });
@@ -151,13 +168,50 @@ teamRouter.delete('/schedule/entries/:id', need('admin'), async (req, res) => {
   res.json({ ok: true });
 });
 
+async function scheduleAliases(db: Db = pool): Promise<Record<string, string>> {
+  const { rows } = await db.query<{ value: Record<string, string> }>("select value from settings where key = 'schedule_aliases'");
+  return rows[0]?.value ?? {};
+}
+
+/**
+ * Terapkan jadwal hasil "Tempel jadwal" sekaligus. Tanggal di `replaceDates` dikosongkan dulu supaya jadwal lama
+ * tidak tercampur. Nama panggilan yang dicocokkan owner diingat untuk tempelan berikutnya.
+ */
+teamRouter.post('/schedule/import', need('admin'), async (req, res) => {
+  const b = parse(
+    z.object({
+      entries: z.array(z.object({ date: isoDate, templateId: uuid, userId: uuid, startTime: clock.nullable(), endTime: clock.nullable() })).min(1).max(500),
+      replaceDates: z.array(isoDate).max(62).default([]),
+      aliases: z.record(z.string().trim().toLowerCase().min(1).max(40), uuid).default({}),
+    }),
+    req.body,
+  );
+  const created = await tx(async (c) => {
+    if (b.replaceDates.length) await c.query('delete from schedule_entries where date = any($1::date[])', [b.replaceDates]);
+    let n = 0;
+    for (const e of b.entries) {
+      const r = await c.query(
+        `insert into schedule_entries (date, template_id, user_id, status, note, start_time, end_time) values ($1,$2,$3,'masuk','',$4,$5)
+         on conflict (date, template_id, user_id) do update set start_time = excluded.start_time, end_time = excluded.end_time, updated_at = now()`,
+        [e.date, e.templateId, e.userId, e.startTime, e.endTime],
+      );
+      n += r.rowCount ?? 0;
+    }
+    const merged = { ...(await scheduleAliases(c)), ...b.aliases };
+    await c.query(`insert into settings (key, value) values ('schedule_aliases', $1) on conflict (key) do update set value = excluded.value, updated_at = now()`, [JSON.stringify(merged)]);
+    await audit(c, req.auth.user!.id, 'import', 'schedule', null, { entries: b.entries.length, dates: [...new Set(b.entries.map((e) => e.date))].length, replaced: b.replaceDates.length });
+    return n;
+  });
+  res.status(201).json({ created });
+});
+
 /** Salin jadwal satu minggu ke minggu lain (yang sudah ada di minggu tujuan tidak ditimpa). */
 teamRouter.post('/schedule/copy-week', need('admin'), async (req, res) => {
   const b = parse(z.object({ from: isoDate, to: isoDate }), req.body);
   const shift = (new Date(`${b.to}T00:00:00Z`).getTime() - new Date(`${b.from}T00:00:00Z`).getTime()) / 86_400_000;
   const { rowCount } = await pool.query(
-    `insert into schedule_entries (date, template_id, user_id, status, note)
-     select e.date + $2::int, e.template_id, e.user_id, 'masuk', '' from schedule_entries e
+    `insert into schedule_entries (date, template_id, user_id, status, note, start_time, end_time)
+     select e.date + $2::int, e.template_id, e.user_id, 'masuk', '', e.start_time, e.end_time from schedule_entries e
      join users u on u.id = e.user_id and u.active and u.deleted_at is null
      join shift_templates t on t.id = e.template_id and t.active and t.deleted_at is null
      where e.date between $1::date and $1::date + 6

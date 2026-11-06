@@ -26,6 +26,9 @@ export interface ScheduleEntry {
   userName: string;
   status: ScheduleStatus;
   note: string;
+  /** Jam khusus orang ini hari itu; null/kosong = ikut jam shift. */
+  startTime?: string | null;
+  endTime?: string | null;
 }
 export interface Kasbon {
   id: string;

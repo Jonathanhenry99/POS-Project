@@ -74,7 +74,7 @@ export function WeekSchedule({ data, weekStart, onCell, compact = false, todayFi
                   </span>
                   <span className="flex flex-wrap gap-1">
                     {people.map((e) => (
-                      <PersonChip key={e.id} entry={e} me={e.userId === data.me} dark={isToday} />
+                      <PersonChip key={e.id} entry={e} template={t} me={e.userId === data.me} dark={isToday} />
                     ))}
                     {!people.length && <span className={cx('text-xs', isToday ? 'text-white/50' : 'text-fg-subtle')}>{onCell ? 'Belum diisi' : '-'}</span>}
                     {onCell && (
@@ -93,7 +93,7 @@ export function WeekSchedule({ data, weekStart, onCell, compact = false, todayFi
   );
 }
 
-function PersonChip({ entry, me, dark }: { entry: ScheduleEntry; me: boolean; dark: boolean }) {
+function PersonChip({ entry, template, me, dark }: { entry: ScheduleEntry; template: ShiftTemplate; me: boolean; dark: boolean }) {
   const off = entry.status !== 'masuk';
   return (
     <span
@@ -105,6 +105,7 @@ function PersonChip({ entry, me, dark }: { entry: ScheduleEntry; me: boolean; da
     >
       <span className={cx(off && 'line-through opacity-60')}>{entry.userName}</span>
       {me && <span>(saya)</span>}
+      {(entry.startTime || entry.endTime) && <span className="font-normal opacity-75 tabular">{entry.startTime ?? template.startTime}–{entry.endTime ?? template.endTime}</span>}
       {off && <span className="rounded-full bg-danger px-1.5 py-px text-[10px] font-bold text-white">{SCHEDULE_STATUS_LABEL[entry.status]}</span>}
     </span>
   );
