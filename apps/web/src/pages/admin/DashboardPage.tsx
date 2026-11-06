@@ -27,6 +27,7 @@ import { Badge, ErrorNote, cx } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import { useApp } from '../../lib/state';
 import { Composition, Heatmap, shortNumber } from './charts';
+import { OpenStatePanel } from './OpenStatePanel';
 import { formatDateLabel, storeTimezone, today, useApi, addDays } from './hooks';
 import { daysBetween, downloadOrdersCsv, insights, netRevenue, useSummary, type Pulse, type Range, type Summary } from './reportData';
 import { LoadingGrid } from './ReportsPage';
@@ -111,6 +112,7 @@ export function DashboardPage() {
           </button>
         </div>
       </header>
+      <OpenStatePanel compact />
 
       <ErrorNote>{error}</ErrorNote>
       {!s ? (

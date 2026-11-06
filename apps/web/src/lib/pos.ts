@@ -7,6 +7,7 @@ import {
   formatRupiah,
   priceLine,
   type Discount,
+  type Order,
   type OrderComp,
   type OrderItem,
   type OrderItemOption,
@@ -319,6 +320,9 @@ export async function openShift(openingCash: number) {
   const s = appStore.get();
   if (!s.user || !s.device) throw new Error('Silakan login');
   if (s.activeShift) return s.activeShift;
+  // Server masih menyimpan shift terbuka terminal ini (mis. data tablet sempat hilang): lanjutkan shift itu,
+  // jangan membuka shift kedua.
+  if ((await syncShiftWithServer()) === 'restored' && appStore.get().activeShift) return appStore.get().activeShift!;
   const shift: Shift = {
     id: uuid(),
     deviceId: s.device.id,
@@ -467,4 +471,111 @@ export async function closeBusinessDay(note: string): Promise<LocalBusinessDay> 
   await updateCounts();
   void flushOutbox();
   return closed;
+}
+
+// ---------- Samakan shift & hari usaha dengan server ----------
+
+interface OpenState {
+  shift: Shift | null;
+  day: BusinessDay | null;
+  open: { shift: Shift; day: BusinessDay | null; orders: Order[] } | null;
+  lastSeq: { date: string; seq: number } | null;
+}
+
+let syncingShift: Promise<'restored' | 'closed' | 'none'> | null = null;
+
+/**
+ * Samakan tablet dengan server, supaya tidak ada "dua kasir berjalan":
+ * - shift/hari aktif tablet yang sudah ditutup owner dari back office ikut ditutup di tablet;
+ * - bila tablet tidak punya shift aktif (mis. data lokalnya hilang) tetapi server masih menyimpan shift terbuka
+ *   terminal ini, shift itu dilanjutkan beserta transaksinya, bukan membuka shift baru;
+ * - nomor struk hari ini dilanjutkan dari nomor terakhir di server supaya tidak bentrok.
+ * Saat offline atau masih ada kiriman shift/hari yang menunggu, tidak melakukan apa-apa.
+ */
+export function syncShiftWithServer(): Promise<'restored' | 'closed' | 'none'> {
+  syncingShift ??= (async (): Promise<'restored' | 'closed' | 'none'> => {
+    const s = appStore.get();
+    if (s.mode !== 'tablet' || s.preview || !s.device || !s.online) return 'none' as const;
+    const d = await db();
+    const pending = (await d.getAll('outbox')).some((o) => o.status === 'pending' && (o.ref?.store === 'shifts' || o.ref?.store === 'businessDays'));
+    if (pending) return 'none' as const;
+    const activeShiftId = (await kvGet<string | null>('activeShiftId')) ?? null;
+    const activeDayId = (await kvGet<string | null>('activeBusinessDayId')) ?? null;
+    const q = new URLSearchParams();
+    if (activeShiftId) q.set('shiftId', activeShiftId);
+    if (activeDayId) q.set('dayId', activeDayId);
+    let st: OpenState;
+    try {
+      st = await api<OpenState>(`/tablet/open-state?${q}`, { asDevice: true, operatorId: '' });
+    } catch {
+      return 'none' as const;
+    }
+    let result: 'restored' | 'closed' | 'none' = 'none';
+    const tx = d.transaction(['kv', 'shifts', 'businessDays', 'orders'], 'readwrite');
+    const kv = tx.objectStore('kv');
+    if (st.lastSeq) {
+      const key = `seq:${st.lastSeq.date}`;
+      const local = ((await kv.get(key)) as number | undefined) ?? 0;
+      if (st.lastSeq.seq > local) await kv.put(st.lastSeq.seq, key);
+    }
+    // 1) Ditutup owner dari back office.
+    let stillActive = activeShiftId;
+    if (activeShiftId && st.shift?.id === activeShiftId && st.shift.closedAt) {
+      await tx.objectStore('shifts').put({ ...st.shift, sync: 'synced' });
+      await kv.put(null, 'activeShiftId');
+      await kv.put(st.shift.id, 'lastClosedShiftId');
+      stillActive = null;
+      result = 'closed';
+    }
+    if (activeDayId && st.day?.id === activeDayId && st.day.closedAt) {
+      await tx.objectStore('businessDays').put({ ...st.day, sync: 'synced', syncError: '' });
+      await kv.put(null, 'activeBusinessDayId');
+      result = 'closed';
+    }
+    // 2) Tablet tanpa shift aktif, server masih menyimpan shift terbuka terminal ini: lanjutkan.
+    if (!stillActive && result === 'none' && st.open) {
+      const local = await tx.objectStore('shifts').get(st.open.shift.id);
+      if (!local?.closedAt) {
+        await tx.objectStore('shifts').put({ ...st.open.shift, sync: 'synced' });
+        if (st.open.day) {
+          await tx.objectStore('businessDays').put({ ...st.open.day, sync: 'synced', syncError: '' });
+          await kv.put(st.open.day.id, 'activeBusinessDayId');
+        }
+        for (const o of st.open.orders) {
+          if (!(await tx.objectStore('orders').get(o.id))) await tx.objectStore('orders').put({ ...o, sync: 'synced', syncError: '' });
+        }
+        await kv.put(st.open.shift.id, 'activeShiftId');
+        result = 'restored';
+      }
+    }
+    await tx.done;
+    if (result !== 'none') {
+      await loadActiveShift();
+      bumpOrders();
+    }
+    return result;
+  })()
+    // Gagal di tengah jalan (mis. penyimpanan lokal sedang ditutup) berarti tidak ada yang diubah; dicoba lagi nanti.
+    .catch(() => 'none' as const)
+    .finally(() => {
+      syncingShift = null;
+    });
+  return syncingShift;
+}
+
+/** Laporkan kiriman yang ditolak server ke back office (judul & alasan saja), hanya bila daftarnya berubah. */
+let lastIssues = '';
+export async function reportSyncIssues() {
+  const s = appStore.get();
+  if (s.mode !== 'tablet' || s.preview || !s.online) return;
+  const failed = (await (await db()).getAllFromIndex('outbox', 'byStatus', 'failed')).slice(0, 50);
+  const items = failed.map((o) => ({ label: o.label.slice(0, 80), path: o.path.slice(0, 120), error: o.lastError.slice(0, 300), createdAt: o.createdAt }));
+  const key = JSON.stringify(items);
+  if (key === lastIssues) return;
+  try {
+    await api('/tablet/sync-issues', { method: 'PUT', body: { items }, asDevice: true, operatorId: '' });
+    lastIssues = key;
+  } catch {
+    /* dicoba lagi pada sinkron berikutnya */
+  }
 }

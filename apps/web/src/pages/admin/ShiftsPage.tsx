@@ -7,16 +7,18 @@ import { api } from '../../lib/api';
 import { PageHeader } from './AdminRoutes';
 import { addDays, storeTimezone, today, useApi } from './hooks';
 import { DateRangeBar } from './ReportsPage';
+import { OpenStatePanel } from './OpenStatePanel';
 
 const PROOF_LABEL: Record<ShiftProofInfo['kind'], string> = { edc: 'Struk settlement EDC', cash: 'Uang tunai' };
 
 export function ShiftsPage() {
   const [range, setRange] = useState({ from: addDays(today(), -6), to: today() });
-  const { data, error, loading } = useApi<Shift[]>(`/shifts?from=${range.from}&to=${range.to}`);
+  const { data, error, loading, reload } = useApi<Shift[]>(`/shifts?from=${range.from}&to=${range.to}`);
   const tz = storeTimezone();
   return (
     <div>
       <PageHeader title="Tutup kasir" subtitle="Pencocokan uang tunai dan settlement EDC per shift, lengkap dengan foto buktinya." />
+      <OpenStatePanel onChanged={reload} />
       <DateRangeBar value={range} onChange={setRange} />
       <ErrorNote>{error}</ErrorNote>
       {loading && !data && <Spinner className="mx-auto my-10" />}

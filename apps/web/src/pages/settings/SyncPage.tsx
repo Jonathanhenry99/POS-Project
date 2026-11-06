@@ -4,10 +4,11 @@ import { useNavigate } from 'react-router';
 import { formatDateTime } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
 import { Badge, Button, Card, Empty } from '../../components/ui';
+import { errorMessage } from '../../lib/api';
 import type { OutboxItem } from '../../lib/idb';
 import { unpairDevice } from '../../lib/session';
 import { appStore, useApp } from '../../lib/state';
-import { flushOutbox, listOutbox, refreshBootstrap, retryFailed } from '../../lib/sync';
+import { discardFailed, flushOutbox, listOutbox, refreshBootstrap, retryFailed } from '../../lib/sync';
 
 export function SyncPage() {
   const online = useApp((s) => s.online);
@@ -95,7 +96,33 @@ export function SyncPage() {
                     </p>
                     {i.lastError && <p className="text-sm text-danger">{i.lastError}</p>}
                   </div>
-                  <Badge tone={i.status === 'failed' ? 'red' : 'amber'}>{i.status === 'failed' ? 'Gagal' : 'Menunggu'}</Badge>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <Badge tone={i.status === 'failed' ? 'red' : 'amber'}>{i.status === 'failed' ? 'Gagal' : 'Menunggu'}</Badge>
+                    {i.status === 'failed' && i.ref?.store !== 'orders' && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-danger!"
+                        onClick={async () => {
+                          const ok = await confirmDialog({
+                            title: `Buang "${i.label}"?`,
+                            message: 'Kiriman ini ditolak server dan tidak akan dikirim lagi. Pakai ini bila owner sudah menutup shift/hari dari back office.',
+                            confirmLabel: 'Buang',
+                            danger: true,
+                          });
+                          if (!ok) return;
+                          try {
+                            await discardFailed(i.seq!);
+                            setItems(await listOutbox());
+                          } catch (e) {
+                            toast(errorMessage(e), 'error');
+                          }
+                        }}
+                      >
+                        Buang
+                      </Button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

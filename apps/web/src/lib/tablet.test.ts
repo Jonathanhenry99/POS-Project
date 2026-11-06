@@ -341,3 +341,54 @@ describe('owner mengosongkan data penjualan', () => {
     expect(calls.map((c) => c.url)).toContain('/api/sync/bootstrap');
   });
 });
+
+describe('samakan shift dengan server', () => {
+  it('tablet tanpa shift aktif (data lokal hilang) melanjutkan shift yang masih terbuka di server, bukan membuka shift kedua', async () => {
+    const { kvGet, kvSet } = await import('./idb');
+    const { syncShiftWithServer } = await import('./pos');
+    await kvSet('activeShiftId', null);
+    await kvSet('activeBusinessDayId', null);
+    appStore.set({ activeShift: null });
+    const date = businessDate(new Date().toISOString(), 'Asia/Jakarta');
+    const serverShift = { id: crypto.randomUUID(), deviceId: 'dev-1', businessDayId: crypto.randomUUID(), openedAt: '2026-11-06T04:45:00.000Z', openedById: user.id, openedByName: 'Jonathan', openingCash: 0, cashMovements: [], closedAt: null, closedById: null, closedByName: '', countedCash: null, closingNote: '', summary: null };
+    const serverDay = { id: serverShift.businessDayId, deviceId: 'dev-1', businessDate: date, openedAt: serverShift.openedAt, openedById: user.id, openedByName: 'Jonathan', closedAt: null, closedById: null, closedByName: '', closingNote: '', shiftIds: [serverShift.id], summary: null };
+    const serverOrder = { id: crypto.randomUUID(), number: 'A261106-013', shiftId: serverShift.id, deviceId: 'dev-1', createdAt: '2026-11-06T10:00:00.000Z', status: 'paid', total: 25000, subtotal: 25000, discountAmount: 0, serviceAmount: 0, taxAmount: 0, roundingAmount: 0, items: [], payment: { method: 'cash', amount: 25000, tendered: 25000, change: 0, reference: '' } };
+    const calls = mockFetch([() => new Response(JSON.stringify({ shift: null, day: null, open: { shift: serverShift, day: serverDay, orders: [serverOrder] }, lastSeq: { date, seq: 13 } }), { status: 200 })]);
+    const shift = await openShift(100000);
+    expect(calls[0].url).toContain('/api/tablet/open-state');
+    expect(shift.id).toBe(serverShift.id);
+    expect(appStore.get().activeShift?.id).toBe(serverShift.id);
+    expect(await kvGet('activeBusinessDayId')).toBe(serverDay.id);
+    expect((await listOrders({ shiftId: serverShift.id })).map((o) => o.id)).toEqual([serverOrder.id]);
+    expect(await kvGet(`seq:${date}`)).toBe(13);
+    // Transaksi berikutnya melanjutkan nomor struk server.
+    mockFetch([]);
+    const next = await checkout({ lines: [line(20000)], discount: null, customerName: '', orderType: 'dine_in', method: 'cash', tendered: 50000, reference: '' });
+    expect(next.number.endsWith('-014')).toBe(true);
+    expect(await syncShiftWithServer()).toBe('none');
+  });
+
+  it('shift & hari yang ditutup owner dari back office ikut tertutup di tablet', async () => {
+    const { kvGet } = await import('./idb');
+    const { syncShiftWithServer } = await import('./pos');
+    const active = appStore.get().activeShift!;
+    const dayId = (await kvGet<string>('activeBusinessDayId'))!;
+    const closedShift = { ...active, closedAt: new Date().toISOString(), closedById: user.id, closedByName: 'Owner (tutup paksa)', countedCash: 215000, summary: { orderCount: 0 } };
+    const closedDayPayload = { id: dayId, deviceId: 'dev-1', businessDate: '2026-11-06', openedAt: active.openedAt, openedById: user.id, openedByName: 'Rina', closedAt: closedShift.closedAt, closedById: user.id, closedByName: 'Owner (tutup paksa)', closingNote: '', shiftIds: [active.id], summary: null };
+    mockFetch([() => new Response(JSON.stringify({ shift: closedShift, day: closedDayPayload, open: null, lastSeq: null }), { status: 200 })]);
+    expect(await syncShiftWithServer()).toBe('closed');
+    expect(appStore.get().activeShift).toBeNull();
+    expect(await kvGet('activeShiftId')).toBeNull();
+    expect(await kvGet('activeBusinessDayId')).toBeNull();
+    expect((await listBusinessDays()).find((d) => d.id === dayId)?.closedByName).toBe('Owner (tutup paksa)');
+  });
+
+  it('tidak menyamakan saat masih ada kiriman shift yang menunggu (mis. tutup shift offline)', async () => {
+    const { syncShiftWithServer } = await import('./pos');
+    mockFetch(Array.from({ length: 5 }, () => offline));
+    await closeShift(200000, '');
+    const calls = mockFetch([]);
+    expect(await syncShiftWithServer()).toBe('none');
+    expect(calls.some((c) => c.url.includes('open-state'))).toBe(false);
+  });
+});

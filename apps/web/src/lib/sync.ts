@@ -17,6 +17,8 @@ export async function refreshBootstrap(): Promise<boolean> {
     }
     await kvSet('bootstrap', next);
     appStore.set({ data: next, online: true, dataError: null });
+    // Samakan shift/hari dengan server (ditutup owner dari back office, atau shift terbuka yang hilang dari tablet).
+    void import('./pos').then((m) => m.syncShiftWithServer());
     // Pengguna yang sedang login dinonaktifkan owner -> keluar.
     const user = appStore.get().user;
     if (user && !next.users.some((u) => u.id === user.id)) appStore.set({ user: null });
@@ -153,6 +155,8 @@ export function flushOutbox(): Promise<void> {
       appStore.set((s) => ({ ...s, sync: { ...s.sync, syncing: false } }));
       flushing = null;
     }
+    // Kiriman yang ditolak server dilaporkan ke back office supaya owner tahu alasannya dari jauh.
+    void import('./pos').then((m) => m.reportSyncIssues());
     if (stale) await (appStore.get().previewLive ? refreshPreviewEpoch() : refreshBootstrap());
   })();
   return flushing;
@@ -165,6 +169,20 @@ export async function retryFailed() {
   for (const item of failed) await d.put('outbox', { ...item, status: 'pending' });
   await updateCounts();
   await flushOutbox();
+}
+
+/**
+ * Buang satu kiriman yang ditolak server (mis. tutup shift yang sudah ditutup paksa owner dari back office).
+ * Transaksi tidak bisa dibuang: transaksi yang gagal harus tetap ada sampai masalahnya beres.
+ */
+export async function discardFailed(seq: number) {
+  const d = await db();
+  const item = await d.get('outbox', seq);
+  if (!item || item.status !== 'failed') return;
+  if (item.ref?.store === 'orders') throw new Error('Transaksi yang gagal tidak bisa dibuang. Hubungi owner.');
+  await d.delete('outbox', seq);
+  await updateCounts();
+  void import('./pos').then((m) => m.reportSyncIssues());
 }
 
 export async function listOutbox(): Promise<OutboxItem[]> {

@@ -1,6 +1,6 @@
 import { ClipboardList, PackageX, Percent, Search, ShoppingBasket, Trash2, UserRound, Utensils, Wallet, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { formatDateTime, formatNumber, formatRupiah, ORDER_TYPE_LABEL, type Order, type Product } from '@mourden/shared';
+import { formatDateTime, formatNumber, formatRupiah, formatTime, ORDER_TYPE_LABEL, type Order, type Product } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
 import { Button, Empty, Modal, MoneyInput, cx } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
@@ -322,6 +322,7 @@ function SavedSheet({ onClose }: { onClose: () => void }) {
 
 function OpenShiftPanel() {
   const user = useApp((s) => s.user)!;
+  const timezone = useApp((s) => s.data?.settings.store.timezone) ?? 'Asia/Jakarta';
   const [cash, setCash] = useState(0);
   const [busy, setBusy] = useState(false);
   return (
@@ -350,8 +351,10 @@ function OpenShiftPanel() {
           onClick={async () => {
             setBusy(true);
             try {
-              await openShift(cash);
-              toast('Shift dibuka. Selamat bekerja!');
+              const opened = await openShift(cash);
+              // Shift lama yang masih terbuka di server dilanjutkan (bukan membuka shift kedua).
+              if (Date.now() - new Date(opened.openedAt).getTime() > 60_000) toast(`Shift yang masih terbuka sejak ${formatTime(opened.openedAt, timezone)} (${opened.openedByName}) dilanjutkan.`);
+              else toast('Shift dibuka. Selamat bekerja!');
             } catch (e) {
               toast(errorMessage(e), 'error');
             } finally {

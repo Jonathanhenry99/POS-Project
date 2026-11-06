@@ -26,11 +26,11 @@ const daySchema = z.object({
   if (day.closedAt && day.closedAt < day.openedAt) ctx.addIssue({ code: 'custom', message: 'Waktu tutup mendahului buka' });
 });
 
-const shiftSelect = `select id, device_id as "deviceId", opened_by as "openedById", opened_by_name as "openedByName",
+export const shiftSelect = `select id, device_id as "deviceId", opened_by as "openedById", opened_by_name as "openedByName",
   opened_at as "openedAt", opening_cash as "openingCash", cash_movements as "cashMovements",
   closed_by as "closedById", closed_by_name as "closedByName", closed_at as "closedAt", counted_cash as "countedCash",
   closing_note as "closingNote", summary, business_day_id as "businessDayId", close_mode as "closeMode", settlement from shifts`;
-function asShift(row: Record<string, unknown>): Shift {
+export function asShift(row: Record<string, unknown>): Shift {
   return { ...row, openedAt: (row.openedAt as Date).toISOString(), closedAt: row.closedAt ? (row.closedAt as Date).toISOString() : null } as Shift;
 }
 

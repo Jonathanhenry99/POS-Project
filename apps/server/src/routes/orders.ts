@@ -97,6 +97,14 @@ ordersRouter.put('/orders/:id', needDevice, need('pos.sell'), async (req, res) =
 
   const tz = await getTimezone(pool);
   const result = await tx(async (c) => {
+    // Nomor struk sudah dipakai transaksi lain (mis. tablet kehilangan data lokal lalu mengulang nomor): simpan dengan
+    // akhiran supaya transaksi tetap masuk dan antrean kirim tablet tidak macet.
+    const clash = await c.query('select 1 from orders where number = $1 and id <> $2', [order.number, order.id]);
+    if (clash.rows.length) {
+      let n = 2;
+      while ((await c.query('select 1 from orders where number = $1', [`${order.number}-${n}`])).rows.length) n++;
+      order.number = `${order.number}-${n}`;
+    }
     const { rowCount } = await c.query(
       `insert into orders (
          id, number, device_id, shift_id, cashier_id, cashier_name, created_at, business_date, customer_name,
@@ -267,7 +275,7 @@ ordersRouter.get('/orders/:id', need('admin'), async (req, res) => {
   res.json((await withItems(rows))[0]);
 });
 
-const orderSelect = `
+export const orderSelect = `
   select id, number, device_id as "deviceId", shift_id as "shiftId", cashier_id as "cashierId", cashier_name as "cashierName",
     created_at as "createdAt", customer_name as "customerName", order_type as "orderType", table_name as "tableName", pax, discount, subtotal, discount_amount as "discountAmount",
     service_pct as "servicePct", service_amount as "serviceAmount", tax_pct as "taxPct", tax_label as "taxLabel",
@@ -279,7 +287,7 @@ const orderSelect = `
     source, case when comp_employee_id is null then null else json_build_object('employeeId', comp_employee_id, 'employeeName', comp_employee_name, 'approvedById', comp_approved_by) end as comp
   from orders`;
 
-async function withItems(orders: Record<string, unknown>[]) {
+export async function withItems(orders: Record<string, unknown>[]) {
   if (!orders.length) return [];
   const { rows } = await pool.query(
     `select id, order_id, product_id as "productId", name, base_price as "basePrice", unit_price as "unitPrice", qty, options,

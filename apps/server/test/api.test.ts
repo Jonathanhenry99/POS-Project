@@ -1536,3 +1536,65 @@ describe('absen hanya untuk yang terjadwal', () => {
     await clock('kasir', '2026-10-06T01:50:00.000Z').expect(201);
   });
 });
+
+describe('kasir masih buka: tutup paksa owner & penyamaan tablet', () => {
+  it('owner melihat shift terbuka, menutup paksa dari back office; tablet melihatnya tertutup; tablet tanpa data lokal bisa melanjutkan shift', async () => {
+    const H = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token}` };
+    const epoch = (await request(app).get('/api/data-epoch').set(H)).body.id;
+    const dev = () => ({ ...asDevice('kasir'), ...(epoch ? { 'X-Data-Epoch': epoch } : {}) });
+    const boot = (await request(app).get('/api/sync/bootstrap').set(asDevice('kasir')).expect(200)).body;
+    const now = new Date().toISOString();
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+    const day: BusinessDay = { id: randomUUID(), deviceId: 'client', businessDate: date, openedAt: now, openedById: userId('kasir'), openedByName: 'Kasir 1', closedAt: null, closedById: null, closedByName: '', closingNote: '', shiftIds: [], summary: null };
+    const shift: Shift = { id: randomUUID(), deviceId: 'client', businessDayId: day.id, openedAt: now, openedById: userId('kasir'), openedByName: 'Kasir 1', openingCash: 50000, cashMovements: [], closedAt: null, closedById: null, closedByName: '', countedCash: null, closingNote: '', summary: null };
+    await request(app).put(`/api/business-days/${day.id}`).set(dev()).send(day).expect(200);
+    await request(app).put(`/api/shifts/${shift.id}`).set(dev()).send(shift).expect(200);
+    const number = `${boot.device.code}${date.slice(2).replace(/-/g, '')}-007`;
+    const order = makeOrder('Americano', [], 2, { shiftId: shift.id, number });
+    await request(app).put(`/api/orders/${order.id}`).set(dev()).send(order).expect(201);
+
+    // Tablet yang kehilangan data lokalnya: server memberi shift terbuka + transaksinya + nomor struk terakhir.
+    const st = (await request(app).get('/api/tablet/open-state').set(asDevice('kasir')).expect(200)).body;
+    expect(st.open.shift.id).toBe(shift.id);
+    expect(st.open.day.id).toBe(day.id);
+    expect(st.open.orders.map((o: { id: string }) => o.id)).toEqual([order.id]);
+    expect(st.lastSeq).toEqual({ date, seq: 7 });
+    // Nomor struk yang terulang tidak membuat kiriman macet: disimpan dengan akhiran.
+    const twin = makeOrder('Americano', [], 1, { shiftId: shift.id, number });
+    expect((await request(app).put(`/api/orders/${twin.id}`).set(dev()).send(twin)).status).toBe(201);
+    expect((await pool.query('select number from orders where id = $1', [twin.id])).rows[0].number).toBe(`${number}-2`);
+
+    // Owner melihat kasir yang masih buka beserta rekap sementaranya; kasir/tablet tidak boleh.
+    await request(app).get('/api/admin/open-state').set(asDevice('kasir')).expect(403);
+    const os = (await request(app).get('/api/admin/open-state').set(H).expect(200)).body;
+    const mine = os.shifts.find((s: { id: string }) => s.id === shift.id);
+    expect(mine.liveSummary).toMatchObject({ orderCount: 2, netSales: order.total + twin.total, expectedCash: 50000 + order.total + twin.total });
+
+    // Tablet melaporkan kiriman yang ditolak; owner melihatnya.
+    await request(app).put('/api/tablet/sync-issues').set(dev()).send({ items: [{ label: 'Tutup hari', path: `/business-days/${day.id}`, error: 'Hari usaha bukan milik terminal ini', createdAt: now }] }).expect(200);
+    expect((await request(app).get('/api/admin/open-state').set(H)).body.issues[0].items[0]).toMatchObject({ label: 'Tutup hari', error: 'Hari usaha bukan milik terminal ini' });
+    await request(app).put('/api/tablet/sync-issues').set(dev()).send({ items: [] }).expect(200);
+    expect((await request(app).get('/api/admin/open-state').set(H)).body.issues).toEqual([]);
+
+    // Tutup paksa: rekap dari server, hari ikut tertutup.
+    const counted = 50000 + order.total + twin.total;
+    const fc = (await request(app).post(`/api/admin/shifts/${shift.id}/force-close`).set(H).send({ countedCash: counted, note: 'dihitung barista' }).expect(200)).body;
+    expect(fc).toMatchObject({ dayClosed: true, summary: { orderCount: 2 } });
+    await request(app).post(`/api/admin/shifts/${shift.id}/force-close`).set(H).send({ countedCash: null }).expect(400);
+    const saved = (await pool.query('select closed_by_name, counted_cash, closing_note from shifts where id = $1', [shift.id])).rows[0];
+    expect(saved).toMatchObject({ closed_by_name: 'Owner (tutup paksa)', counted_cash: counted, closing_note: 'Ditutup paksa owner dari back office: dihitung barista' });
+    const after = (await request(app).get('/api/admin/open-state').set(H)).body;
+    expect(after.shifts.some((s: { id: string }) => s.id === shift.id)).toBe(false);
+    expect(after.days.some((d: { id: string }) => d.id === day.id)).toBe(false);
+
+    // Tablet yang masih memegang shift ini mengetahui bahwa shift & harinya sudah ditutup.
+    const tb = (await request(app).get(`/api/tablet/open-state?shiftId=${shift.id}&dayId=${day.id}`).set(asDevice('kasir'))).body;
+    expect(tb.shift.closedAt).toBeTruthy();
+    expect(tb.day.closedAt).toBeTruthy();
+    expect(tb.open?.shift.id).not.toBe(shift.id);
+    // Kiriman tutup shift/hari yang terlambat dari tablet tidak mengubah apa pun.
+    const late = { ...shift, closedAt: new Date().toISOString(), closedById: userId('kasir'), closedByName: 'Kasir 1', countedCash: 1, summary: computeShiftSummary(shift, [order, twin]) };
+    expect((await request(app).put(`/api/shifts/${shift.id}`).set(dev()).send(late).expect(200)).body.status).toBe('closed-unchanged');
+    expect((await pool.query('select counted_cash from shifts where id = $1', [shift.id])).rows[0].counted_cash).toBe(counted);
+  });
+});

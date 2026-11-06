@@ -7,7 +7,7 @@ import { confirmDialog, toast } from '../../components/feedback';
 import { Badge, Button, Card, ErrorNote, Field, MoneyInput, Modal, Segmented, TextInput, cx } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import type { LocalBusinessDay } from '../../lib/idb';
-import { businessDayDetails, closeBusinessDay, currentShiftSummary, ensureBusinessDay, lastClosedShift, listBusinessDays, listShifts, refreshShiftHistory, useOrdersVersion } from '../../lib/pos';
+import { businessDayDetails, closeBusinessDay, currentShiftSummary, ensureBusinessDay, lastClosedShift, listBusinessDays, listShifts, refreshShiftHistory, syncShiftWithServer, useOrdersVersion } from '../../lib/pos';
 import { useApp, useBlindCash } from '../../lib/state';
 import { printBusinessDay, printShift } from '../../printing/service';
 import { useCart, useSaved } from './cart';
@@ -50,6 +50,13 @@ export function BusinessDayPage() {
     setLastClosed(await lastClosedShift());
   }, []);
   useEffect(() => { void load().catch((e) => setError(errorMessage(e))); }, [load, shift, version, sync.pending, sync.failed]);
+  // Samakan dengan server saat halaman dibuka: shift yang ditutup owner dari back office, atau shift terbuka yang hilang dari tablet.
+  useEffect(() => {
+    void syncShiftWithServer().then((r) => {
+      if (r === 'restored') toast('Shift yang masih terbuka di server dilanjutkan di tablet ini.');
+      if (r === 'closed') toast('Shift/hari usaha ini sudah ditutup owner dari back office.');
+    });
+  }, []);
   const dateValid = !!from && !!to && from <= to;
   const visibleShifts = useMemo(() => shifts.filter((s) => {
     const date = businessDate(s.openedAt, timezone);
