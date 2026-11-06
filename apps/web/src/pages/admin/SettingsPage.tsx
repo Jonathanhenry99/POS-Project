@@ -14,6 +14,7 @@ import { refreshBootstrap } from '../../lib/sync';
 import { NewPasswordFields, PasswordInput, passwordReady } from '../../components/PasswordFields';
 import { PageHeader } from './AdminRoutes';
 import { storeTimezone, useApi } from './hooks';
+import { EsbImportCard } from './EsbImportCard';
 import { NotifyCard } from './NotifyCard';
 import { PillNav } from './PillNav';
 import { PosMasterCard } from './PosMasterCard';
@@ -36,7 +37,7 @@ const SECTIONS: { value: Section; label: string; icon: LucideIcon; hint: string;
   { value: 'operasional', label: 'Meja & catatan', icon: Utensils, hint: 'Daftar meja, template catatan, alasan pembatalan dan tujuan checker.', form: true, layout: TWO_COL },
   { value: 'notifikasi', label: 'Notifikasi', icon: BellRing, hint: 'Kabar stok ke WhatsApp. Tersimpan otomatis.', form: false, layout: 'max-w-3xl' },
   { value: 'perangkat', label: 'Perangkat & PIN', icon: Tablet, hint: 'Tablet kasir, kata sandi dan PIN Anda. Tersimpan otomatis.', form: false, layout: TWO_COL },
-  { value: 'data', label: 'Data', icon: Database, hint: 'Cadangan dan pengosongan data penjualan uji.', form: false, layout: 'max-w-3xl' },
+  { value: 'data', label: 'Data', icon: Database, hint: 'Impor penjualan dari ESB, cadangan dan pengosongan data penjualan uji.', form: false, layout: 'max-w-3xl' },
 ];
 
 interface DeviceRow {
@@ -268,7 +269,12 @@ export function SettingsPage() {
 
           {section === 'operasional' && <PosMasterCard value={form.pos} onChange={(pos) => setForm((f) => (f ? { ...f, pos } : f))} />}
           {section === 'notifikasi' && <NotifyCard />}
-          {section === 'data' && <ResetSales />}
+          {section === 'data' && (
+            <div className="flex flex-col gap-4">
+              <EsbImportCard />
+              <ResetSales />
+            </div>
+          )}
           {section === 'perangkat' && (
             <>
               <Devices />

@@ -19,6 +19,7 @@ import { approvalsRouter } from './routes/approvals';
 import { attendanceRouter } from './routes/attendance';
 import { currentEpoch, maintenanceRouter } from './routes/maintenance';
 import { teamRouter } from './routes/team';
+import { esbImportRouter } from './routes/esb-import';
 import { HttpError } from './http';
 
 /** Kamera (selfie absen) dan lokasi (absen dari HP) hanya untuk situs ini; fitur lain dimatikan. */
@@ -60,7 +61,7 @@ export function createApp() {
     }
     next();
   });
-  api.use(authRouter, adminRouter, catalogRouter, ordersRouter, inventoryRouter, reportsRouter, businessDaysRouter, reviewRouter, notifyRouter, approvalsRouter, attendanceRouter, maintenanceRouter, teamRouter);
+  api.use(authRouter, adminRouter, catalogRouter, ordersRouter, inventoryRouter, reportsRouter, businessDaysRouter, reviewRouter, notifyRouter, approvalsRouter, attendanceRouter, maintenanceRouter, teamRouter, esbImportRouter);
   api.use((_req, res) => {
     res.status(404).json({ error: 'Endpoint tidak ditemukan' });
   });

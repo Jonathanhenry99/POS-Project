@@ -276,7 +276,7 @@ const orderSelect = `
       'reference', payment_reference) as payment,
     status, void_reason as "voidReason", voided_at as "voidedAt", voided_by as "voidedById", voided_by_name as "voidedByName",
     void_approved_by as "voidApprovedById",
-    case when comp_employee_id is null then null else json_build_object('employeeId', comp_employee_id, 'employeeName', comp_employee_name, 'approvedById', comp_approved_by) end as comp
+    source, case when comp_employee_id is null then null else json_build_object('employeeId', comp_employee_id, 'employeeName', comp_employee_name, 'approvedById', comp_approved_by) end as comp
   from orders`;
 
 async function withItems(orders: Record<string, unknown>[]) {

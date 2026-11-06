@@ -285,6 +285,8 @@ export interface Order extends Totals {
   voidApprovedById: string | null;
   /** Terisi bila transaksi ini komplimen karyawan (total Rp 0, diskon 100%). */
   comp?: OrderComp | null;
+  /** Asal transaksi; 'esb' = diimpor dari ekspor POS lama (hanya di data server/back office). */
+  source?: 'pos' | 'esb';
 }
 
 export interface OrderComp {

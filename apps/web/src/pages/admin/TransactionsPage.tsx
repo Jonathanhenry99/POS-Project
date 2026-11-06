@@ -53,7 +53,7 @@ export function TransactionsPage() {
               {data.map((o) => (
                 <tr key={o.id} onClick={() => setSelected(o)} className="cursor-pointer hover:bg-surface-2">
                   <td className="px-3 py-3 font-semibold">
-                    {o.number} {o.status === 'void' && <Badge tone="red">VOID</Badge>}
+                    {o.number} {o.status === 'void' && <Badge tone="red">VOID</Badge>} {o.source === 'esb' && <Badge tone="blue">ESB</Badge>}
                   </td>
                   <td className="px-3 py-3">{formatDateTime(o.createdAt, tz)}</td>
                   <td className="hidden px-3 py-3 sm:table-cell">{o.cashierName}</td>

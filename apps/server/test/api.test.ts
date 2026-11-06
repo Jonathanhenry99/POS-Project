@@ -1422,3 +1422,94 @@ describe('lembur', () => {
     await request(app).put('/api/payroll/settings').set(H).send({ overtimeRate: 10000 }).expect(200);
   });
 });
+
+describe('impor penjualan ESB', () => {
+  let H: Record<string, string> = {};
+  const tx = (ref: string, date: string, time: string, method: string, subtotal: number, service = 0, rounding = 0) => ({
+    ref, bill: `B-${ref}`, date, paidAt: `${date}T${time}`, orderType: 'dine_in', table: '', method, salesType: 'Sales',
+    subtotal, discount: 0, service, tax: 0, otherFees: 0, rounding, total: subtotal + service + rounding,
+  });
+  const line = (name: string, qty: number, price: number) => ({ name, category: 'Minuman', sub: 'Coffee', qty, bills: qty, amount: qty * price });
+  const payload = () => ({
+    transactions: [
+      tx('E1', '2027-02-01', '12:01:05', 'EDC Mandiri (POS)', 52000, 1300, 200),
+      tx('E2', '2027-02-01', '15:30:11', 'Cash (POS)', 26000),
+      tx('E3', '2027-02-02', '10:00:00', 'QRIS', 24000),
+      { ...tx('E4', '2027-02-02', '11:00:00', 'Cash (POS)', 99000), salesType: 'Void' },
+    ],
+    menuDays: [{ date: '2027-02-01', lines: [line('Es Kopi Susu ESB', 1, 26000), line('Latte Spesial', 2, 26000)] }],
+  });
+
+  beforeAll(async () => {
+    H = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token}` };
+  });
+
+  it('pratinjau per hari, impor idempotent, masuk laporan dengan tanda ESB, bisa dihapus; hanya owner', async () => {
+    const barista = (await request(app).post('/api/auth/login').send({ username: 'barista', pin: '1111' })).body.token;
+    await request(app).post('/api/admin/import/esb/preview').set({ Authorization: `Bearer ${barista}` }).send(payload()).expect(403);
+
+    const p = (await request(app).post('/api/admin/import/esb/preview').set(H).send(payload()).expect(200)).body;
+    expect(p.days.map((d: { date: string; bills: number; exact: boolean; hasMenu: boolean; total: number }) => [d.date, d.bills, d.exact, d.hasMenu, d.total])).toEqual([
+      ['2027-02-01', 2, true, true, 79500],
+      ['2027-02-02', 1, false, false, 24000],
+    ]);
+    expect(p.days[1].skipped).toEqual([{ ref: 'E4', bill: 'B-E4', reason: 'Jenis "Void" bukan penjualan' }]);
+    expect(p.methods).toEqual(expect.arrayContaining([{ name: 'EDC Mandiri (POS)', method: 'card' }, { name: 'QRIS', method: 'qris' }]));
+    const product = p.products[0];
+    const mapping = { [p.menus.find((m: { name: string }) => m.name === 'Latte Spesial').key]: product.id };
+
+    const body = { ...payload(), mapping, dates: ['2027-02-01', '2027-02-02'] };
+    const r = (await request(app).post('/api/admin/import/esb').set(H).send(body).expect(200)).body;
+    expect(r).toMatchObject({ inserted: 3, skipped: 0, total: 103500 });
+    // Impor ulang berkas yang sama tidak menggandakan.
+    expect((await request(app).post('/api/admin/import/esb').set(H).send(body).expect(200)).body).toMatchObject({ inserted: 0, skipped: 3 });
+    const again = (await request(app).post('/api/admin/import/esb/preview').set(H).send(payload()).expect(200)).body;
+    expect(again.days[0]).toMatchObject({ newBills: 0, alreadyImported: 2 });
+    // Pemetaan menu diingat.
+    expect(again.menus.find((m: { name: string }) => m.name === 'Latte Spesial')).toMatchObject({ productId: product.id, source: 'saved' });
+
+    const sum = (await request(app).get('/api/reports/summary?from=2027-02-01&to=2027-02-02').set(H).expect(200)).body;
+    expect(sum).toMatchObject({ orderCount: 3, grossSales: 102000, serviceTotal: 1300, roundingTotal: 200, netSales: 103500 });
+    expect(sum.byCashier).toEqual([expect.objectContaining({ name: 'Impor ESB', count: 3, amount: 103500 })]);
+    expect(sum.byMethod.map((m: { method: string }) => m.method).sort()).toEqual(['card', 'cash', 'qris']);
+    expect(sum.topProducts.find((t: { productId: string }) => t.productId === product.id)).toMatchObject({ name: product.name, qty: 2, amount: 52000 });
+    // Waktu bayar lokal (WIB) tersimpan benar untuk peta jam.
+    expect(sum.byHour.map((h: { hour: number }) => h.hour)).toEqual([10, 12, 15]);
+
+    const list = (await request(app).get('/api/orders?from=2027-02-01&to=2027-02-01').set(H).expect(200)).body;
+    expect(list.every((o: { source: string; deviceId: string | null }) => o.source === 'esb' && o.deviceId === null)).toBe(true);
+    const e1 = list.find((o: { number: string }) => o.number === 'B-E1');
+    expect(e1.items.reduce((n: number, i: { lineTotal: number }) => n + i.lineTotal, 0)).toBe(52000);
+    expect(e1.payment).toMatchObject({ method: 'card', amount: 53500, reference: 'ESB E1' });
+    // Stok tidak dipotong.
+    const moves = await pool.query("select count(*)::int as n from stock_movements where ref_id = any(select id from orders where source = 'esb')");
+    expect(moves.rows[0].n).toBe(0);
+
+    expect((await request(app).get('/api/admin/import/esb').set(H).expect(200)).body.slice(0, 2)).toEqual([
+      { date: '2027-02-02', count: 1, total: 24000 },
+      { date: '2027-02-01', count: 2, total: 79500 },
+    ]);
+    expect((await request(app).post('/api/admin/import/esb/delete').set(H).send({ from: '2027-02-01', to: '2027-02-02' }).expect(200)).body).toEqual({ count: 3, total: 103500 });
+    expect((await request(app).get('/api/reports/summary?from=2027-02-01&to=2027-02-02').set(H)).body.orderCount).toBe(0);
+  });
+
+  it('ukuran lain (nama sama, harga jauh berbeda) disarankan jadi menu baru; impor membuat kategori & menunya di POS', async () => {
+    const base = (await request(app).post('/api/admin/import/esb/preview').set(H).send(payload()).expect(200)).body.products[0];
+    const big = { name: base.name, category: 'Minuman', sub: '1 Liter', qty: 1, bills: 1, amount: base.price * 4 + 4000 };
+    const data = { transactions: [tx('L1', '2027-02-10', '13:00:00', 'Cash (POS)', big.amount)], menuDays: [{ date: '2027-02-10', lines: [big] }] };
+    const p = (await request(app).post('/api/admin/import/esb/preview').set(H).send(data).expect(200)).body;
+    expect(p.menus[0]).toMatchObject({ productId: 'new', source: 'size' });
+    const r = (await request(app).post('/api/admin/import/esb').set(H).send({ ...data, mapping: { [p.menus[0].key]: 'new' }, dates: ['2027-02-10'] }).expect(200)).body;
+    expect(r.created).toEqual([{ name: `${base.name} (1 Liter)`, category: '1 Liter', price: big.amount }]);
+    const catalog = (await request(app).get('/api/admin/catalog').set(H)).body;
+    const cat = catalog.categories.find((c: { name: string }) => c.name === '1 Liter');
+    const prod = catalog.products.find((x: { name: string }) => x.name === `${base.name} (1 Liter)`);
+    expect(prod).toMatchObject({ categoryId: cat.id, price: big.amount, active: true });
+    const sum = (await request(app).get('/api/reports/summary?from=2027-02-10&to=2027-02-10').set(H)).body;
+    expect(sum.topProducts[0]).toMatchObject({ productId: prod.id, qty: 1 });
+    // Impor berikutnya langsung memakai menu baru itu (tidak membuat menu kedua).
+    const again = (await request(app).post('/api/admin/import/esb/preview').set(H).send(data).expect(200)).body;
+    expect(again.menus[0]).toMatchObject({ productId: prod.id, source: 'saved' });
+    await request(app).post('/api/admin/import/esb/delete').set(H).send({ from: '2027-02-10', to: '2027-02-10' }).expect(200);
+  });
+});
