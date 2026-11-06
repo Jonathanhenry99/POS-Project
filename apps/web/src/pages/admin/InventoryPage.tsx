@@ -1,4 +1,4 @@
-import { PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal } from 'lucide-react';
+import { PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { formatDateTime, formatNumber, formatRupiah, STATION_LABEL, type StockLevel, type Station } from '@mourden/shared';
 import { confirmDialog, toast } from '../../components/feedback';
@@ -332,6 +332,7 @@ function MovementForm({ item, type, onClose, onSaved }: { item: StockLevel; type
 
 interface Movement {
   id: string;
+  refType: string | null;
   ingredientName: string;
   unit: string;
   qty: number;
@@ -344,7 +345,20 @@ interface Movement {
 function Movements() {
   const [range, setRange] = useState({ from: today(), to: today() });
   const [type, setType] = useState('');
-  const { data, error, loading } = useApi<Movement[]>(`/stock/movements?from=${range.from}&to=${range.to}${type ? `&type=${type}` : ''}`);
+  const { data, error, loading, reload } = useApi<Movement[]>(`/stock/movements?from=${range.from}&to=${range.to}${type ? `&type=${type}` : ''}`);
+  // Hanya catatan manual (barang masuk, terbuang, koreksi) yang bisa dihapus; pemakaian penjualan & opname mengikuti asalnya.
+  const removable = (m: Movement) => !m.refType && ['purchase', 'waste', 'adjust'].includes(m.type);
+  const remove = async (m: Movement) => {
+    const ok = await confirmDialog({ title: `Hapus catatan ${TYPE_LABEL[m.type]?.toLowerCase() ?? m.type}?`, message: `${m.ingredientName} ${m.qty > 0 ? '+' : ''}${formatNumber(m.qty)} ${m.unit} pada ${formatDateTime(m.createdAt, tz)} dihapus; stok bahan ikut menyesuaikan.`, confirmLabel: 'Hapus', danger: true });
+    if (!ok) return;
+    try {
+      await api(`/stock/movements/${m.id}`, { method: 'DELETE' });
+      toast('Catatan dihapus');
+      reload();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    }
+  };
   const tz = storeTimezone();
   return (
     <>
@@ -367,9 +381,16 @@ function Movements() {
                   {m.note && ` · ${m.note}`}
                 </p>
               </div>
-              <span className={cx('font-semibold tabular', m.qty < 0 ? 'text-danger' : 'text-success')}>
-                {m.qty > 0 ? '+' : ''}
-                {formatNumber(m.qty)} {m.unit}
+              <span className="flex items-center gap-1">
+                <span className={cx('font-semibold tabular', m.qty < 0 ? 'text-danger' : 'text-success')}>
+                  {m.qty > 0 ? '+' : ''}
+                  {formatNumber(m.qty)} {m.unit}
+                </span>
+                {removable(m) && (
+                  <button aria-label={`Hapus catatan ${m.ingredientName}`} onClick={() => void remove(m)} className="grid size-10 place-items-center rounded-xl text-fg-subtle transition-colors hover:bg-danger/10 hover:text-danger">
+                    <Trash2 className="size-4" />
+                  </button>
+                )}
               </span>
             </li>
           ))}
@@ -395,8 +416,24 @@ interface OpnameDetail {
 
 function OpnameHistory() {
   const [range, setRange] = useState({ from: addDays(today(), -6), to: today() });
-  const { data, error, loading } = useApi<OpnameRow[]>(`/opname?from=${range.from}&to=${range.to}`);
+  const { data, error, loading, reload } = useApi<OpnameRow[]>(`/opname?from=${range.from}&to=${range.to}`);
   const [open, setOpen] = useState<OpnameRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const removeOpname = async (o: OpnameRow) => {
+    const ok = await confirmDialog({ title: `Hapus opname ${STATION_LABEL[o.station]}?`, message: `Opname ${formatDateLabel(o.businessDate)} oleh ${o.userName} dihapus dan penyesuaian stoknya dibatalkan. Stasiun ini bisa di-opname ulang.`, confirmLabel: 'Hapus opname', danger: true });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api(`/opname/${o.id}`, { method: 'DELETE' });
+      toast('Opname dihapus');
+      setOpen(null);
+      reload();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
   const detail = useApi<OpnameDetail>(open ? `/opname/${open.id}` : null);
   return (
     <>
@@ -422,7 +459,7 @@ function OpnameHistory() {
         ))}
       </ul>
       {open && (
-        <Modal open onClose={() => setOpen(null)} title={`Opname ${STATION_LABEL[open.station]} · ${formatDateLabel(open.businessDate)}`}>
+        <Modal open onClose={() => setOpen(null)} title={`Opname ${STATION_LABEL[open.station]} · ${formatDateLabel(open.businessDate)}`} footer={<DeleteButton disabled={busy} onClick={() => void removeOpname(open)}>Hapus opname</DeleteButton>}>
           {!detail.data ? (
             <Spinner className="mx-auto my-6" />
           ) : (

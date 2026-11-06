@@ -3,7 +3,8 @@ import { DEFAULT_SETTINGS, businessDate, formatTime, lateMinutes, type Attendanc
 import { kvGet, kvSet } from './idb';
 import { uuid } from './id';
 import { appStore } from './state';
-import { enqueue } from './sync';
+import { api } from './api';
+import { enqueue, listOutbox } from './sync';
 
 export interface LocalClockIn {
   at: string;
@@ -25,6 +26,26 @@ function context(): { cfg: AttendanceSettings; tz: string } {
 export async function todaysAttendance(): Promise<Record<string, LocalClockIn>> {
   const day = await kvGet<LocalDay>(KEY);
   return day && day.date === businessDate(new Date().toISOString(), context().tz) ? day.entries : {};
+}
+
+/**
+ * Ikuti server: absen yang dihapus owner (mis. hasil uji) hilang juga dari tablet sehingga orangnya bisa absen
+ * lagi. Absen yang masih menunggu terkirim tetap dipertahankan. Saat offline, data tablet dipakai apa adanya.
+ */
+export async function reconcileAttendance(): Promise<Record<string, LocalClockIn>> {
+  const local = await todaysAttendance();
+  if (!appStore.get().online || !Object.keys(local).length) return local;
+  try {
+    const server = await api<{ date: string; userIds: string[] }>('/tablet/attendance/today', { asDevice: true });
+    const day = await kvGet<LocalDay>(KEY);
+    if (!day || day.date !== server.date) return local;
+    const pending = new Set((await listOutbox()).filter((o) => o.path.startsWith('/tablet/attendance/')).map((o) => (o.body as { userId?: string }).userId));
+    const keep = Object.fromEntries(Object.entries(local).filter(([id]) => server.userIds.includes(id) || pending.has(id)));
+    if (Object.keys(keep).length !== Object.keys(local).length) await kvSet(KEY, { date: day.date, entries: keep } satisfies LocalDay);
+    return keep;
+  } catch {
+    return local;
+  }
 }
 
 export async function clockIn(user: CachedUser, photo: string): Promise<LocalClockIn> {

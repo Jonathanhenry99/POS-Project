@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { businessDate, checkLocation, clockToMinutes, formatTime, lateLabel, lateMinutes, minutesOfDay, type AttendanceSettings, type GeoPoint, type PublicUser } from '@mourden/shared';
 import { need, needDevice, needUser } from '../auth';
-import { pool } from '../db';
+import { audit, pool } from '../db';
 import { badRequest, dateRangeQuery, forbidden, notFound, parse } from '../http';
 import { noticeToOwners } from '../notify';
 import { getSettings } from '../repo';
@@ -160,6 +160,30 @@ attendanceRouter.get('/attendance', need('admin'), async (req, res) => {
     ),
   ]);
   res.json({ settings: s.attendance as AttendanceSettings, timezone: s.store.timezone, staff, rows });
+});
+
+/** Owner menghapus satu absen (mis. hasil uji): orang itu bisa absen lagi hari itu. */
+attendanceRouter.delete('/attendance/:id', need('admin'), async (req, res) => {
+  const { rows } = await pool.query<{ user_name: string; business_date: string }>('delete from attendance where id = $1 returning user_name, business_date', [parse(uuid, req.params.id)]);
+  if (!rows[0]) throw notFound();
+  await audit(pool, req.auth.user!.id, 'delete', 'attendance', String(req.params.id), rows[0]);
+  res.json({ ok: true });
+});
+
+/** Hapus semua absen pada satu tanggal (mis. hari uji coba), supaya semua karyawan bisa absen ulang. */
+attendanceRouter.post('/attendance/clear-day', need('admin'), async (req, res) => {
+  const b = parse(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }), req.body);
+  const { rowCount } = await pool.query('delete from attendance where business_date = $1', [b.date]);
+  await audit(pool, req.auth.user!.id, 'clear-day', 'attendance', null, { date: b.date, removed: rowCount });
+  res.json({ ok: true, removed: rowCount });
+});
+
+/** Siapa yang sudah absen hari ini menurut server; tablet memakainya untuk mengikuti absen yang dihapus owner. */
+attendanceRouter.get('/tablet/attendance/today', needDevice, async (_req, res) => {
+  const s = await getSettings(pool);
+  const date = businessDate(new Date().toISOString(), s.store.timezone);
+  const { rows } = await pool.query<{ user_id: string }>('select user_id from attendance where business_date = $1', [date]);
+  res.json({ date, userIds: rows.map((r) => r.user_id) });
 });
 
 attendanceRouter.get('/attendance/:id/photo', need('admin'), async (req, res) => {

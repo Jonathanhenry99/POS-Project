@@ -1,9 +1,10 @@
-import { ImageOff, UserRound } from 'lucide-react';
+import { ImageOff, Trash2, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { ROLE_LABEL, formatTime, lateLabel, type AttendanceSettings, type Role } from '@mourden/shared';
-import { Badge, Empty, ErrorNote, Modal, Spinner, cx } from '../../components/ui';
-import { api } from '../../lib/api';
+import { confirmDialog, toast } from '../../components/feedback';
+import { Badge, Button, Empty, ErrorNote, Modal, Spinner, cx } from '../../components/ui';
+import { api, errorMessage } from '../../lib/api';
 import { PageHeader } from './AdminRoutes';
 import { addDays, formatDateLabel, today, useApi } from './hooks';
 import type { Range } from './reportData';
@@ -35,7 +36,38 @@ const DELAY_FLAG_MINUTES = 30;
 
 export function AttendancePage() {
   const [range, setRange] = useState<Range>(() => ({ from: addDays(today(), -6), to: today() }));
-  const { data, error, loading } = useApi<AttendanceData>(`/attendance?from=${range.from}&to=${range.to}`);
+  const { data, error, loading, reload } = useApi<AttendanceData>(`/attendance?from=${range.from}&to=${range.to}`);
+  const [busy, setBusy] = useState('');
+
+  // Owner membersihkan absen uji: orang yang absennya dihapus bisa absen lagi hari itu (dari tablet maupun HP).
+  const removeOne = async (r: AttendanceRow) => {
+    const ok = await confirmDialog({ title: `Hapus absen ${r.userName}?`, message: `Absen ${formatDateLabel(r.date)} pukul ${formatTime(r.clockedAt, data!.timezone)} beserta selfienya dihapus. ${r.userName} bisa absen lagi hari itu.`, confirmLabel: 'Hapus absen', danger: true });
+    if (!ok) return;
+    setBusy(r.id);
+    try {
+      await api(`/attendance/${r.id}`, { method: 'DELETE' });
+      toast(`Absen ${r.userName} dihapus`);
+      reload();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+  const clearDay = async (date: string, count: number) => {
+    const ok = await confirmDialog({ title: `Hapus semua absen ${formatDateLabel(date)}?`, message: `${count} absen beserta selfienya dihapus. Semua karyawan bisa absen ulang hari itu.`, confirmLabel: 'Hapus semua', danger: true });
+    if (!ok) return;
+    setBusy(date);
+    try {
+      await api('/attendance/clear-day', { method: 'POST', body: { date } });
+      toast('Absen hari itu dikosongkan');
+      reload();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy('');
+    }
+  };
 
   // Hari yang ada absennya dianggap hari toko buka; karyawan tanpa absen di hari itu ditandai "Tidak absen".
   const days = useMemo(() => [...new Set((data?.rows ?? []).map((r) => r.date))].sort().reverse(), [data]);
@@ -106,14 +138,21 @@ export function AttendancePage() {
             const missing = data.staff.filter((u) => !here.has(u.id));
             return (
               <section key={date} className="tile p-4">
-                <h3 className="mb-3 font-semibold">
-                  {formatDateLabel(date)} <span className="text-sm font-normal text-fg-muted">· {rows.length} hadir{missing.length ? `, ${missing.length} tidak absen` : ''}</span>
-                </h3>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold">
+                    {formatDateLabel(date)} <span className="text-sm font-normal text-fg-muted">· {rows.length} hadir{missing.length ? `, ${missing.length} tidak absen` : ''}</span>
+                  </h3>
+                  {rows.length > 0 && (
+                    <Button size="sm" variant="ghost" className="text-danger! hover:bg-danger/10!" icon={<Trash2 className="size-4" />} loading={busy === date} onClick={() => void clearDay(date, rows.length)}>
+                      Hapus semua absen hari ini
+                    </Button>
+                  )}
+                </div>
                 <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {rows.map((r) => {
                     const delayed = (new Date(r.receivedAt).getTime() - new Date(r.clockedAt).getTime()) / 60000 > DELAY_FLAG_MINUTES;
                     return (
-                      <li key={r.id} className="tile-soft flex items-center gap-3 p-3">
+                      <li key={r.id} className="tile-soft animate-rise group relative flex items-center gap-3 p-3">
                         <Selfie row={r} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-semibold">{r.userName}</p>
@@ -124,6 +163,14 @@ export function AttendancePage() {
                             {delayed && <span className="text-[11px] text-fg-muted">· terkirim {formatTime(r.receivedAt, data.timezone)}</span>}
                           </p>
                         </div>
+                        <button
+                          aria-label={`Hapus absen ${r.userName}`}
+                          disabled={busy === r.id}
+                          onClick={() => void removeOne(r)}
+                          className="grid size-10 shrink-0 place-items-center self-start rounded-xl text-fg-subtle transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-40"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
                       </li>
                     );
                   })}

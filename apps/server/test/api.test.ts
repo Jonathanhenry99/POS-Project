@@ -1209,3 +1209,61 @@ describe('kosongkan data penjualan uji', () => {
     expect(log.rows[0].data.orders).toBe(before.counts.orders);
   });
 });
+
+describe('owner menghapus data uji per bagian', () => {
+  let H: Record<string, string> = {};
+  let epoch = '';
+  // Setelah data penjualan dikosongkan, kiriman tablet harus membawa versi data terbaru.
+  const kasir = () => ({ ...asDevice('kasir'), 'X-Data-Epoch': epoch });
+  beforeAll(async () => {
+    H = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token}` };
+    epoch = (await request(app).get('/api/data-epoch').set(H)).body.id;
+  });
+
+  it('absen: hapus satu (orang itu bisa absen lagi) atau semua absen satu hari; tablet melihat daftar terbaru; hanya owner', async () => {
+    const DAY = '2026-09-01';
+    const rows = (await request(app).get(`/api/attendance?from=${DAY}&to=${DAY}`).set(H).expect(200)).body.rows as { id: string; userName: string }[];
+    expect(rows.length).toBeGreaterThan(1);
+    await request(app).delete(`/api/attendance/${rows[0].id}`).set(kasir()).expect(403);
+    await request(app).delete(`/api/attendance/${rows[0].id}`).set(H).expect(200);
+    expect((await request(app).get(`/api/attendance?from=${DAY}&to=${DAY}`).set(H)).body.rows.length).toBe(rows.length - 1);
+    const cleared = (await request(app).post('/api/attendance/clear-day').set(H).send({ date: DAY }).expect(200)).body;
+    expect(cleared.removed).toBe(rows.length - 1);
+    const today = (await request(app).get('/api/tablet/attendance/today').set(asDevice('kasir')).expect(200)).body;
+    expect(Array.isArray(today.userIds)).toBe(true);
+    // Absen hari ini dihapus -> barista bisa absen ulang dari HP.
+    const mine = (await request(app).get(`/api/attendance?from=${today.date}&to=${today.date}`).set(H)).body.rows.find((r: { userName: string }) => r.userName === 'Barista');
+    if (mine) {
+      await request(app).delete(`/api/attendance/${mine.id}`).set(H).expect(200);
+      expect((await request(app).get('/api/tablet/attendance/today').set(asDevice('kasir'))).body.userIds).not.toContain(userId('barista'));
+    }
+    expect((await pool.query("select count(*)::int as n from audit_log where entity = 'attendance'")).rows[0].n).toBeGreaterThan(0);
+  });
+
+  it('opname: dihapus beserta penyesuaian stoknya; stok kembali seperti sebelum opname', async () => {
+    const ops = (await request(app).get('/api/opname?from=2000-01-01&to=2100-01-01').set(H).expect(200)).body as { id: string }[];
+    expect(ops.length).toBeGreaterThan(0);
+    const target = ops[0].id;
+    const moves = (await pool.query<{ ingredient_id: string; qty: number }>("select ingredient_id, qty from stock_movements where ref_type = 'opname' and ref_id = $1", [target])).rows;
+    const before = new Map<string, number>();
+    for (const m of moves) before.set(m.ingredient_id, (await pool.query("select coalesce(sum(qty),0)::float8 as s from stock_movements where ingredient_id = $1", [m.ingredient_id])).rows[0].s);
+    await request(app).delete(`/api/opname/${target}`).set(kasir()).expect(403);
+    await request(app).delete(`/api/opname/${target}`).set(H).expect(200);
+    for (const m of moves) {
+      const now = (await pool.query("select coalesce(sum(qty),0)::float8 as s from stock_movements where ingredient_id = $1", [m.ingredient_id])).rows[0].s;
+      expect(now).toBeCloseTo(before.get(m.ingredient_id)! - m.qty, 3);
+    }
+    await request(app).delete(`/api/opname/${target}`).set(H).expect(404);
+  });
+
+  it('barang masuk/terbuang/koreksi bisa dihapus; pemakaian penjualan & hasil opname tidak', async () => {
+    const milk = (await request(app).get('/api/ingredients?all=1').set(H)).body.find((i: { name: string }) => i.name === 'Susu Segar');
+    await request(app).post('/api/stock/movements').set(H).send({ ingredientId: milk.id, type: 'waste', qty: 7, note: 'uji hapus' }).expect(201);
+    const row = (await pool.query("select id from stock_movements where note = 'uji hapus'")).rows[0];
+    await request(app).delete(`/api/stock/movements/${row.id}`).set(kasir()).expect(403);
+    await request(app).delete(`/api/stock/movements/${row.id}`).set(H).expect(200);
+    expect((await pool.query('select 1 from stock_movements where id = $1', [row.id])).rowCount).toBe(0);
+    const derived = (await pool.query("select id from stock_movements where ref_type is not null limit 1")).rows[0];
+    if (derived) await request(app).delete(`/api/stock/movements/${derived.id}`).set(H).expect(400);
+  });
+});

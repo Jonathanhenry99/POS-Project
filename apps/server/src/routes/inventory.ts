@@ -163,6 +163,23 @@ inventoryRouter.post('/stock/movements', need('stock.record'), async (req, res) 
   res.status(result === 'created' ? 201 : 200).json({ ok: true, status: result });
 });
 
+/**
+ * Owner menghapus catatan manual yang salah atau hasil uji (barang masuk, terbuang, koreksi). Pemakaian dari
+ * penjualan dan hasil opname tidak bisa dihapus di sini: keduanya mengikuti transaksi/opname asalnya.
+ */
+inventoryRouter.delete('/stock/movements/:id', need('admin'), async (req, res) => {
+  const { rows } = await pool.query<{ type: string; qty: number; name: string }>(
+    `delete from stock_movements m using ingredients i
+     where m.id = $1 and i.id = m.ingredient_id and m.type in ('purchase', 'waste', 'adjust') and m.ref_type is null
+     returning m.type, m.qty, i.name`,
+    [parse(uuid, req.params.id)],
+  );
+  if (!rows[0]) throw badRequest('Catatan ini tidak bisa dihapus (pemakaian penjualan atau hasil opname), atau sudah tidak ada');
+  await audit(pool, req.auth.user!.id, 'delete', 'stock-movement', String(req.params.id), rows[0]);
+  await stockChanged({ silent: true });
+  res.json({ ok: true });
+});
+
 inventoryRouter.get('/stock/movements', need('admin'), async (req, res) => {
   const q = parse(dateRangeQuery.extend({ ingredientId: uuid.optional(), type: z.string().optional() }), req.query);
   const tz = await getTimezone(pool);
@@ -290,6 +307,24 @@ async function opnameDetail(id: string) {
 
 inventoryRouter.get('/opname/:id', need('stock.opname'), async (req, res) => {
   res.json(await opnameDetail(parse(uuid, req.params.id)));
+});
+
+/**
+ * Hapus satu opname (mis. hasil uji): penyesuaian stok yang dibuatnya ikut dibatalkan, dan stasiun itu bisa
+ * di-opname ulang hari ini.
+ */
+inventoryRouter.delete('/opname/:id', need('admin'), async (req, res) => {
+  const id = parse(uuid, req.params.id);
+  const info = await tx(async (c) => {
+    const { rows } = await c.query<{ station: string; business_date: string; user_name: string }>('select station, business_date, user_name from opnames where id = $1 for update', [id]);
+    if (!rows[0]) throw notFound('Opname tidak ditemukan');
+    await c.query("delete from stock_movements where ref_type = 'opname' and ref_id = $1", [id]);
+    await c.query('delete from opnames where id = $1', [id]);
+    await audit(c, req.auth.user!.id, 'delete', 'opname', id, rows[0]);
+    return rows[0];
+  });
+  await stockChanged({ silent: true });
+  res.json({ ok: true, ...info });
 });
 
 inventoryRouter.get('/opname', need('admin'), async (req, res) => {

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, ROLE_LABEL, formatTime, lateLabel, verifyPin, type CachedUser } from '@mourden/shared';
 import { SelfieCamera } from '../components/SelfieCamera';
 import { Button, ErrorNote, Modal, PinPad, cx } from '../components/ui';
-import { clockIn, todaysAttendance, type LocalClockIn } from '../lib/attendance';
+import { clockIn, reconcileAttendance, type LocalClockIn } from '../lib/attendance';
 import { useApp } from '../lib/state';
 
 /**
@@ -24,7 +24,7 @@ export function AttendanceSheet({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void todaysAttendance().then(setDone);
+    void reconcileAttendance().then(setDone);
   }, []);
 
   const back = () => {
