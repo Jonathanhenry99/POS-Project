@@ -176,6 +176,14 @@ Catatan RawBT: dari web tidak bisa diketahui apakah kertas benar-benar keluar. K
 - **Header:** CSP ketat (skrip hanya dari situs ini, tanpa iframe), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` (kamera/lokasi hanya untuk situs ini). Nilainya sama di Express dan konfigurasi Vercel (dijaga tes).
 - Dependensi diaudit (`npm audit`: 0 celah saat rilis ini).
 
+## Jadwal & Gaji (menu samping owner)
+
+- **Jadwal:** grid Senin–Minggu per shift (bawaan Shift 1 09–16, Shift 2 15–22, Kitchen 14–21). Ketuk shift untuk menambah orang atau mencatat Izin/Sakit/Tidak masuk (+keterangan); "Salin dari minggu lalu". Karyawan melihat jadwal di HP (kartu "Jadwal hari ini" di Absen & Stok, halaman `/jadwal`) dan di tablet kasir (tombol **Jadwal shift** di layar login). Telat absen dihitung dari jam mulai shift orang itu hari ini.
+- **Shift & tarif:** tarif per shift berlaku mulai tanggal tertentu (`shift_rates`), jadi kenaikan tarif tidak mengubah gaji bulan lalu.
+- **Gaji & kasbon:** gaji bulan = shift berstatus Masuk × tarif pada tanggalnya − kasbon bulan itu (bisa berkali-kali) + bonus.
+- **Bonus tim** (Team Bonus Program 2026): omset Senin–Minggu = Penjualan Bersih POS (bisa ditimpa manual); tingkat bonus bisa diubah; bonus per orang = bonus tim ÷ total shift minggu itu × shift orang itu; yang tidak memenuhi syarat hangus tanpa mengubah bagian orang lain. Bonus minggu dibayar di bulan hari Minggu-nya.
+- **Slip gaji:** salinan perhitungan saat dibuat (`payslips`), bisa dibuat ulang, dicetak/disimpan PDF, disalin untuk WhatsApp, dan dihapus. Perhitungan murni ada di `packages/shared/src/payroll.ts` (dites dengan contoh PDF).
+
 ## Mengosongkan data penjualan uji
 
 - **Pengaturan → Data** (owner, dari HP/laptop, wajib kata sandi + ketik `KOSONGKAN`): menghapus transaksi, void, shift/tutup kasir (+foto bukti), hari usaha, pemakaian stok dari penjualan, daftar Perlu Ditinjau dan permintaan persetujuan. Pengaturan, menu, resep, bahan, pengguna, opname/barang masuk/terbuang, absensi dan log keamanan tetap. Cadangan JSON diunduh otomatis lebih dulu.

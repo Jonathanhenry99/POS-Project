@@ -48,13 +48,21 @@ export async function reconcileAttendance(): Promise<Record<string, LocalClockIn
   }
 }
 
+/** Jam masuk orang ini hari ini: jam mulai shift terjadwalnya, atau jam masuk umum bila tidak terjadwal. */
+export function dueStartFor(userId: string): { startTime: string; shiftName: string | null } {
+  const { cfg, tz } = context();
+  const sched = appStore.get().data?.scheduleToday;
+  const mine = sched && sched.date === businessDate(new Date().toISOString(), tz) ? sched.entries.find((e) => e.userId === userId) : undefined;
+  return { startTime: mine?.startTime ?? cfg.startTime, shiftName: mine?.templateName ?? null };
+}
+
 export async function clockIn(user: CachedUser, photo: string): Promise<LocalClockIn> {
   const { cfg, tz } = context();
   if (!cfg.enabled) throw new Error('Absensi belum diaktifkan owner');
   const at = new Date().toISOString();
   const entries = await todaysAttendance();
   if (entries[user.id]) throw new Error(`${user.name} sudah absen hari ini pukul ${formatTime(entries[user.id].at, tz)}`);
-  const entry: LocalClockIn = { at, lateMinutes: lateMinutes(at, tz, cfg) };
+  const entry: LocalClockIn = { at, lateMinutes: lateMinutes(at, tz, { startTime: dueStartFor(user.id).startTime, graceMinutes: cfg.graceMinutes }) };
   await kvSet(KEY, { date: businessDate(at, tz), entries: { ...entries, [user.id]: entry } } satisfies LocalDay);
   // Dikirim atas nama orang yang baru memasukkan PIN-nya; server menolak absen untuk orang lain.
   await enqueue({ method: 'PUT', path: `/tablet/attendance/${uuid()}`, body: { userId: user.id, clockedAt: at, photo }, operatorId: user.id, label: `Absen ${user.name}`, ref: null });

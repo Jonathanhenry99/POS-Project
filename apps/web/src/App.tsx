@@ -24,6 +24,7 @@ const PrinterPage = lazy(() => import('./pages/settings/PrinterPage').then((m) =
 const PrintQueuePage = lazy(() => import('./pages/settings/PrintQueuePage').then((m) => ({ default: m.PrintQueuePage })));
 const SyncPage = lazy(() => import('./pages/settings/SyncPage').then((m) => ({ default: m.SyncPage })));
 const StockPage = lazy(() => import('./pages/stock/StockPage').then((m) => ({ default: m.StockPage })));
+const MySchedulePage = lazy(() => import('./pages/attendance/MySchedulePage').then((m) => ({ default: m.MySchedulePage })));
 const MyAttendancePage = lazy(() => import('./pages/attendance/MyAttendancePage').then((m) => ({ default: m.MyAttendancePage })));
 
 const AdminRoutes = lazy(() => import('./pages/admin/AdminRoutes'));
@@ -124,6 +125,7 @@ export function App() {
         {/* Karyawan di HP: absen dulu tiap pagi (bila diaktifkan owner), baru membuka stok. */}
         <Route path="/stok/*" element={<Guard perm="stock.opname"><AttendanceGate><Suspense fallback={<Splash />}><StockPage /></Suspense></AttendanceGate></Guard>} />
         <Route path="/absen" element={<Guard><Suspense fallback={<Splash />}><MyAttendancePage /></Suspense></Guard>} />
+        <Route path="/jadwal" element={<Guard><Suspense fallback={<Splash />}><MySchedulePage /></Suspense></Guard>} />
         <Route
           path="/admin/*"
           element={

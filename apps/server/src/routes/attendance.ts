@@ -7,6 +7,7 @@ import { audit, pool } from '../db';
 import { badRequest, dateRangeQuery, forbidden, notFound, parse } from '../http';
 import { noticeToOwners } from '../notify';
 import { getSettings } from '../repo';
+import { scheduledStart, scheduleToday } from './team';
 
 export const attendanceRouter = Router();
 
@@ -66,10 +67,12 @@ attendanceRouter.get('/me/attendance', needUser, async (req, res) => {
      from attendance where user_id = $1 and business_date > ($2::date - 14) order by business_date desc`,
     [req.auth.user!.id, today],
   );
+  const shift = await scheduledStart(pool, req.auth.user!.id, today);
   res.json({
     enabled: cfg.enabled,
     required: cfg.enabled && req.auth.user!.role !== 'owner',
-    startTime: cfg.startTime,
+    startTime: shift?.startTime ?? cfg.startTime,
+    shiftName: shift?.templateName ?? null,
     graceMinutes: cfg.graceMinutes,
     // Titik toko ikut dikirim supaya HP bisa menunjukkan jaraknya sebelum mengirim; pemeriksaan tetap di server.
     location: { set: cfg.storeLat !== null && cfg.storeLng !== null, radiusM: cfg.radiusM, lat: cfg.storeLat, lng: cfg.storeLng },
@@ -86,16 +89,19 @@ async function record(r: { id: string; user: PublicUser; deviceId: string | null
   const cfg = s.attendance!;
   if (!cfg.enabled) throw badRequest('Absensi belum diaktifkan owner');
   const tz = s.store.timezone;
-  const late = lateMinutes(r.clockedAt, tz, cfg);
+  // Terjadwal hari ini? Telat dihitung dari jam mulai shift-nya (mis. Shift 2 15:00), bukan jam masuk umum.
+  const shift = await scheduledStart(pool, r.user.id, businessDate(r.clockedAt, tz));
+  const due = { startTime: shift?.startTime ?? cfg.startTime, graceMinutes: cfg.graceMinutes };
+  const late = lateMinutes(r.clockedAt, tz, due);
   const { rows } = await pool.query<{ id: string }>(
     `insert into attendance (id, user_id, user_name, device_id, business_date, clocked_at, due_time, grace_minutes, late_minutes, photo, photo_mime, source, lat, lng, accuracy_m, distance_m)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'image/jpeg',$11,$12,$13,$14,$15)
      on conflict do nothing returning id`,
-    [r.id, r.user.id, r.user.name, r.deviceId, businessDate(r.clockedAt, tz), r.clockedAt, cfg.startTime, cfg.graceMinutes, late, Buffer.from(r.photo.split(',')[1], 'base64'), r.source, r.at?.lat ?? null, r.at?.lng ?? null, r.at ? Math.round(r.at.accuracy) : null, r.distanceM ?? null],
+    [r.id, r.user.id, r.user.name, r.deviceId, businessDate(r.clockedAt, tz), r.clockedAt, due.startTime, cfg.graceMinutes, late, Buffer.from(r.photo.split(',')[1], 'base64'), r.source, r.at?.lat ?? null, r.at?.lng ?? null, r.at ? Math.round(r.at.accuracy) : null, r.distanceM ?? null],
   );
   if (rows[0] && late > 0) {
     const from = r.source === 'hp' ? ' (dari HP)' : '';
-    await noticeToOwners('attendance', 'attendance', async () => `*Absen telat - ${s.store.name}*\n${r.user.name} absen ${formatTime(r.clockedAt, tz)}${from}, ${lateLabel(late).toLowerCase()} dari jam masuk ${cfg.startTime}.`);
+    await noticeToOwners('attendance', 'attendance', async () => `*Absen telat - ${s.store.name}*\n${r.user.name} absen ${formatTime(r.clockedAt, tz)}${from}, ${lateLabel(late).toLowerCase()} dari jam masuk ${due.startTime}${shift ? ` (${shift.templateName})` : ''}.`);
   }
   await attendanceSummaryDue();
   // Absen kedua di hari yang sama tidak menimpa yang pertama; kembalikan yang sudah ada.
@@ -132,7 +138,11 @@ export async function attendanceSummaryDue() {
         pool.query<{ user_id: string; user_name: string; clocked_at: Date; late_minutes: number }>('select user_id, user_name, clocked_at, late_minutes from attendance where business_date = $1 order by clocked_at', [date]),
       ]);
       const here = new Set(present.map((p) => p.user_id));
-      const missing = staff.filter((u) => !here.has(u.id));
+      // Ada jadwal shift hari ini: yang ditagih absen hanya yang terjadwal dan shift-nya sudah mulai.
+      const scheduled = await scheduleToday(pool, date);
+      const nowMin = minutesOfDay(new Date().toISOString(), tz);
+      const expected = scheduled.length ? staff.filter((u) => scheduled.some((e) => e.userId === u.id && clockToMinutes(e.startTime) + Math.max(0, cfg.graceMinutes) <= nowMin)) : staff;
+      const missing = expected.filter((u) => !here.has(u.id));
       if (!staff.length && !present.length) return null;
       const label = new Intl.DateTimeFormat('id-ID', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'short' }).format(new Date(`${date}T00:00:00Z`));
       const parts = [`*Absensi - ${s.store.name}*\n${label}, jam masuk ${cfg.startTime}`];

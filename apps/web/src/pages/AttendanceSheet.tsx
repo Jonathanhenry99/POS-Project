@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, ROLE_LABEL, formatTime, lateLabel, verifyPin, type CachedUser } from '@mourden/shared';
 import { SelfieCamera } from '../components/SelfieCamera';
 import { Button, ErrorNote, Modal, PinPad, cx } from '../components/ui';
-import { clockIn, reconcileAttendance, type LocalClockIn } from '../lib/attendance';
+import { clockIn, dueStartFor, reconcileAttendance, type LocalClockIn } from '../lib/attendance';
 import { useApp } from '../lib/state';
 
 /**
@@ -56,7 +56,7 @@ export function AttendanceSheet({ onClose }: { onClose: () => void }) {
           <p className="text-xl font-bold">{picked.name}</p>
           <p className="text-4xl font-extrabold tracking-tight tabular">{formatTime(result.at, tz)}</p>
           <p className={cx('rounded-full px-3 py-1.5 text-sm font-bold', late ? 'bg-warning/15 text-warning' : 'bg-success/12 text-success')}>{lateLabel(result.lateMinutes)}</p>
-          <p className="text-sm text-fg-muted">Jam masuk {cfg.startTime}. Absen dan foto terkirim ke owner saat tablet terhubung internet.</p>
+          <p className="text-sm text-fg-muted">Jam masuk {dueStartFor(picked.id).startTime}{dueStartFor(picked.id).shiftName ? ` (${dueStartFor(picked.id).shiftName})` : ''}. Absen dan foto terkirim ke owner saat tablet terhubung internet.</p>
           <Button size="lg" className="mt-2 w-full" onClick={onClose}>
             Selesai
           </Button>

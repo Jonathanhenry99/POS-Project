@@ -1267,3 +1267,90 @@ describe('owner menghapus data uji per bagian', () => {
     if (derived) await request(app).delete(`/api/stock/movements/${derived.id}`).set(H).expect(400);
   });
 });
+
+describe('jadwal shift, gaji, kasbon, bonus & slip gaji', () => {
+  let H: Record<string, string> = {};
+  let barista: Record<string, string> = {};
+  let tpl: { id: string; name: string; startTime: string; rates: { fee: number; effectiveFrom: string }[] }[] = [];
+  beforeAll(async () => {
+    H = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token}` };
+    barista = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'barista', pin: '1111' }).expect(200)).body.token}` };
+    tpl = (await request(app).get('/api/schedule?from=2026-11-02&to=2026-11-08').set(H).expect(200)).body.templates;
+  });
+  const T = (name: string) => tpl.find((t) => t.name === name)!.id;
+
+  it('shift bawaan Mourden: Shift 1 09-16 & Shift 2 15-22 (75 rb), Kitchen 14-21 (70 rb)', () => {
+    expect(tpl.map((t) => [t.name, t.startTime, t.rates[0].fee])).toEqual([['Shift 1', '09:00', 75000], ['Shift 2', '15:00', 75000], ['Kitchen', '14:00', 70000]]);
+  });
+
+  it('owner mengatur jadwal; karyawan & tablet melihat jadwal tanpa tarif; karyawan tidak bisa mengubah', async () => {
+    const put = (date: string, name: string, user: string, status = 'masuk') => request(app).put('/api/schedule/entries').set(H).send({ date, templateId: T(name), userId: userId(user), status, note: status === 'sakit' ? 'demam' : '' }).expect(200);
+    for (const d of ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07']) await put(d, 'Shift 1', 'barista');
+    for (const d of ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05']) await put(d, 'Kitchen', 'kitchen');
+    await put('2026-11-08', 'Shift 2', 'barista', 'sakit');
+    await request(app).put('/api/schedule/entries').set(barista).send({ date: '2026-11-08', templateId: T('Shift 1'), userId: userId('barista') }).expect(403);
+    const staffView = (await request(app).get('/api/schedule?from=2026-11-02&to=2026-11-08').set(barista).expect(200)).body;
+    expect(staffView.templates.every((t: { rates: unknown[] }) => t.rates.length === 0)).toBe(true);
+    expect(staffView.entries).toHaveLength(11);
+    expect(staffView.me).toBe(userId('barista'));
+    const tabletView = await request(app).get('/api/schedule?from=2026-11-02&to=2026-11-08').set({ Authorization: asDevice().Authorization }).expect(200);
+    expect(tabletView.body.entries.find((e: { status: string }) => e.status === 'sakit').note).toBe('demam');
+    await request(app).get('/api/schedule?from=2026-11-02&to=2026-11-08').expect(401);
+    // Salin minggu: status kembali "masuk", yang sudah ada tidak dobel.
+    const copied = (await request(app).post('/api/schedule/copy-week').set(H).send({ from: '2026-11-02', to: '2026-11-09' }).expect(200)).body.copied;
+    expect(copied).toBe(11);
+    expect((await request(app).post('/api/schedule/copy-week').set(H).send({ from: '2026-11-02', to: '2026-11-09' }).expect(200)).body.copied).toBe(0);
+  });
+
+  it('gaji November: shift masuk x tarif (tarif baru berlaku per tanggal), kasbon dikurangi, bonus mingguan ditambah', async () => {
+    await request(app).post(`/api/shift-templates/${T('Shift 1')}/rates`).set(H).send({ fee: 80000, effectiveFrom: '2026-11-09' }).expect(200);
+    const k1 = (await request(app).post('/api/kasbon').set(H).send({ userId: userId('barista'), date: '2026-11-04', amount: 100000, note: 'kasbon 1' }).expect(201)).body.id;
+    await request(app).post('/api/kasbon').set(H).send({ userId: userId('barista'), date: '2026-11-20', amount: 50000, note: 'kasbon 2' }).expect(201);
+    await request(app).post('/api/kasbon').set(barista).send({ userId: userId('barista'), date: '2026-11-20', amount: 50000 }).expect(403);
+    // Minggu 2-8 Nov: omset manual 7,2 jt -> bonus tim 250 rb dibagi 10 shift masuk.
+    await request(app).put('/api/bonus-weeks/2026-11-02').set(H).send({ omsetOverride: 7_200_000, disqualified: [], note: 'uji' }).expect(200);
+    await request(app).put('/api/bonus-weeks/2026-11-03').set(H).send({ omsetOverride: 1, disqualified: [] }).expect(400);
+    const pay = (await request(app).get('/api/payroll?month=2026-11').set(H).expect(200)).body;
+    const w = pay.weeks.find((x: { weekStart: string }) => x.weekStart === '2026-11-02');
+    expect(w).toMatchObject({ omset: 7_200_000, omsetSource: 'manual', teamBonus: 250_000, totalShifts: 10, perShift: 25_000 });
+    const b = pay.people.find((p: { name: string }) => p.name === 'Barista');
+    // Minggu 1: 6 Shift 1 @75 rb. Minggu 2 (salinan): 6 Shift 1 @80 rb + Shift 2 tgl 15 (status salinan kembali Masuk) @75 rb.
+    expect(b.gross).toBe(6 * 75000 + 6 * 80000 + 75000);
+    expect(b.absences).toEqual([{ date: '2026-11-08', templateName: 'Shift 2', status: 'sakit', note: 'demam' }]);
+    expect(b.kasbonTotal).toBe(150000);
+    expect(b.bonusTotal).toBe(150000);
+    expect(b.takeHome).toBe(b.gross - 150000 + 150000);
+    const kitchenPay = pay.people.find((p: { name: string }) => p.name === 'Kitchen');
+    expect(kitchenPay.gross).toBe(8 * 70000);
+    await request(app).delete(`/api/kasbon/${k1}`).set(H).expect(200);
+    expect((await request(app).get('/api/payroll?month=2026-11').set(H)).body.people.find((p: { name: string }) => p.name === 'Barista').kasbonTotal).toBe(50000);
+    await request(app).get('/api/payroll?month=2026-11').set(barista).expect(403);
+  });
+
+  it('slip gaji: dibuat dari perhitungan saat itu, bisa dibuat ulang (tidak dobel) dan dihapus', async () => {
+    expect((await request(app).post('/api/payslips').set(H).send({ month: '2026-11' }).expect(201)).body.created).toBe(2);
+    await request(app).post('/api/payslips').set(H).send({ month: '2026-11', userIds: [userId('barista')] }).expect(201);
+    const list = (await request(app).get('/api/payslips?month=2026-11').set(H).expect(200)).body;
+    expect(list.map((s: { name: string }) => s.name).sort()).toEqual(['Barista', 'Kitchen']);
+    const slip = (await request(app).get(`/api/payslips/${list[0].id}`).set(H).expect(200)).body;
+    expect(slip.data).toMatchObject({ month: '2026-11', storeName: expect.any(String) });
+    expect(slip.data.takeHome).toBe(list[0].takeHome);
+    await request(app).delete(`/api/payslips/${list[0].id}`).set(barista).expect(403);
+    await request(app).delete(`/api/payslips/${list[0].id}`).set(H).expect(200);
+    expect((await request(app).get('/api/payslips?month=2026-11').set(H)).body).toHaveLength(1);
+    await request(app).post('/api/payslips').set(H).send({ month: '2025-01' }).expect(400);
+  });
+
+  it('absen dihitung dari jam shift orang itu hari ini (Shift 2 = 15:00), bukan jam masuk umum', async () => {
+    const today = (await request(app).get('/api/schedule?from=2026-11-02&to=2026-11-02').set(H)).body.today;
+    await request(app).put('/api/settings').set(H).send({ attendance: { enabled: true, startTime: '09:00' } }).expect(200);
+    const existing = (await request(app).get(`/api/schedule?from=${today}&to=${today}`).set(H)).body.entries.filter((e: { userId: string }) => e.userId === userId('barista'));
+    for (const e of existing) await request(app).delete(`/api/schedule/entries/${e.id}`).set(H).expect(200);
+    await request(app).put('/api/schedule/entries').set(H).send({ date: today, templateId: T('Shift 2'), userId: userId('barista') }).expect(200);
+    const me = (await request(app).get('/api/me/attendance').set(barista).expect(200)).body;
+    expect(me).toMatchObject({ startTime: '15:00', shiftName: 'Shift 2' });
+    const boot = (await request(app).get('/api/sync/bootstrap').set(asDevice()).expect(200)).body;
+    expect(boot.scheduleToday.entries).toContainEqual({ userId: userId('barista'), startTime: '15:00', templateName: 'Shift 2' });
+    await request(app).put('/api/settings').set(H).send({ attendance: { enabled: false } }).expect(200);
+  });
+});

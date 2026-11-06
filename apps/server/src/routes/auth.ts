@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { can, hashPassword, passwordProblem, verifyPin, type PublicUser } from '@mourden/shared';
+import { businessDate, can, hashPassword, passwordProblem, verifyPin, type PublicUser } from '@mourden/shared';
 import type { RequestHandler } from 'express';
 import { ACCOUNT_LOCK, checkLock, clearFails, need, needDevice, needUser, newDeviceToken, recordFail, signOperator, signSession, userColumns } from '../auth';
 import { audit, pool, tx } from '../db';
@@ -8,6 +8,7 @@ import { HttpError, badRequest, forbidden, notFound, parse } from '../http';
 import { getCatalog, getIngredients, getSettings } from '../repo';
 import { attendanceSummaryDue } from './attendance';
 import { currentEpoch } from './maintenance';
+import { scheduleToday } from './team';
 
 export const authRouter = Router();
 
@@ -255,5 +256,6 @@ authRouter.get('/sync/bootstrap', needDevice, async (req, res) => {
     getIngredients(pool),
     pool.query(`select ${userColumns}, pin_hash as "pinHash" from users where active order by name`),
   ]);
-  res.json({ device: req.auth.device, settings, catalog, ingredients, users: users.rows, dataEpoch: (await currentEpoch())?.id ?? null, serverTime: new Date().toISOString() });
+  const today = businessDate(new Date().toISOString(), settings.store.timezone);
+  res.json({ device: req.auth.device, settings, catalog, ingredients, users: users.rows, dataEpoch: (await currentEpoch())?.id ?? null, scheduleToday: { date: today, entries: await scheduleToday(pool, today) }, serverTime: new Date().toISOString() });
 });

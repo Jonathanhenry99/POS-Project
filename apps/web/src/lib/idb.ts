@@ -16,6 +16,8 @@ export interface BootstrapData {
   users: CachedUser[];
   /** Versi data penjualan di server; berganti saat owner mengosongkan data penjualan. */
   dataEpoch?: string | null;
+  /** Siapa terjadwal hari ini dan jam mulainya, untuk menghitung telat absen di tablet (juga saat offline). */
+  scheduleToday?: { date: string; entries: { userId: string; startTime: string; templateName: string }[] };
   fetchedAt: string;
 }
 

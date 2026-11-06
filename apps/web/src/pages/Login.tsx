@@ -1,4 +1,4 @@
-import { ArrowLeft, CloudOff, Fingerprint, Printer, ShieldCheck, Tablet } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CloudOff, Fingerprint, Printer, ShieldCheck, Tablet } from 'lucide-react';
 import { BrandLogo } from '../components/BrandLogo';
 import { useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router';
@@ -9,6 +9,8 @@ import { errorMessage } from '../lib/api';
 import { loginMethod, loginOnline, loginTablet } from '../lib/session';
 import { useApp } from '../lib/state';
 import { AttendanceSheet } from './AttendanceSheet';
+import { WeekNav, WeekSchedule } from '../components/WeekSchedule';
+import { currentWeekStart, useWeek } from '../lib/schedule';
 
 export function LoginPage() {
   const mode = useApp((s) => s.mode);
@@ -85,6 +87,7 @@ function TabletLogin() {
   const deviceCode = useApp((s) => s.device?.code);
   const attendanceOn = useApp((s) => !!s.data?.settings.attendance?.enabled);
   const [absen, setAbsen] = useState(false);
+  const [jadwal, setJadwal] = useState(false);
   const dataError = useApp((s) => s.dataError);
   const [selected, setSelected] = useState<CachedUser | null>(null);
   const [error, setError] = useState('');
@@ -161,12 +164,18 @@ function TabletLogin() {
             ))}
           </div>
           {!users.length && <ErrorNote>Data pengguna belum ada. Sambungkan tablet ke internet sekali untuk mengunduh data.</ErrorNote>}
-          {attendanceOn && (
-            <button onClick={() => setAbsen(true)} className="press mt-4 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-line-strong bg-surface font-semibold shadow-card">
-              <Fingerprint className="size-5 text-primary" /> Absen masuk
+          <div className={cx('mt-4 grid gap-3', attendanceOn && 'grid-cols-2')}>
+            {attendanceOn && (
+              <button onClick={() => setAbsen(true)} className="press flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-line-strong bg-surface font-semibold shadow-card">
+                <Fingerprint className="size-5 text-primary" /> Absen masuk
+              </button>
+            )}
+            <button onClick={() => setJadwal(true)} className="press flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-line-strong bg-surface font-semibold shadow-card">
+              <CalendarDays className="size-5 text-primary" /> Jadwal shift
             </button>
-          )}
+          </div>
           {absen && <AttendanceSheet onClose={() => setAbsen(false)} />}
+          {jadwal && <ScheduleSheet onClose={() => setJadwal(false)} />}
         </div>
         <div className="w-full shrink-0 rounded-3xl border border-line bg-surface p-6 shadow-card lg:w-[340px]">
           {selected ? (
@@ -311,6 +320,24 @@ function ForgotHelp({ owner, onClose }: { owner: boolean; onClose: () => void })
         <p className="text-sm">Minta owner mengatur ulang PIN Anda di <b>Back office → Hak Akses</b>. Setelah diganti, login lagi dengan PIN baru.</p>
       )}
       <p className="mt-4 text-xs text-fg-muted">Demi keamanan, pemulihan tidak dilakukan lewat pesan. Semua penggantian tercatat di log.</p>
+    </Modal>
+  );
+}
+
+/** Jadwal shift seminggu di tablet kasir (layar login), supaya karyawan bisa melihat tanpa login. */
+function ScheduleSheet({ onClose }: { onClose: () => void }) {
+  const tz = useApp((s) => s.data?.settings.store.timezone);
+  const thisWeek = currentWeekStart(tz);
+  const [week, setWeek] = useState(thisWeek);
+  const { data, error, loading } = useWeek(week, { asDevice: true });
+  return (
+    <Modal open size="xl" onClose={onClose} title="Jadwal shift">
+      <div className="flex flex-col gap-4">
+        <WeekNav weekStart={week} thisWeek={thisWeek} onChange={setWeek} />
+        <ErrorNote>{error}</ErrorNote>
+        {loading && !data && <div className="skeleton h-72 rounded-3xl" />}
+        {data && <WeekSchedule data={data} weekStart={week} todayFirst={week === thisWeek} />}
+      </div>
     </Modal>
   );
 }

@@ -25,6 +25,8 @@ import { BrandLogo } from '../../components/BrandLogo';
 import { useApp } from '../../lib/state';
 import { TabletSidebar } from '../../components/TabletSidebar';
 import { useMyAttendance } from '../../lib/my-attendance';
+import { currentWeekStart, useWeek } from '../../lib/schedule';
+import { TodayShiftCard } from '../../components/WeekSchedule';
 
 interface Sheet {
   station: Station;
@@ -94,6 +96,7 @@ export function StockPage() {
         </header>
 
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4">
+          <StaffToday />
           <div className="grid grid-cols-3 gap-2">
             <ModeTile active={mode === 'opname'} onClick={() => setMode('opname')} icon={<ClipboardCheck className="size-6" />} label="Stock opname" hint="Hitung stok" />
             <ModeTile active={mode === 'purchase'} onClick={() => setMode('purchase')} icon={<PackagePlus className="size-6" />} label="Barang masuk" hint="Belanja / kiriman" />
@@ -104,6 +107,14 @@ export function StockPage() {
       </div>
     </div>
   );
+}
+
+/** Karyawan di HP: jadwal shift hari ini langsung terlihat saat aplikasi dibuka. */
+function StaffToday() {
+  const applies = useApp((s) => s.mode === 'online' && !s.preview && !!s.user && s.user.role !== 'owner');
+  const week = useWeek(applies ? currentWeekStart() : '');
+  if (!applies || !week.data) return null;
+  return <TodayShiftCard data={week.data} to="/jadwal" />;
 }
 
 /** Status absen hari ini untuk karyawan di HP; ketuk untuk membuka layar absen dan riwayatnya. */

@@ -4,6 +4,8 @@ import { Link, useNavigate } from 'react-router';
 import { checkLocation, clockToMinutes, lateLabel, ROLE_LABEL } from '@mourden/shared';
 import { BrandLogo } from '../../components/BrandLogo';
 import { SelfieCamera } from '../../components/SelfieCamera';
+import { TodayShiftCard } from '../../components/WeekSchedule';
+import { currentWeekStart, useWeek } from '../../lib/schedule';
 import { cx } from '../../components/ui';
 import { errorMessage } from '../../lib/api';
 import { currentLocation, serverOffset, submitMyAttendance, useMyAttendance, type LocationState, type MyAttendance, type MyAttendanceDay } from '../../lib/my-attendance';
@@ -204,6 +206,7 @@ function Ready({ data, name, onCapture }: { data: MyAttendance; name: string; on
         )}
       </p>
 
+      <TodaySchedule />
       <History data={data} />
     </>
   );
@@ -488,4 +491,9 @@ function Success({ day, data, onContinue, onClose }: { day: MyAttendanceDay; dat
       </div>
     </div>
   );
+}
+
+function TodaySchedule() {
+  const { data } = useWeek(currentWeekStart());
+  return data ? <TodayShiftCard data={data} to="/jadwal" /> : null;
 }

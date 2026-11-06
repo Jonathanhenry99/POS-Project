@@ -11,6 +11,7 @@ import {
   MonitorSmartphone,
   Receipt,
   Settings,
+  CalendarClock,
   Fingerprint,
   Users,
   X,
@@ -30,6 +31,7 @@ import { Sidebar, SidebarProfile, SidebarToggle, useSidebarPreference } from '..
 import { useApp } from '../../lib/state';
 import { ApprovalBanner } from './ApprovalBanner';
 import { AttendancePage } from './AttendancePage';
+import { TeamPage } from './TeamPage';
 import { DashboardPage } from './DashboardPage';
 import { InventoryPage } from './InventoryPage';
 import { MenuPage } from './MenuPage';
@@ -90,6 +92,7 @@ const NAV: NavGroup[] = [
     ],
   },
   { label: 'Pengaturan Menu', icon: Coffee, to: '/admin/menu' },
+  { label: 'Jadwal & Gaji', icon: CalendarClock, to: '/admin/tim' },
   { label: 'Absensi', icon: Fingerprint, to: '/admin/absensi' },
   { label: 'Hak Akses', icon: Users, to: '/admin/pengguna' },
   { label: 'Pengaturan', icon: Settings, to: '/admin/pengaturan' },
@@ -112,6 +115,7 @@ const TITLES: [prefix: string, title: string][] = [
   ['/admin/resep', 'Inventori › Resep & HPP'],
   ['/admin/menu', 'Pengaturan Menu'],
   ['/admin/absensi', 'Absensi'],
+  ['/admin/tim', 'Jadwal & Gaji'],
   ['/admin/pengguna', 'Hak Akses'],
   ['/admin/pengaturan', 'Pengaturan'],
   ['/admin', 'Dashboard'],
@@ -292,6 +296,7 @@ export default function AdminRoutes() {
               <Route path="menu" element={<MenuPage />} />
               <Route path="resep" element={<RecipesPage />} />
               <Route path="absensi" element={<AttendancePage />} />
+              <Route path="tim" element={<TeamPage />} />
               <Route path="pengguna" element={<UsersPage />} />
               <Route path="pengaturan" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/admin" replace />} />
