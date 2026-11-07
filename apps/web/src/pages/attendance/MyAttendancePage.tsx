@@ -192,6 +192,7 @@ function Ready({ data, name, onCapture }: { data: MyAttendance; name: string; on
               <CheckCircle2 className="animate-pop mb-1 size-7" style={{ color: LIME }} />
               <p className="text-[52px] leading-none font-extrabold tracking-tight tabular">{timeOf(done.clockedAt, data.timezone)}</p>
               <p className="mt-2 text-xs font-semibold tracking-wide text-white/60 uppercase">Absen masuk</p>
+              {done.dueTime && <p className="mt-0.5 text-xs text-white/50 tabular">Jadwal masuk {done.dueTime}</p>}
             </>
           ) : (
             <>

@@ -131,7 +131,7 @@ export function TodayShiftCard({ data, to }: { data: WeekData; to?: string }) {
         <p className="text-sm font-semibold text-fg-muted">Jadwal hari ini</p>
         {to && <span className="text-xs font-semibold text-primary">Lihat seminggu →</span>}
       </div>
-      <p className="mt-1 text-lg font-extrabold tracking-tight">{mine.length ? mine.map(({ template }) => `${template.name} · ${hours(template)}`).join(', ') : 'Anda libur hari ini'}</p>
+      <p className="mt-1 text-lg font-extrabold tracking-tight">{mine.length ? mine.map(({ template, entry }) => `${template.name} · ${hours({ startTime: entry.startTime ?? template.startTime, endTime: entry.endTime ?? template.endTime })}`).join(', ') : 'Anda libur hari ini'}</p>
       {templates.length > 0 && (
         <ul className="mt-2 flex flex-col gap-1.5">
           {templates.map((t) => {

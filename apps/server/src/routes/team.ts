@@ -57,7 +57,7 @@ async function loadEntries(db: Db, from: string, to: string): Promise<ScheduleEn
 export async function scheduledStart(db: Db, userId: string, date: string): Promise<{ startTime: string; templateName: string } | null> {
   const { rows } = await db.query<{ startTime: string; templateName: string }>(
     `select coalesce(e.start_time, t.start_time) as "startTime", t.name as "templateName" from schedule_entries e join shift_templates t on t.id = e.template_id
-     where e.user_id = $1 and e.date = $2 and e.status = 'masuk' order by coalesce(e.start_time, t.start_time) limit 1`,
+     where e.user_id = $1 and e.date = $2 and e.status = 'masuk' and t.deleted_at is null order by coalesce(e.start_time, t.start_time) limit 1`,
     [userId, date],
   );
   return rows[0] ?? null;
@@ -72,8 +72,8 @@ export async function attendanceDuty(db: Db, userId: string, date: string): Prom
   const shift = await scheduledStart(db, userId, date);
   if (shift) return { shift, off: null };
   const { rows } = await db.query<{ inUse: boolean; status: string | null }>(
-    `select exists (select 1 from schedule_entries where date = $2 and status = 'masuk') as "inUse",
-       (select status from schedule_entries where date = $2 and user_id = $1 order by status limit 1) as status`,
+    `select exists (select 1 from schedule_entries e join shift_templates t on t.id = e.template_id where e.date = $2 and e.status = 'masuk' and t.deleted_at is null) as "inUse",
+       (select e.status from schedule_entries e join shift_templates t on t.id = e.template_id where e.date = $2 and e.user_id = $1 and t.deleted_at is null order by e.status limit 1) as status`,
     [userId, date],
   );
   if (!rows[0].inUse) return { shift: null, off: null };
@@ -87,7 +87,7 @@ export async function scheduleToday(db: Db, date: string) {
   const { rows } = await db.query<{ userId: string; startTime: string; templateName: string }>(
     `select distinct on (e.user_id) e.user_id as "userId", coalesce(e.start_time, t.start_time) as "startTime", t.name as "templateName"
      from schedule_entries e join shift_templates t on t.id = e.template_id
-     where e.date = $1 and e.status = 'masuk' order by e.user_id, coalesce(e.start_time, t.start_time)`,
+     where e.date = $1 and e.status = 'masuk' and t.deleted_at is null order by e.user_id, coalesce(e.start_time, t.start_time)`,
     [date],
   );
   return rows;
@@ -146,11 +146,13 @@ teamRouter.get('/schedule', async (req, res) => {
   const q = parse(z.object({ from: isoDate, to: isoDate }), req.query);
   if (q.to < q.from || addDaysIso(q.from, 62) < q.to) throw badRequest('Rentang jadwal maksimal 2 bulan');
   const admin = !!req.auth.user && can(req.auth.user.role, 'admin') && req.auth.verified;
-  const [templates, entries] = await Promise.all([loadTemplates(pool, admin), loadEntries(pool, q.from, q.to)]);
+  const [templates, entries] = await Promise.all([loadTemplates(pool, true), loadEntries(pool, q.from, q.to)]);
   res.json({
     ...(admin ? { aliases: await scheduleAliases() } : {}),
     today: businessDate(new Date().toISOString(), await getTimezone(pool)),
-    templates: admin ? templates : templates.map(({ rates: _, ...t }) => ({ ...t, rates: [] })),
+    // Shift nonaktif tetap dikirim bila masih ada orang terjadwal di dalamnya, supaya jadwal di HP sama dengan yang
+    // dipakai menghitung telat absen.
+    templates: admin ? templates : templates.filter((t) => t.active || entries.some((e) => e.templateId === t.id)).map(({ rates: _, ...t }) => ({ ...t, rates: [] })),
     // Karyawan tidak melihat tarif maupun lembur orang lain.
     entries: admin ? entries : entries.map(({ overtimeHours: _h, overtimeRate: _r, overtimeNote: _n, ...e }) => ({ ...e, note: e.status === 'masuk' ? '' : e.note })),
     ...(admin ? { overtimeRate: (await payrollSettings()).overtimeRate } : {}),

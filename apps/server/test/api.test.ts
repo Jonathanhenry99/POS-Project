@@ -1537,6 +1537,47 @@ describe('absen hanya untuk yang terjadwal', () => {
   });
 });
 
+describe('jam masuk acuan telat = jadwal yang terlihat karyawan', () => {
+  it('shift yang dihapus tidak dipakai; shift nonaktif tetap terlihat di HP; owner bisa menghitung ulang telat', async () => {
+    const H = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token}` };
+    const epoch = (await request(app).get('/api/data-epoch').set(H)).body.id;
+    const PHOTO = `data:image/jpeg;base64,${Buffer.from('selfie').toString('base64')}`;
+    const clock = (username: string, clockedAt: string) =>
+      request(app).put(`/api/tablet/attendance/${randomUUID()}`).set({ ...asDevice(username), ...(epoch ? { 'X-Data-Epoch': epoch } : {}) }).send({ userId: userId(username), clockedAt, photo: PHOTO });
+    await request(app).put('/api/settings').set(H).send({ attendance: { enabled: true, startTime: '09:00', graceMinutes: 0, storeLat: null, storeLng: null } }).expect(200);
+    const mk = async (name: string, startTime: string, endTime: string) =>
+      (await request(app).post('/api/shift-templates').set(H).send({ name, startTime, endTime, fee: 50000, effectiveFrom: '2026-01-01' }).expect(201)).body.id as string;
+    const kitchen = await mk('Kitchen sore', '14:00', '21:00');
+    const old = await mk('Pagi lama', '09:00', '16:00');
+    const date = '2026-10-17';
+    await request(app).put('/api/schedule/entries').set(H).send({ date, templateId: kitchen, userId: userId('barista') }).expect(200);
+    await request(app).put('/api/schedule/entries').set(H).send({ date, templateId: old, userId: userId('barista') }).expect(200);
+
+    // Shift lama dinonaktifkan: tetap dihitung, jadi HP karyawan juga harus melihatnya.
+    await request(app).patch(`/api/shift-templates/${old}`).set(H).send({ active: false }).expect(200);
+    const staffLogin = (await request(app).post('/api/auth/login').send({ username: 'barista', pin: '1111' }).expect(200)).body.token;
+    const seen = (await request(app).get(`/api/schedule?from=${date}&to=${date}`).set({ Authorization: `Bearer ${staffLogin}` }).expect(200)).body;
+    expect(seen.templates.map((t: { id: string }) => t.id)).toEqual(expect.arrayContaining([kitchen, old]));
+
+    // 14:12 WIB = 07:12 UTC; masih terhitung dari 09:00 karena shift "Pagi lama" ada di jadwalnya.
+    const first = (await clock('barista', '2026-10-17T07:12:00.000Z').expect(201)).body;
+    expect(first.lateMinutes).toBe(312);
+
+    // Owner menghapus shift lama itu lalu menghitung ulang: acuan jadi Kitchen sore 14:00.
+    await request(app).delete(`/api/shift-templates/${old}`).set(H).expect(200);
+    const row = (await request(app).get(`/api/attendance?from=${date}&to=${date}`).set(H).expect(200)).body.rows.find((r: { userId: string }) => r.userId === userId('barista'));
+    expect(row).toMatchObject({ dueTime: '09:00', lateMinutes: 312 });
+    await request(app).post(`/api/attendance/${row.id}/recalc`).set({ Authorization: `Bearer ${staffLogin}` }).expect(403);
+    const re = (await request(app).post(`/api/attendance/${row.id}/recalc`).set(H).expect(200)).body;
+    expect(re).toMatchObject({ dueTime: '14:00', shiftName: 'Kitchen sore', lateMinutes: 12, changed: true });
+
+    // Jam khusus per orang di jadwal ikut dipakai (dan ditampilkan di kartu jadwal HP).
+    await request(app).put('/api/schedule/entries').set(H).send({ date, templateId: kitchen, userId: userId('barista'), startTime: '14:10', endTime: '21:00' }).expect(200);
+    expect((await request(app).post(`/api/attendance/${row.id}/recalc`).set(H).expect(200)).body).toMatchObject({ dueTime: '14:10', lateMinutes: 2 });
+    await request(app).put('/api/settings').set(H).send({ attendance: { enabled: false } }).expect(200);
+  });
+});
+
 describe('kasir masih buka: tutup paksa owner & penyamaan tablet', () => {
   it('owner melihat shift terbuka, menutup paksa dari back office; tablet melihatnya tertutup; tablet tanpa data lokal bisa melanjutkan shift', async () => {
     const H = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token}` };

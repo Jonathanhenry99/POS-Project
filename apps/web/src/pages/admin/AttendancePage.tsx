@@ -1,4 +1,4 @@
-import { ImageOff, Trash2, UserRound } from 'lucide-react';
+import { ImageOff, RefreshCw, Trash2, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { ROLE_LABEL, formatTime, lateLabel, type AttendanceSettings, type Role } from '@mourden/shared';
@@ -47,6 +47,20 @@ export function AttendancePage() {
     try {
       await api(`/attendance/${r.id}`, { method: 'DELETE' });
       toast(`Absen ${r.userName} dihapus`);
+      reload();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+  // Jam masuk di jadwal salah lalu dibetulkan: hitung ulang telatnya dari jadwal yang berlaku sekarang.
+  const recalc = async (r: AttendanceRow) => {
+    setBusy(r.id);
+    try {
+      const x = await api<{ dueTime: string; shiftName: string | null; lateMinutes: number; changed: boolean }>(`/attendance/${r.id}/recalc`, { method: 'POST', body: {} });
+      const basis = `jam masuk ${x.dueTime}${x.shiftName ? ` (${x.shiftName})` : ''}`;
+      toast(x.changed ? `${r.userName}: ${lateLabel(x.lateMinutes).toLowerCase()} dari ${basis}` : `Sudah sesuai jadwal: ${basis}`);
       reload();
     } catch (e) {
       toast(errorMessage(e), 'error');
@@ -159,18 +173,30 @@ export function AttendancePage() {
                           <p className="text-2xl leading-tight font-bold tabular">{formatTime(r.clockedAt, data.timezone)}</p>
                           <p className="mt-1 flex flex-wrap items-center gap-1.5">
                             <Badge tone={r.lateMinutes ? 'amber' : 'green'}>{lateLabel(r.lateMinutes)}</Badge>
+                            <span className="text-[11px] text-fg-muted tabular">jadwal {r.dueTime}</span>
                             <span className="text-[11px] text-fg-muted">{r.source === 'hp' ? `HP${r.distanceM !== null ? ` · ${r.distanceM} m dari toko` : ''}` : (r.deviceName ?? 'Tablet')}</span>
                             {delayed && <span className="text-[11px] text-fg-muted">· terkirim {formatTime(r.receivedAt, data.timezone)}</span>}
                           </p>
                         </div>
-                        <button
-                          aria-label={`Hapus absen ${r.userName}`}
-                          disabled={busy === r.id}
-                          onClick={() => void removeOne(r)}
-                          className="grid size-10 shrink-0 place-items-center self-start rounded-xl text-fg-subtle transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-40"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
+                        <div className="flex shrink-0 flex-col self-start">
+                          <button
+                            aria-label={`Hitung ulang telat ${r.userName} dari jadwal`}
+                            title="Hitung ulang telat dari jadwal sekarang"
+                            disabled={busy === r.id}
+                            onClick={() => void recalc(r)}
+                            className="grid size-10 place-items-center rounded-xl text-fg-subtle transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-40"
+                          >
+                            <RefreshCw className={cx('size-4', busy === r.id && 'animate-spin')} />
+                          </button>
+                          <button
+                            aria-label={`Hapus absen ${r.userName}`}
+                            disabled={busy === r.id}
+                            onClick={() => void removeOne(r)}
+                            className="grid size-10 place-items-center rounded-xl text-fg-subtle transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-40"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </div>
                       </li>
                     );
                   })}

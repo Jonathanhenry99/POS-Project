@@ -9,6 +9,8 @@ export interface MyAttendanceDay {
   date: string;
   clockedAt: string;
   lateMinutes: number;
+  /** Jam masuk acuan saat absen (jam mulai shift di jadwal, atau jam masuk umum). */
+  dueTime?: string;
   source: 'tablet' | 'hp';
   distanceM: number | null;
 }
