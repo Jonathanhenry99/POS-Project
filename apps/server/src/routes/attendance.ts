@@ -7,7 +7,7 @@ import { audit, pool } from '../db';
 import { badRequest, dateRangeQuery, forbidden, notFound, parse } from '../http';
 import { noticeToOwners } from '../notify';
 import { getSettings } from '../repo';
-import { attendanceDuty, OFF_LABEL, scheduleToday } from './team';
+import { attendanceDuty, OFF_LABEL, recalcAttendance, scheduleToday } from './team';
 
 export const attendanceRouter = Router();
 
@@ -187,21 +187,11 @@ attendanceRouter.get('/attendance', need('admin'), async (req, res) => {
  */
 attendanceRouter.post('/attendance/:id/recalc', need('admin'), async (req, res) => {
   const id = parse(uuid, req.params.id);
-  const s = await getSettings(pool);
-  const cfg = s.attendance!;
-  const { rows } = await pool.query<{ user_id: string; user_name: string; business_date: string; clocked_at: Date; due_time: string; late_minutes: number }>(
-    'select user_id, user_name, business_date, clocked_at, due_time, late_minutes from attendance where id = $1',
-    [id],
-  );
-  const a = rows[0];
-  if (!a) throw notFound();
-  const { shift, off } = await attendanceDuty(pool, a.user_id, a.business_date);
-  if (off) throw badRequest(`${a.user_name} ${OFF_LABEL[off]} di jadwal tanggal itu. Betulkan jadwalnya dulu, atau hapus absen ini.`);
-  const due = { startTime: shift?.startTime ?? cfg.startTime, graceMinutes: cfg.graceMinutes };
-  const late = lateMinutes(a.clocked_at.toISOString(), s.store.timezone, due);
-  await pool.query('update attendance set due_time = $2, grace_minutes = $3, late_minutes = $4 where id = $1', [id, due.startTime, due.graceMinutes, late]);
-  await audit(pool, req.auth.user!.id, 'recalc', 'attendance', id, { before: { dueTime: a.due_time, lateMinutes: a.late_minutes }, after: { dueTime: due.startTime, lateMinutes: late } });
-  res.json({ ok: true, dueTime: due.startTime, shiftName: shift?.templateName ?? null, lateMinutes: late, changed: late !== a.late_minutes || due.startTime !== a.due_time });
+  const r = await recalcAttendance(pool, id);
+  if (!r) throw notFound();
+  if (r.off) throw badRequest(`${r.userName} ${OFF_LABEL[r.off]} di jadwal tanggal itu. Betulkan jadwalnya dulu, atau hapus absen ini.`);
+  if (r.changed) await audit(pool, req.auth.user!.id, 'recalc', 'attendance', id, { before: r.before, after: { dueTime: r.dueTime, lateMinutes: r.lateMinutes } });
+  res.json({ ok: true, dueTime: r.dueTime, shiftName: r.shiftName, lateMinutes: r.lateMinutes, changed: r.changed });
 });
 
 /** Owner menghapus satu absen (mis. hasil uji): orang itu bisa absen lagi hari itu. */

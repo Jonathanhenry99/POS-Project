@@ -1,4 +1,4 @@
-import { Banknote, CalendarDays, ClipboardCopy, ClipboardPaste, Copy, FileText, Gift, Plus, Printer, Settings2, Trash2, Wallet } from 'lucide-react';
+import { Banknote, CalendarDays, ClipboardCopy, ClipboardPaste, Clock, Copy, FileText, Gift, Plus, Printer, Settings2, Trash2, Wallet } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router';
@@ -7,6 +7,7 @@ import {
   feeOn,
   importDates,
   matchName,
+  monthRange,
   parseScheduleText,
   weekStartOf,
   formatNumber,
@@ -119,6 +120,29 @@ function ScheduleTab() {
     }
   };
 
+  // Jam khusus per orang (mis. terbawa dari teks absen saat tempel jadwal): dikembalikan ke jam shift sebulan penuh.
+  const custom = (data?.entries ?? []).filter((e) => e.startTime || e.endTime);
+  const resetRange = { from: monthRange(week.slice(0, 7)).from, to: monthRange(addDaysIso(week, 6).slice(0, 7)).to };
+  const resetTimes = async () => {
+    const months = [...new Set([resetRange.from, resetRange.to].map((d) => new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${d}T00:00:00Z`))))].join(' – ');
+    const ok = await confirmDialog({
+      title: 'Kembalikan ke jam shift?',
+      message: `Semua jam khusus per orang di jadwal ${months} dihapus, jadi setiap orang ikut jam shift tempat ia dijadwalkan. Telat absen yang terpengaruh dihitung ulang.`,
+      confirmLabel: 'Kembalikan',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const r = await api<{ cleared: number; recalculated: number }>('/schedule/reset-times', { method: 'POST', body: resetRange });
+      toast(`${r.cleared} jadwal kembali ke jam shift${r.recalculated ? `, ${r.recalculated} absen dihitung ulang` : ''}`);
+      reload();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -133,6 +157,17 @@ function ScheduleTab() {
         </Button>
         <p className="text-xs text-fg-muted">Ketuk sebuah shift untuk menambah orang atau mencatat izin/sakit.</p>
       </div>
+      {custom.length > 0 && (
+        <div className="animate-rise flex flex-wrap items-center gap-3 rounded-2xl border border-warning/40 bg-warning/8 px-4 py-3">
+          <Clock className="size-5 shrink-0 text-[#8a5a00]" />
+          <p className="min-w-0 flex-1 text-sm">
+            <b>{custom.length} jadwal minggu ini memakai jam khusus</b>, bukan jam shift ({[...new Set(custom.map((e) => e.userName))].slice(0, 4).join(', ')}). Jam ini dipakai untuk menghitung telat absen.
+          </p>
+          <Button size="sm" variant="outline" loading={busy} onClick={() => void resetTimes()}>
+            Kembalikan ke jam shift
+          </Button>
+        </div>
+      )}
       <ErrorNote>{error}</ErrorNote>
       {loading && !data && <Spinner className="mx-auto my-10" />}
       {data && <WeekSchedule data={data} weekStart={week} onCell={(date, template) => setCell({ date, template })} />}
@@ -1154,14 +1189,14 @@ function ImportSchedule({ templates, users, aliases, today, onClose, onDone }: {
   const unresolved = names.filter(([k, d]) => !resolve(k, d));
 
   const plan = useMemo(() => {
-    const entries: { date: string; templateId: string; userId: string; startTime: string | null; endTime: string | null }[] = [];
+    const entries: { date: string; templateId: string; userId: string }[] = [];
     const dates = new Set<string>();
     for (const r of parsed?.rows ?? []) {
       for (const date of importDates(weekStart, r.day, repeat)) {
         dates.add(date);
         for (const n of r.names) {
           const id = resolve(n.toLowerCase(), n);
-          if (id && id !== SKIP) entries.push({ date, templateId: r.templateId, userId: id, startTime: r.startTime, endTime: r.endTime });
+          if (id && id !== SKIP) entries.push({ date, templateId: r.templateId, userId: id });
         }
       }
     }
@@ -1265,11 +1300,6 @@ function ImportSchedule({ templates, users, aliases, today, onClose, onDone }: {
                           <td className="px-3 py-1.5 whitespace-nowrap capitalize">{dayLabel(addDaysIso(weekStart, r.day), 'short')}</td>
                           <td className="px-3 py-1.5 whitespace-nowrap">
                             {r.templateName}
-                            {(r.startTime || r.endTime) && (
-                              <span className="ml-1 text-xs text-primary tabular">
-                                {r.startTime ?? templates.find((t) => t.id === r.templateId)?.startTime}–{r.endTime ?? templates.find((t) => t.id === r.templateId)?.endTime}
-                              </span>
-                            )}
                           </td>
                           <td className="px-3 py-1.5">
                             {r.names.map((n) => {

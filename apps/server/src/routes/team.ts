@@ -10,6 +10,7 @@ import {
   computeWeekBonus,
   DEFAULT_BONUS_TIERS,
   DEFAULT_OVERTIME_RATE,
+  lateMinutes,
   monthRange,
   type BonusTier,
   type Kasbon,
@@ -19,7 +20,7 @@ import {
 import { need } from '../auth';
 import { audit, pool, tx, type Db } from '../db';
 import { HttpError, badRequest, notFound, parse } from '../http';
-import { getTimezone } from '../repo';
+import { getSettings, getTimezone } from '../repo';
 
 export const teamRouter = Router();
 
@@ -81,6 +82,28 @@ export async function attendanceDuty(db: Db, userId: string, date: string): Prom
 }
 
 export const OFF_LABEL = { libur: 'tidak terjadwal masuk', izin: 'tercatat izin', sakit: 'tercatat sakit', alpa: 'tercatat tidak masuk' } as const;
+
+/**
+ * Hitung ulang telat satu absen dari jadwal yang berlaku sekarang. Jam absen & selfie tetap; hanya jam masuk acuan dan
+ * menit telatnya. `off` = orang itu tidak terjadwal masuk di tanggal itu (absennya dibiarkan apa adanya).
+ */
+export async function recalcAttendance(db: Db, id: string) {
+  const s = await getSettings(db);
+  const cfg = s.attendance!;
+  const { rows } = await db.query<{ user_id: string; user_name: string; business_date: string; clocked_at: Date; due_time: string; late_minutes: number }>(
+    'select user_id, user_name, business_date, clocked_at, due_time, late_minutes from attendance where id = $1',
+    [id],
+  );
+  const a = rows[0];
+  if (!a) return null;
+  const { shift, off } = await attendanceDuty(db, a.user_id, a.business_date);
+  if (off) return { userName: a.user_name, off, changed: false as const };
+  const due = { startTime: shift?.startTime ?? cfg.startTime, graceMinutes: cfg.graceMinutes };
+  const late = lateMinutes(a.clocked_at.toISOString(), s.store.timezone, due);
+  const changed = late !== a.late_minutes || due.startTime !== a.due_time;
+  if (changed) await db.query('update attendance set due_time = $2, grace_minutes = $3, late_minutes = $4 where id = $1', [id, due.startTime, due.graceMinutes, late]);
+  return { userName: a.user_name, off: null, before: { dueTime: a.due_time, lateMinutes: a.late_minutes }, dueTime: due.startTime, shiftName: shift?.templateName ?? null, lateMinutes: late, changed };
+}
 
 /** Jadwal hari ini untuk semua orang (tablet menghitung telat absen secara lokal, juga saat offline). */
 export async function scheduleToday(db: Db, date: string) {
@@ -216,7 +239,8 @@ async function scheduleAliases(db: Db = pool): Promise<Record<string, string>> {
 teamRouter.post('/schedule/import', need('admin'), async (req, res) => {
   const b = parse(
     z.object({
-      entries: z.array(z.object({ date: isoDate, templateId: uuid, userId: uuid, startTime: clock.nullable(), endTime: clock.nullable() })).min(1).max(500),
+      // Jam di teks tempelan (mis. "Bila 09:00-20:30") tidak dipakai: jadwal hasil tempel selalu ikut jam shift-nya.
+      entries: z.array(z.object({ date: isoDate, templateId: uuid, userId: uuid, startTime: clock.nullable().optional(), endTime: clock.nullable().optional() })).min(1).max(500),
       replaceDates: z.array(isoDate).max(62).default([]),
       aliases: z.record(z.string().trim().toLowerCase().min(1).max(40), uuid).default({}),
     }),
@@ -227,9 +251,9 @@ teamRouter.post('/schedule/import', need('admin'), async (req, res) => {
     let n = 0;
     for (const e of b.entries) {
       const r = await c.query(
-        `insert into schedule_entries (date, template_id, user_id, status, note, start_time, end_time) values ($1,$2,$3,'masuk','',$4,$5)
-         on conflict (date, template_id, user_id) do update set start_time = excluded.start_time, end_time = excluded.end_time, updated_at = now()`,
-        [e.date, e.templateId, e.userId, e.startTime, e.endTime],
+        `insert into schedule_entries (date, template_id, user_id, status, note) values ($1,$2,$3,'masuk','')
+         on conflict (date, template_id, user_id) do update set start_time = null, end_time = null, updated_at = now()`,
+        [e.date, e.templateId, e.userId],
       );
       n += r.rowCount ?? 0;
     }
@@ -239,6 +263,32 @@ teamRouter.post('/schedule/import', need('admin'), async (req, res) => {
     return n;
   });
   res.status(201).json({ created });
+});
+
+/**
+ * Kembalikan semua jadwal di rentang tanggal ke jam shift bawaannya (hapus jam khusus per orang), lalu hitung ulang
+ * telat absen orang-orang yang jadwalnya berubah.
+ */
+teamRouter.post('/schedule/reset-times', need('admin'), async (req, res) => {
+  const b = parse(z.object({ from: isoDate, to: isoDate }), req.body);
+  if (b.to < b.from || addDaysIso(b.from, 62) < b.to) throw badRequest('Rentang maksimal 2 bulan');
+  const result = await tx(async (c) => {
+    const { rows } = await c.query<{ date: string; user_id: string }>(
+      `update schedule_entries set start_time = null, end_time = null, updated_at = now()
+       where date between $1 and $2 and (start_time is not null or end_time is not null)
+       returning to_char(date, 'YYYY-MM-DD') as date, user_id`,
+      [b.from, b.to],
+    );
+    const pairs = [...new Map(rows.map((r) => [`${r.date}|${r.user_id}`, r])).values()];
+    let recalculated = 0;
+    for (const p of pairs) {
+      const att = await c.query<{ id: string }>('select id from attendance where user_id = $1 and business_date = $2', [p.user_id, p.date]);
+      for (const a of att.rows) if ((await recalcAttendance(c, a.id))?.changed) recalculated++;
+    }
+    await audit(c, req.auth.user!.id, 'reset-times', 'schedule', null, { ...b, cleared: rows.length, recalculated });
+    return { cleared: rows.length, recalculated };
+  });
+  res.json(result);
 });
 
 /** Salin jadwal satu minggu ke minggu lain (yang sudah ada di minggu tujuan tidak ditimpa). */

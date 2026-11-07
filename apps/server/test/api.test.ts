@@ -1364,7 +1364,7 @@ describe('tempel jadwal', () => {
   });
   const T = (name: string) => tpl.find((t) => t.name === name)!.id;
 
-  it('menerapkan banyak jadwal sekaligus, mengganti tanggal yang sama, jam khusus, alias diingat, owner tidak digaji', async () => {
+  it('menerapkan banyak jadwal sekaligus, mengganti tanggal yang sama, jam dari teks diabaikan, alias diingat, owner tidak digaji', async () => {
     await request(app).put('/api/schedule/entries').set(H).send({ date: '2026-12-07', templateId: T('Shift 1'), userId: userId('kasir') }).expect(200);
     const body = {
       entries: [
@@ -1381,13 +1381,15 @@ describe('tempel jadwal', () => {
     const week = (await request(app).get('/api/schedule?from=2026-12-07&to=2026-12-13').set(H)).body;
     expect(week.entries.map((e: { userName: string; startTime: string | null; endTime: string | null }) => [e.userName, e.startTime, e.endTime])).toEqual([
       ['Barista', null, null],
-      ['Kitchen', '14:00', '20:30'],
+      // Jam di teks tempelan tidak disimpan: jadwal hasil tempel selalu ikut jam shift.
+      ['Kitchen', null, null],
       ['Owner', null, null],
     ]);
     expect(week.aliases).toMatchObject({ ntu: userId('barista'), jon: userId('owner') });
     const pay = (await request(app).get('/api/payroll?month=2026-12').set(H)).body;
     expect(pay.people.map((p: { name: string }) => p.name).sort()).toEqual(['Barista', 'Kitchen']);
-    // Salin minggu ikut membawa jam khusus.
+    // Salin minggu ikut membawa jam khusus yang diatur owner per orang.
+    await request(app).put('/api/schedule/entries').set(H).send({ date: '2026-12-07', templateId: T('Kitchen'), userId: userId('kitchen'), startTime: '14:00', endTime: '20:30' }).expect(200);
     await request(app).post('/api/schedule/copy-week').set(H).send({ from: '2026-12-07', to: '2026-12-14' }).expect(200);
     const next = (await request(app).get('/api/schedule?from=2026-12-14&to=2026-12-14').set(H)).body.entries;
     expect(next.find((e: { userName: string }) => e.userName === 'Kitchen')).toMatchObject({ startTime: '14:00', endTime: '20:30' });
@@ -1574,6 +1576,15 @@ describe('jam masuk acuan telat = jadwal yang terlihat karyawan', () => {
     // Jam khusus per orang di jadwal ikut dipakai (dan ditampilkan di kartu jadwal HP).
     await request(app).put('/api/schedule/entries').set(H).send({ date, templateId: kitchen, userId: userId('barista'), startTime: '14:10', endTime: '21:00' }).expect(200);
     expect((await request(app).post(`/api/attendance/${row.id}/recalc`).set(H).expect(200)).body).toMatchObject({ dueTime: '14:10', lateMinutes: 2 });
+
+    // "Kembalikan ke jam shift": jam khusus sebulan dihapus dan telat absen yang terpengaruh ikut dihitung ulang.
+    await request(app).post('/api/schedule/reset-times').set({ Authorization: `Bearer ${staffLogin}` }).send({ from: '2026-10-01', to: '2026-10-31' }).expect(403);
+    const reset = (await request(app).post('/api/schedule/reset-times').set(H).send({ from: '2026-10-01', to: '2026-10-31' }).expect(200)).body;
+    expect(reset).toEqual({ cleared: 1, recalculated: 1 });
+    const after = (await request(app).get(`/api/attendance?from=${date}&to=${date}`).set(H).expect(200)).body.rows.find((r: { id: string }) => r.id === row.id);
+    expect(after).toMatchObject({ dueTime: '14:00', lateMinutes: 12 });
+    const sched = (await request(app).get(`/api/schedule?from=${date}&to=${date}`).set(H).expect(200)).body.entries;
+    expect(sched.filter((e: { startTime: string | null; endTime: string | null }) => e.startTime || e.endTime)).toEqual([]);
     await request(app).put('/api/settings').set(H).send({ attendance: { enabled: false } }).expect(200);
   });
 });
