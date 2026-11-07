@@ -1,7 +1,8 @@
 // Impor penjualan dari ekspor Excel ESB (POS lama), khusus owner dari HP/laptop. Berkas dibaca di browser; server
 // menerima data transaksinya, menyusun ulang rincian menu per transaksi dari laporan menu harian (allocateDay),
 // lalu menyimpannya sebagai transaksi bertanda source='esb'. Impor ulang aman: ID transaksi diturunkan dari nomor
-// transaksi ESB. Stok bahan tidak dipotong (bahan untuk penjualan itu sudah terpakai sebelum Mourden dipakai).
+// transaksi ESB. Stok bahan tidak dipotong (bahan untuk penjualan itu sudah terpakai sebelum Mourden dipakai); HPP-nya
+// dicatat sebagai perkiraan (orders.cogs_estimate) dari resep menu yang dicocokkan x harga bahan, untuk laba kotor.
 import { createHash } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -211,6 +212,30 @@ esbImportRouter.post('/admin/import/esb/preview', need('admin'), async (req, res
 });
 
 /** Simpan transaksi ESB untuk tanggal terpilih. Transaksi yang sudah pernah diimpor dilewati. */
+/**
+ * HPP perkiraan transaksi ESB pada rentang tanggal: resep menu yang dicocokkan x harga bahan saat ini (sama seperti
+ * pemotongan stok penjualan tablet, tetapi stok tidak diubah). Menu yang belum punya resep bernilai 0.
+ */
+async function recostEsb(c: Db, from: string, to: string) {
+  await c.query(
+    `update orders o set cogs_estimate = coalesce((
+       select sum(ri.qty * oi.qty * i.cost_per_unit)
+       from order_items oi
+       join recipe_items ri on ri.product_id = oi.product_id
+         and (ri.option_id is null or exists (select 1 from jsonb_array_elements(oi.options) e where e->>'optionId' = ri.option_id::text))
+       join ingredients i on i.id = ri.ingredient_id
+       where oi.order_id = o.id
+     ), 0)
+     where o.source = 'esb' and o.business_date between $1 and $2`,
+    [from, to],
+  );
+  const { rows } = await c.query<{ cogs: number }>(
+    "select coalesce(sum(cogs_estimate), 0)::float8 as cogs from orders where source = 'esb' and status = 'paid' and business_date between $1 and $2",
+    [from, to],
+  );
+  return Math.round(rows[0].cogs);
+}
+
 esbImportRouter.post('/admin/import/esb', need('admin'), async (req, res) => {
   ownerOnline(req);
   const b = parse(body, req.body);
@@ -291,8 +316,10 @@ esbImportRouter.post('/admin/import/esb', need('admin'), async (req, res) => {
         total += t.total;
       }
     }
-    await audit(c, userId, 'import', 'esb-sales', null, { dates: days.map((d) => d.date), inserted, skipped, total });
-    return { inserted, skipped, items, total, created };
+    const dates = days.map((d) => d.date).sort();
+    const cogs = dates.length ? await recostEsb(c, dates[0], dates[dates.length - 1]) : 0;
+    await audit(c, userId, 'import', 'esb-sales', null, { dates, inserted, skipped, total, cogs });
+    return { inserted, skipped, items, total, created, cogs };
   });
   res.json(result);
 });
@@ -339,14 +366,36 @@ async function createProducts(c: Db, b: Body, mapping: Record<string, string>, c
   return created;
 }
 
-/** Data impor ESB yang tersimpan, per tanggal. */
+/** Data impor ESB yang tersimpan, per tanggal (dengan HPP perkiraan), plus menu terjual yang belum punya resep. */
 esbImportRouter.get('/admin/import/esb', need('admin'), async (req, res) => {
   ownerOnline(req);
-  const { rows } = await pool.query(
-    `select to_char(business_date, 'YYYY-MM-DD') as date, count(*)::int as count, coalesce(sum(total), 0)::int as total
-     from orders where source = 'esb' group by 1 order by 1 desc limit 400`,
-  );
-  res.json(rows);
+  const [days, missing] = await Promise.all([
+    pool.query(
+      `select to_char(business_date, 'YYYY-MM-DD') as date, count(*)::int as count, coalesce(sum(total), 0)::int as total,
+         coalesce(sum(subtotal - discount_amount), 0)::int as revenue, round(coalesce(sum(cogs_estimate), 0))::int as cogs
+       from orders where source = 'esb' and status = 'paid' group by 1 order by 1 desc limit 400`,
+    ),
+    pool.query(
+      `select coalesce(p.name, oi.name) as name, sum(oi.qty)::int as qty, oi.product_id is null as unmatched
+       from order_items oi join orders o on o.id = oi.order_id left join products p on p.id = oi.product_id
+       where o.source = 'esb' and o.status = 'paid'
+         and (oi.product_id is null or not exists (select 1 from recipe_items ri where ri.product_id = oi.product_id))
+       group by 1, 3 order by qty desc limit 100`,
+    ),
+  ]);
+  res.json({ days: days.rows, missingRecipes: missing.rows });
+});
+
+/** Hitung ulang HPP transaksi ESB (mis. setelah resep atau harga bahan dilengkapi). */
+esbImportRouter.post('/admin/import/esb/recost', need('admin'), async (req, res) => {
+  ownerOnline(req);
+  const b = parse(z.object({ from: isoDate, to: isoDate }), req.body);
+  const cogs = await tx(async (c) => {
+    const value = await recostEsb(c, b.from, b.to);
+    await audit(c, req.auth.user!.id, 'recost', 'esb-sales', null, { ...b, cogs: value });
+    return value;
+  });
+  res.json({ cogs });
 });
 
 /** Hapus transaksi hasil impor ESB pada rentang tanggal (mis. salah impor); bisa diimpor ulang kapan saja. */

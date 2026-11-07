@@ -1,4 +1,5 @@
-import { Check, CircleAlert, FileSpreadsheet, History, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { Calculator, Check, CircleAlert, FileSpreadsheet, History, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { Link } from 'react-router';
 import { useMemo, useRef, useState } from 'react';
 import { useApp } from '../../lib/state';
 import { formatNumber, PAYMENT_LABEL, parseEsbSheet, readXlsxRows, type EsbFile, type EsbMenuLine, type EsbTransaction, type PaymentMethod } from '@mourden/shared';
@@ -57,6 +58,8 @@ interface ImportResult {
   skipped: number;
   items: number;
   total: number;
+  /** HPP perkiraan dari resep untuk tanggal-tanggal yang diimpor. */
+  cogs: number;
   created: { name: string; category: string; price: number }[];
 }
 
@@ -64,6 +67,15 @@ interface ImportedDay {
   date: string;
   count: number;
   total: number;
+  /** Penjualan bersih (setelah diskon, tanpa service & pajak) = dasar laba kotor. */
+  revenue: number;
+  /** HPP perkiraan dari resep x harga bahan. */
+  cogs: number;
+}
+interface ImportedData {
+  days: ImportedDay[];
+  /** Menu terjual dari ESB yang belum punya resep (HPP-nya dihitung 0). */
+  missingRecipes: { name: string; qty: number; unmatched: boolean }[];
 }
 
 const rp = (n: number) => `Rp ${formatNumber(n)}`;
@@ -105,7 +117,7 @@ export function EsbImportCard() {
 }
 
 function EsbImport() {
-  const imported = useApi<ImportedDay[]>('/admin/import/esb');
+  const imported = useApi<ImportedData>('/admin/import/esb');
   const [files, setFiles] = useState<LoadedFile[]>([]);
   const [reading, setReading] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -203,6 +215,22 @@ function EsbImport() {
       toast(`${formatNumber(res.inserted)} transaksi ESB diimpor`);
       await runPreview(files);
       setDone(res);
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const recost = async () => {
+    const days = imported.data?.days ?? [];
+    if (!days.length) return;
+    setBusy('recost');
+    try {
+      const dates = days.map((d) => d.date).sort();
+      const r = await api<{ cogs: number }>('/admin/import/esb/recost', { method: 'POST', body: { from: dates[0], to: dates[dates.length - 1] } });
+      imported.reload();
+      toast(`HPP dihitung ulang dari resep: ${rp(r.cogs)}`);
     } catch (e) {
       toast(errorMessage(e), 'error');
     } finally {
@@ -462,7 +490,7 @@ function EsbImport() {
             </Button>
             {done && (
               <p className="animate-rise mt-3 rounded-2xl bg-white/10 p-3 text-sm">
-                Selesai: {formatNumber(done.inserted)} transaksi ({formatNumber(done.items)} item, {rp(done.total)}) masuk.
+                Selesai: {formatNumber(done.inserted)} transaksi ({formatNumber(done.items)} item, {rp(done.total)}) masuk, HPP dari resep {rp(done.cogs)}.
                 {done.skipped > 0 && ` ${formatNumber(done.skipped)} sudah ada sebelumnya, dilewati.`}
                 {done.created.length > 0 && ` Menu baru di POS: ${done.created.map((c) => `${c.name} (${c.category})`).join(', ')}; lengkapi resepnya di Resep & HPP.`} Lihat di Laporan atau Transaksi.
               </p>
@@ -471,28 +499,67 @@ function EsbImport() {
         </>
       )}
 
-      <Card title="Data hasil impor ESB" icon={<History className="size-4" />}>
+      <Card
+        title="Data hasil impor ESB"
+        icon={<History className="size-4" />}
+        action={
+          imported.data?.days.length ? (
+            <Button size="sm" variant="outline" icon={<Calculator className="size-4" />} loading={busy === 'recost'} disabled={!!busy} onClick={() => void recost()}>
+              Hitung ulang HPP
+            </Button>
+          ) : undefined
+        }
+      >
         <ErrorNote>{imported.error}</ErrorNote>
         {!imported.data ? (
           <Spinner />
-        ) : !imported.data.length ? (
+        ) : !imported.data.days.length ? (
           <p className="text-sm text-fg-muted">Belum ada penjualan yang diimpor.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-line">
-            {imported.data.map((d) => (
-              <li key={d.date} className="flex items-center gap-3 py-2">
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold capitalize">{dayLabel(d.date)}</span>
-                  <span className="block text-sm text-fg-muted tabular">
-                    {formatNumber(d.count)} transaksi · {rp(d.total)}
-                  </span>
-                </span>
-                <Button size="sm" variant="ghost" className="text-danger! hover:bg-danger/10!" icon={<Trash2 className="size-4" />} loading={busy === `del:${d.date}`} disabled={!!busy} onClick={() => void removeDay(d)}>
-                  Hapus
-                </Button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="mb-2 text-sm text-fg-muted">
+              HPP dihitung dari resep menu yang dicocokkan x harga bahan (stok tidak dipotong), lalu ikut mengurangi laba kotor di Laporan. Setelah resep atau harga bahan diubah, tekan Hitung ulang HPP.
+            </p>
+            {imported.data.missingRecipes.length > 0 && (
+              <div className="mb-3 rounded-2xl border border-warning/40 bg-warning/8 p-3 text-sm">
+                <p className="flex items-center gap-2 font-semibold text-[#8a5a00]">
+                  <CircleAlert className="size-4 shrink-0" /> {imported.data.missingRecipes.length} menu belum punya resep, HPP-nya masih Rp 0
+                </p>
+                <p className="mt-1 text-fg-muted">
+                  {imported.data.missingRecipes
+                    .slice(0, 12)
+                    .map((m) => `${m.name} (${formatNumber(m.qty)}${m.unmatched ? ', belum dicocokkan' : ''})`)
+                    .join(', ')}
+                  {imported.data.missingRecipes.length > 12 && `, dan ${imported.data.missingRecipes.length - 12} lainnya`}.{' '}
+                  <Link to="/admin/resep" className="font-semibold text-primary">
+                    Lengkapi di Resep & HPP →
+                  </Link>
+                </p>
+              </div>
+            )}
+            <ul className="flex flex-col divide-y divide-line">
+              {imported.data.days.map((d) => {
+                const profit = d.revenue - d.cogs;
+                return (
+                  <li key={d.date} className="flex items-center gap-3 py-2">
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold capitalize">{dayLabel(d.date)}</span>
+                      <span className="block text-sm text-fg-muted tabular">
+                        {formatNumber(d.count)} transaksi · {rp(d.total)}
+                      </span>
+                      <span className="block text-sm text-fg-muted tabular">
+                        HPP {rp(d.cogs)} · laba kotor <b className="text-fg">{rp(profit)}</b>
+                        {d.revenue > 0 && ` (${Math.round((profit / d.revenue) * 1000) / 10}%)`}
+                      </span>
+                    </span>
+                    <Button size="sm" variant="ghost" className="text-danger! hover:bg-danger/10!" icon={<Trash2 className="size-4" />} loading={busy === `del:${d.date}`} disabled={!!busy} onClick={() => void removeDay(d)}>
+                      Hapus
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
       </Card>
     </div>

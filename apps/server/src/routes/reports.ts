@@ -61,11 +61,15 @@ reportsRouter.get('/reports/summary', need('admin'), async (req, res) => {
        group by 1 order by amount desc`,
       range,
     ),
-    // HPP = biaya bahan yang tercatat saat penjualan (dikurangi pengembalian dari void).
+    // HPP = biaya bahan yang tercatat saat penjualan (dikurangi pengembalian dari void), ditambah HPP perkiraan
+    // transaksi hasil impor ESB (tidak memotong stok, jadi tidak ada di stock_movements).
     pool.query(
-      `select coalesce(-sum(m.qty * m.unit_cost), 0)::float8 as cogs
-       from stock_movements m join orders o on o.id = m.ref_id
-       where m.ref_type = 'order' and m.type in ('sale', 'void') and o.comp_employee_id is null and o.business_date between $1 and $2`,
+      `select (select coalesce(-sum(m.qty * m.unit_cost), 0)
+                 from stock_movements m join orders o on o.id = m.ref_id
+                 where m.ref_type = 'order' and m.type in ('sale', 'void') and o.comp_employee_id is null and o.business_date between $1 and $2)
+            + (select coalesce(sum(cogs_estimate), 0) from orders
+                 where source = 'esb' and status = 'paid' and comp_employee_id is null and business_date between $1 and $2)
+         as cogs`,
       range,
     ),
     // Peta keramaian: hari (1=Senin..7=Minggu) x jam.

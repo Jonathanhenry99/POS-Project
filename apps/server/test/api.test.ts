@@ -1457,12 +1457,16 @@ describe('impor penjualan ESB', () => {
     ]);
     expect(p.days[1].skipped).toEqual([{ ref: 'E4', bill: 'B-E4', reason: 'Jenis "Void" bukan penjualan' }]);
     expect(p.methods).toEqual(expect.arrayContaining([{ name: 'EDC Mandiri (POS)', method: 'card' }, { name: 'QRIS', method: 'qris' }]));
-    const product = p.products[0];
+    // Menu tujuan dengan resep: 150 ml x Rp 40 = HPP Rp 6.000 per gelas.
+    const cat = (await request(app).get('/api/admin/catalog').set(H).expect(200)).body.categories[0];
+    const product = { id: (await request(app).post('/api/products').set(H).send({ categoryId: cat.id, name: 'Latte Uji HPP', price: 26000 }).expect(201)).body.id, name: 'Latte Uji HPP' };
+    const ing = (await request(app).post('/api/ingredients').set(H).send({ name: 'Susu Uji HPP', unit: 'ml', station: 'bar', minStock: 0, costPerUnit: 40, initialStock: 1000 }).expect(201)).body;
+    await request(app).put(`/api/recipes/${product.id}`).set(H).send({ lines: [{ optionId: null, ingredientId: ing.id, qty: 150 }] }).expect(200);
     const mapping = { [p.menus.find((m: { name: string }) => m.name === 'Latte Spesial').key]: product.id };
 
     const body = { ...payload(), mapping, dates: ['2027-02-01', '2027-02-02'] };
     const r = (await request(app).post('/api/admin/import/esb').set(H).send(body).expect(200)).body;
-    expect(r).toMatchObject({ inserted: 3, skipped: 0, total: 103500 });
+    expect(r).toMatchObject({ inserted: 3, skipped: 0, total: 103500, cogs: 12000 });
     // Impor ulang berkas yang sama tidak menggandakan.
     expect((await request(app).post('/api/admin/import/esb').set(H).send(body).expect(200)).body).toMatchObject({ inserted: 0, skipped: 3 });
     const again = (await request(app).post('/api/admin/import/esb/preview').set(H).send(payload()).expect(200)).body;
@@ -1473,6 +1477,8 @@ describe('impor penjualan ESB', () => {
     const sum = (await request(app).get('/api/reports/summary?from=2027-02-01&to=2027-02-02').set(H).expect(200)).body;
     expect(sum).toMatchObject({ orderCount: 3, grossSales: 102000, serviceTotal: 1300, roundingTotal: 200, netSales: 103500 });
     expect(sum.byCashier).toEqual([expect.objectContaining({ name: 'Impor ESB', count: 3, amount: 103500 })]);
+    // Laba kotor = penjualan - HPP dari resep menu yang dicocokkan (stok tetap tidak dipotong).
+    expect(sum).toMatchObject({ cogs: 12000, grossProfit: 102000 - 12000 });
     expect(sum.byMethod.map((m: { method: string }) => m.method).sort()).toEqual(['card', 'cash', 'qris']);
     expect(sum.topProducts.find((t: { productId: string }) => t.productId === product.id)).toMatchObject({ name: product.name, qty: 2, amount: 52000 });
     // Waktu bayar lokal (WIB) tersimpan benar untuk peta jam.
@@ -1487,10 +1493,17 @@ describe('impor penjualan ESB', () => {
     const moves = await pool.query("select count(*)::int as n from stock_movements where ref_id = any(select id from orders where source = 'esb')");
     expect(moves.rows[0].n).toBe(0);
 
-    expect((await request(app).get('/api/admin/import/esb').set(H).expect(200)).body.slice(0, 2)).toEqual([
-      { date: '2027-02-02', count: 1, total: 24000 },
-      { date: '2027-02-01', count: 2, total: 79500 },
+    const stored = (await request(app).get('/api/admin/import/esb').set(H).expect(200)).body;
+    expect(stored.days.slice(0, 2)).toEqual([
+      { date: '2027-02-02', count: 1, total: 24000, revenue: 24000, cogs: 0 },
+      { date: '2027-02-01', count: 2, total: 79500, revenue: 78000, cogs: 12000 },
     ]);
+    expect(stored.missingRecipes).toEqual(expect.arrayContaining([{ name: 'Es Kopi Susu ESB', qty: 1, unmatched: true }]));
+    // Resep diubah (100 ml): hitung ulang HPP tanpa impor ulang.
+    await request(app).put(`/api/recipes/${product.id}`).set(H).send({ lines: [{ optionId: null, ingredientId: ing.id, qty: 100 }] }).expect(200);
+    await request(app).post('/api/admin/import/esb/recost').set({ Authorization: `Bearer ${barista}` }).send({ from: '2027-02-01', to: '2027-02-02' }).expect(403);
+    expect((await request(app).post('/api/admin/import/esb/recost').set(H).send({ from: '2027-02-01', to: '2027-02-02' }).expect(200)).body).toEqual({ cogs: 8000 });
+    expect((await request(app).get('/api/reports/summary?from=2027-02-01&to=2027-02-02').set(H)).body).toMatchObject({ cogs: 8000, grossProfit: 94000 });
     expect((await request(app).post('/api/admin/import/esb/delete').set(H).send({ from: '2027-02-01', to: '2027-02-02' }).expect(200)).body).toEqual({ count: 3, total: 103500 });
     expect((await request(app).get('/api/reports/summary?from=2027-02-01&to=2027-02-02').set(H)).body.orderCount).toBe(0);
   });
