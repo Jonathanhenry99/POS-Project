@@ -56,7 +56,8 @@ function leaveLabel(u: { sick: number; leave: number; marked: number }): string 
 const DELAY_FLAG_MINUTES = 30;
 
 export function AttendancePage() {
-  const [range, setRange] = useState<Range>(() => ({ from: addDays(today(), -6), to: today() }));
+  // Bawaan: bulan ini (sejak tanggal 1, sama dengan periode gaji), supaya izin/sakit di awal bulan ikut terlihat.
+  const [range, setRange] = useState<Range>(() => ({ from: `${today().slice(0, 8)}01`, to: today() }));
   const { data, error, loading, reload } = useApi<AttendanceData>(`/attendance?from=${range.from}&to=${range.to}`);
   const [busy, setBusy] = useState('');
 
@@ -165,7 +166,7 @@ export function AttendancePage() {
               ))}
             </ul>
             <div className="hidden overflow-x-auto sm:block">
-              <table className="w-full min-w-[760px] text-sm">
+              <table className="w-full min-w-[860px] text-sm">
                 <thead className="text-left text-fg-muted">
                   <tr>
                     <th className="px-4 py-2.5">Karyawan</th>
@@ -174,6 +175,7 @@ export function AttendancePage() {
                     <th className="px-3 py-2.5 text-right">Tepat waktu</th>
                     <th className="px-3 py-2.5 text-right">Telat</th>
                     <th className="px-3 py-2.5 text-right">Tidak hadir</th>
+                    <th className="px-3 py-2.5 text-right" title="Tercatat izin/sakit/alpa di jadwal">Izin/sakit</th>
                     <th className="px-4 py-2.5">Per hari</th>
                   </tr>
                 </thead>
@@ -195,8 +197,8 @@ export function AttendancePage() {
                       </td>
                       <td className="px-3 py-3 text-right tabular">
                         <span className={cx('font-semibold', u.absent ? 'text-danger' : 'text-fg-subtle')}>{u.absent}</span>
-                        {u.excused > 0 && <span className="block text-xs text-primary">+{leaveLabel(u)}</span>}
                       </td>
+                      <td className={cx('px-3 py-3 text-right tabular', u.excused ? 'font-semibold text-primary' : 'text-fg-subtle')}>{u.excused ? leaveLabel(u) : '0'}</td>
                       <td className="px-4 py-3">
                         <DayStrip days={u.days} />
                       </td>
@@ -213,7 +215,7 @@ export function AttendancePage() {
                 </span>
               ))}
               <span className="basis-full">
-                Hari kerja = hari dijadwalkan masuk sampai hari ini (hari tanpa jadwal: hari toko buka). Hadir = tepat waktu + telat. Jam masuk mengikuti shift di jadwal; tanpa jadwal {data.settings.startTime}
+                Hari kerja = hari dijadwalkan masuk sampai hari ini (hari ini dihitung setelah absen; hari tanpa jadwal: hari toko buka). Hadir = tepat waktu + telat. Izin/sakit dari jadwal tidak dihitung hari kerja. Jam masuk mengikuti shift di jadwal; tanpa jadwal {data.settings.startTime}
                 {data.settings.graceMinutes ? `, toleransi ${data.settings.graceMinutes} menit` : ''}.
               </span>
             </div>
@@ -340,7 +342,7 @@ function Selfie({ row }: { row: AttendanceRow }) {
 /** Status tiap hari satu orang: kotak berwarna dengan tanggalnya. */
 function DayStrip({ days }: { days: { date: string; state: DayState; lateMinutes: number }[] }) {
   return (
-    <div className="flex max-w-[300px] flex-wrap gap-1">
+    <div className="flex max-w-[448px] flex-wrap gap-1">
       {days.map((d) => (
         <span
           key={d.date}
