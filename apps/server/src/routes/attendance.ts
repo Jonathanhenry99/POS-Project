@@ -167,7 +167,7 @@ export async function attendanceSummaryDue() {
 attendanceRouter.get('/attendance', need('admin'), async (req, res) => {
   const q = parse(dateRangeQuery, req.query);
   const s = await getSettings(pool);
-  const [{ rows: staff }, { rows }] = await Promise.all([
+  const [{ rows: staff }, { rows }, { rows: schedule }] = await Promise.all([
     pool.query("select id, name, role from users where active and deleted_at is null and role <> 'owner' order by name"),
     pool.query(
       `select a.id, a.user_id as "userId", a.user_name as "userName", a.business_date as date, a.clocked_at as "clockedAt", a.received_at as "receivedAt",
@@ -177,8 +177,15 @@ attendanceRouter.get('/attendance', need('admin'), async (req, res) => {
        where a.business_date between $1 and $2 order by a.business_date desc, a.clocked_at`,
       [q.from, q.to],
     ),
+    // Jadwal pada rentang ini: menentukan hari kerja tiap orang (yang libur/izin tidak dihitung tidak hadir).
+    pool.query(
+      `select e.user_id as "userId", to_char(e.date, 'YYYY-MM-DD') as date, e.status
+       from schedule_entries e join shift_templates t on t.id = e.template_id
+       where e.date between $1 and $2 and t.deleted_at is null`,
+      [q.from, q.to],
+    ),
   ]);
-  res.json({ settings: s.attendance as AttendanceSettings, timezone: s.store.timezone, staff, rows });
+  res.json({ settings: s.attendance as AttendanceSettings, timezone: s.store.timezone, today: businessDate(new Date().toISOString(), s.store.timezone), staff, rows, schedule });
 });
 
 /**
