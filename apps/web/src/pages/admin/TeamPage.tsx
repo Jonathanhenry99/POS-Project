@@ -13,6 +13,7 @@ import {
   formatNumber,
   formatRupiah,
   ROLE_LABEL,
+  NO_ATTENDANCE_NOTE,
   SCHEDULE_STATUS_LABEL,
   type BonusTier,
   type PersonPayroll,
@@ -861,7 +862,7 @@ function Payslip({ slip }: { slip: SlipData }) {
       </div>
       {slip.absences.length > 0 && (
         <p className="mt-3 text-xs text-[#55605a]">
-          Tidak masuk: {slip.absences.map((a) => `${dayLabel(a.date, 'short')} (${SCHEDULE_STATUS_LABEL[a.status]})`).join(', ')}
+          Tidak masuk (tidak dibayar): {slip.absences.map((a) => `${dayLabel(a.date, 'short')} (${a.note === NO_ATTENDANCE_NOTE ? 'tidak absen' : SCHEDULE_STATUS_LABEL[a.status]})`).join(', ')}
         </p>
       )}
       <footer className="mt-8 grid grid-cols-2 gap-6 text-center text-xs text-[#55605a]">

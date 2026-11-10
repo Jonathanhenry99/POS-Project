@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   addDaysIso,
+  applyAttendance,
   bonusWeeksOfMonth,
   businessDate,
   can,
@@ -77,11 +78,25 @@ export async function attendanceDuty(db: Db, userId: string, date: string): Prom
        (select e.status from schedule_entries e join shift_templates t on t.id = e.template_id where e.date = $2 and e.user_id = $1 and t.deleted_at is null order by e.status limit 1) as status`,
     [userId, date],
   );
+  // Izin/sakit/tidak masuk milik orang itu sendiri selalu berlaku, juga di hari yang belum ada jadwal masuk orang lain.
+  if (rows[0].status && rows[0].status !== 'masuk') return { shift: null, off: rows[0].status as 'izin' | 'sakit' | 'alpa' };
   if (!rows[0].inUse) return { shift: null, off: null };
-  return { shift: null, off: (rows[0].status as 'izin' | 'sakit' | 'alpa' | null) ?? 'libur' };
+  return { shift: null, off: 'libur' };
 }
 
 export const OFF_LABEL = { libur: 'tidak terjadwal masuk', izin: 'tercatat izin', sakit: 'tercatat sakit', alpa: 'tercatat tidak masuk' } as const;
+
+/**
+ * Absensi dihitung sejak tanggal ini: pengaturan owner, atau otomatis tanggal absen pertama yang tercatat. null =
+ * absensi tidak dipakai (mati, atau belum ada absen sama sekali): gaji mengikuti jadwal saja.
+ */
+export async function attendanceCountFrom(db: Db): Promise<{ date: string | null; auto: boolean }> {
+  const cfg = (await getSettings(db)).attendance;
+  if (!cfg?.enabled) return { date: null, auto: false };
+  if (cfg.countFrom) return { date: cfg.countFrom, auto: false };
+  const { rows } = await db.query<{ d: string | null }>(`select to_char(min(business_date), 'YYYY-MM-DD') as d from attendance`);
+  return { date: rows[0]?.d ?? null, auto: true };
+}
 
 /**
  * Hitung ulang telat satu absen dari jadwal yang berlaku sekarang. Jam absen & selfie tetap; hanya jam masuk acuan dan
@@ -148,7 +163,18 @@ export async function computeMonth(db: Db, month: string) {
   ]);
   // Owner boleh tercantum di jadwal (ikut jaga), tetapi tidak digaji dan tidak dihitung dalam pembagian bonus.
   const owners = new Set(users.rows.filter((u) => u.role === 'owner').map((u) => u.id));
-  const paid = entries.filter((e) => !owners.has(e.userId));
+  // Gaji mengikuti absen: sejak absensi dihitung, jadwal masuk yang lewat tanpa absen tidak dibayar.
+  const countFrom = (await attendanceCountFrom(db)).date;
+  const attended = countFrom
+    ? new Set(
+        (await db.query<{ k: string }>(`select to_char(business_date, 'YYYY-MM-DD') || '|' || user_id as k from attendance where business_date between $1 and $2`, [rangeFrom, to])).rows.map((r) => r.k),
+      )
+    : new Set<string>();
+  const today = businessDate(new Date().toISOString(), await getTimezone(db));
+  const paid = applyAttendance(
+    entries.filter((e) => !owners.has(e.userId)),
+    { countFrom, today, attended },
+  );
   const stored = new Map(weekRows.rows.map((w) => [w.weekStart, w]));
   const weeks = await Promise.all(
     weekStarts.map(async (weekStart) => {

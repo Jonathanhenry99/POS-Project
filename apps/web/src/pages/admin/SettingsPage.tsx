@@ -261,6 +261,11 @@ export function SettingsPage() {
                     </Field>
                   </div>
                 )}
+                {attendance.enabled && (
+                  <Field label="Absensi dihitung sejak" hint="Jadwal masuk sebelum tanggal ini dianggap hadir (absensi belum dipakai). Sejak tanggal ini, jadwal masuk tanpa absen tidak dibayar. Kosongkan = otomatis sejak absen pertama tercatat.">
+                    {(id) => <TextInput id={id} type="date" value={attendance.countFrom ?? ''} onChange={(e) => setAttendance({ countFrom: e.target.value || null })} />}
+                  </Field>
+                )}
                 {attendance.enabled && <StoreLocation value={attendance} onChange={setAttendance} />}
                 <p className="text-xs text-fg-muted">Akun barista/kitchen yang login di HP wajib absen dulu sebelum membuka Stok. Kabar telat dan ringkasan siapa yang belum absen dikirim lewat Notifikasi WhatsApp bila sudah diatur.</p>
               </div>

@@ -1017,7 +1017,7 @@ describe('absensi karyawan', () => {
     await request(app).put('/api/settings').set(asDevice('kasir')).send({ attendance: { enabled: true } }).expect(403);
     await request(app).put('/api/settings').set(asOwner()).send({ attendance: { enabled: true, startTime: '09:00', graceMinutes: 5 } }).expect(200);
     const boot = (await request(app).get('/api/sync/bootstrap').set(asDevice())).body;
-    expect(boot.settings.attendance).toEqual({ enabled: true, startTime: '09:00', graceMinutes: 5, storeLat: null, storeLng: null, radiusM: 150 });
+    expect(boot.settings.attendance).toEqual({ enabled: true, startTime: '09:00', graceMinutes: 5, storeLat: null, storeLng: null, radiusM: 150, countFrom: null });
   });
 
   it('absen dengan PIN sendiri + selfie: tepat waktu / telat dihitung di zona waktu toko, sekali per orang per hari', async () => {
@@ -1599,6 +1599,42 @@ describe('jam masuk acuan telat = jadwal yang terlihat karyawan', () => {
     const sched = (await request(app).get(`/api/schedule?from=${date}&to=${date}`).set(H).expect(200)).body.entries;
     expect(sched.filter((e: { startTime: string | null; endTime: string | null }) => e.startTime || e.endTime)).toEqual([]);
     await request(app).put('/api/settings').set(H).send({ attendance: { enabled: false } }).expect(200);
+  });
+});
+
+describe('gaji mengikuti absen', () => {
+  it('sebelum absensi dihitung dianggap masuk; setelahnya tanpa absen & sakit tidak dibayar; owner bisa menandai hadir', async () => {
+    const H = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'owner', password: 'Teh-tarik-88' }).expect(200)).body.token}` };
+    const staff = { Authorization: `Bearer ${(await request(app).post('/api/auth/login').send({ username: 'barista', pin: '1111' }).expect(200)).body.token}` };
+    await request(app).put('/api/settings').set(H).send({ attendance: { enabled: true, startTime: '09:00', graceMinutes: 0, storeLat: null, storeLng: null, countFrom: '2026-09-10' } }).expect(200);
+    const shift1 = (await request(app).get('/api/schedule?from=2026-09-07&to=2026-09-07').set(H)).body.templates.find((t: { name: string }) => t.name === 'Shift 1').id;
+    const put = (date: string, status = 'masuk') => request(app).put('/api/schedule/entries').set(H).send({ date, templateId: shift1, userId: userId('barista'), status }).expect(200);
+    for (const d of ['2026-09-08', '2026-09-11', '2026-09-14']) await put(d);
+    await put('2026-09-12', 'sakit');
+
+    // Lupa absen tanggal 14: owner menandai hadir (bukan karyawan sendiri, tidak untuk tanggal mendatang, tidak dobel).
+    await request(app).post('/api/attendance/mark').set(staff).send({ userId: userId('barista'), date: '2026-09-14' }).expect(403);
+    await request(app).post('/api/attendance/mark').set(H).send({ userId: userId('barista'), date: '2099-01-01' }).expect(400);
+    expect((await request(app).post('/api/attendance/mark').set(H).send({ userId: userId('barista'), date: '2026-09-12' }).expect(400)).body.error).toMatch(/tercatat sakit/);
+    expect((await request(app).post('/api/attendance/mark').set(H).send({ userId: userId('barista'), date: '2026-09-14' }).expect(201)).body).toMatchObject({ dueTime: '09:00' });
+    await request(app).post('/api/attendance/mark').set(H).send({ userId: userId('barista'), date: '2026-09-14' }).expect(400);
+    const att = (await request(app).get('/api/attendance?from=2026-09-01&to=2026-09-30').set(H).expect(200)).body;
+    expect(att).toMatchObject({ countFrom: '2026-09-10', countFromAuto: false });
+    expect(att.rows.find((r: { userId: string; date: string }) => r.userId === userId('barista') && r.date === '2026-09-14')).toMatchObject({ source: 'owner', lateMinutes: 0, hasPhoto: false });
+
+    const pay = (await request(app).get('/api/payroll?month=2026-09').set(H).expect(200)).body;
+    const me = pay.people.find((p: { userId: string }) => p.userId === userId('barista'));
+    const dates = me.shifts.map((x: { date: string }) => x.date);
+    expect(dates).toEqual(expect.arrayContaining(['2026-09-08', '2026-09-14']));
+    expect(dates).not.toContain('2026-09-11');
+    expect(dates).not.toContain('2026-09-12');
+    expect(me.absences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ date: '2026-09-11', status: 'alpa', note: 'Tidak absen' }),
+        expect.objectContaining({ date: '2026-09-12', status: 'sakit' }),
+      ]),
+    );
+    await request(app).put('/api/settings').set(H).send({ attendance: { enabled: false, countFrom: null } }).expect(200);
   });
 });
 

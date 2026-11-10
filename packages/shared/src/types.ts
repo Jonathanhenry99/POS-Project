@@ -117,6 +117,11 @@ export interface AttendanceSettings {
   storeLat: number | null;
   storeLng: number | null;
   radiusM: number;
+  /**
+   * Absensi dihitung sejak tanggal ini (YYYY-MM-DD). Jadwal masuk sebelumnya dianggap hadir (absensi belum dipakai);
+   * sejak tanggal ini jadwal masuk yang lewat tanpa absen tidak dibayar. null = otomatis sejak absen pertama tercatat.
+   */
+  countFrom?: string | null;
 }
 
 export interface GeoPoint {

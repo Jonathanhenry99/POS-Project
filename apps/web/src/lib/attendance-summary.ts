@@ -2,12 +2,14 @@
 // jumlahnya. Hari kerja ditentukan dari jadwal; hari yang belum dijadwalkan sama sekali memakai aturan lama (hari yang
 // ada absennya = toko buka, semua karyawan wajib absen). Fungsi murni supaya mudah dites.
 
-export type DayState = 'tepat' | 'telat' | 'tidak-hadir' | 'belum' | 'izin' | 'sakit' | 'alpa' | 'libur' | 'kosong';
+export type DayState = 'tepat' | 'telat' | 'dianggap' | 'tidak-hadir' | 'belum' | 'izin' | 'sakit' | 'alpa' | 'libur' | 'kosong';
 
 export interface SummaryInput {
   /** Tanggal-tanggal pada rentang (YYYY-MM-DD, urut naik). */
   dates: string[];
   today: string;
+  /** Absensi dihitung sejak tanggal ini; jadwal masuk sebelumnya tanpa absen dianggap hadir. null = tidak dipakai. */
+  countFrom?: string | null;
   staff: { id: string }[];
   rows: { userId: string; date: string; lateMinutes: number }[];
   schedule: { userId: string; date: string; status: 'masuk' | 'izin' | 'sakit' | 'alpa' }[];
@@ -18,8 +20,10 @@ export interface PersonSummary {
   days: { date: string; state: DayState; lateMinutes: number }[];
   /** Hari wajib masuk sampai hari ini (dijadwalkan masuk, atau hari tanpa jadwal yang ada absennya). */
   workDays: number;
-  /** Hadir = tepat waktu + telat. */
+  /** Hadir = tepat waktu + telat + dianggap hadir (sebelum absensi dihitung). */
   present: number;
+  /** Jadwal masuk sebelum absensi dihitung: dianggap hadir. */
+  assumed: number;
   onTime: number;
   late: number;
   lateTotal: number;
@@ -54,12 +58,12 @@ export function summarizeAttendance(input: SummaryInput): PersonSummary[] {
       const st = entry.get(`${date}|${u.id}`);
       let state: DayState;
       if (scheduled.has(date) || st) {
-        if (st === 'masuk') state = date < input.today ? 'tidak-hadir' : 'belum';
+        if (st === 'masuk') state = input.countFrom && date < input.countFrom ? 'dianggap' : date < input.today ? 'tidak-hadir' : 'belum';
         else if (st) state = st;
         else state = 'libur';
       } else {
         // Hari tanpa jadwal: wajib absen bila toko buka (ada yang absen), seperti sebelum fitur jadwal ada.
-        state = openDays.has(date) && date < input.today ? 'tidak-hadir' : openDays.has(date) ? 'belum' : 'kosong';
+        state = !openDays.has(date) ? 'kosong' : input.countFrom && date < input.countFrom ? 'dianggap' : date < input.today ? 'tidak-hadir' : 'belum';
       }
       return { date, state, lateMinutes: 0 };
     });
@@ -68,8 +72,9 @@ export function summarizeAttendance(input: SummaryInput): PersonSummary[] {
     return {
       userId: u.id,
       days,
-      workDays: count('tepat', 'telat', 'tidak-hadir'),
-      present: count('tepat', 'telat'),
+      workDays: count('tepat', 'telat', 'dianggap', 'tidak-hadir'),
+      present: count('tepat', 'telat', 'dianggap'),
+      assumed: count('dianggap'),
       onTime: count('tepat'),
       late: lateDays.length,
       lateTotal: lateDays.reduce((n, d) => n + d.lateMinutes, 0),

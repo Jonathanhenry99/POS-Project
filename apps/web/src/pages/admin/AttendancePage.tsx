@@ -22,13 +22,16 @@ interface AttendanceRow {
   lateMinutes: number;
   deviceName: string | null;
   hasPhoto: boolean;
-  source: 'tablet' | 'hp';
+  source: 'tablet' | 'hp' | 'owner';
   distanceM: number | null;
 }
 interface AttendanceData {
   settings: AttendanceSettings;
   timezone: string;
   today: string;
+  /** Absensi dihitung sejak (pengaturan, atau otomatis absen pertama). */
+  countFrom: string | null;
+  countFromAuto: boolean;
   staff: { id: string; name: string; role: Role }[];
   rows: AttendanceRow[];
   schedule: { userId: string; date: string; status: 'masuk' | 'izin' | 'sakit' | 'alpa' }[];
@@ -37,6 +40,7 @@ interface AttendanceData {
 const DAY_STYLE: Record<DayState, { cls: string; label: string }> = {
   tepat: { cls: 'bg-success text-white', label: 'tepat waktu' },
   telat: { cls: 'bg-warning text-on-warning', label: 'telat' },
+  dianggap: { cls: 'bg-success/25 text-success', label: 'dianggap hadir (sebelum absensi dipakai)' },
   'tidak-hadir': { cls: 'bg-danger text-white', label: 'tidak hadir' },
   belum: { cls: 'border border-dashed border-line-strong text-fg-muted', label: 'belum absen' },
   izin: { cls: 'bg-surface ring-2 ring-inset ring-primary text-primary', label: 'izin' },
@@ -45,7 +49,7 @@ const DAY_STYLE: Record<DayState, { cls: string; label: string }> = {
   libur: { cls: 'bg-surface-2 text-fg-subtle', label: 'libur' },
   kosong: { cls: 'text-fg-subtle/60', label: 'tidak ada jadwal' },
 };
-const LEGEND: DayState[] = ['tepat', 'telat', 'tidak-hadir', 'belum', 'izin', 'libur'];
+const LEGEND: DayState[] = ['tepat', 'telat', 'dianggap', 'tidak-hadir', 'belum', 'izin', 'libur'];
 
 /** "2 sakit, 1 izin" dari jadwal; kosong bila tidak ada. */
 function leaveLabel(u: { sick: number; leave: number; marked: number }): string {
@@ -90,6 +94,25 @@ export function AttendancePage() {
       setBusy('');
     }
   };
+  // Lupa absen (HP mati, dsb.): owner menandai hadir supaya hari itu tetap dibayar. Tercatat di log.
+  const markPresent = async (u: { id: string; name: string }, date: string) => {
+    const ok = await confirmDialog({
+      title: `Tandai ${u.name} hadir?`,
+      message: `${formatDateLabel(date)} dicatat hadir tanpa selfie, dengan jam masuk sesuai shift-nya (tidak telat), jadi shift hari itu ikut dibayar. Pakai hanya bila ia memang masuk tetapi lupa absen. Tercatat atas nama Anda.`,
+      confirmLabel: 'Tandai hadir',
+    });
+    if (!ok) return;
+    setBusy(`mark:${u.id}:${date}`);
+    try {
+      await api('/attendance/mark', { method: 'POST', body: { userId: u.id, date } });
+      toast(`${u.name} ditandai hadir ${formatDateLabel(date)}`);
+      reload();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    } finally {
+      setBusy('');
+    }
+  };
   const clearDay = async (date: string, count: number) => {
     const ok = await confirmDialog({ title: `Hapus semua absen ${formatDateLabel(date)}?`, message: `${count} absen beserta selfienya dihapus. Semua karyawan bisa absen ulang hari itu.`, confirmLabel: 'Hapus semua', danger: true });
     if (!ok) return;
@@ -117,7 +140,7 @@ export function AttendancePage() {
   }, [data, range]);
   const summary = useMemo(() => {
     if (!data) return [];
-    const per = new Map(summarizeAttendance({ dates, today: data.today, staff: data.staff, rows: data.rows, schedule: data.schedule ?? [] }).map((p) => [p.userId, p]));
+    const per = new Map(summarizeAttendance({ dates, today: data.today, countFrom: data.countFrom, staff: data.staff, rows: data.rows, schedule: data.schedule ?? [] }).map((p) => [p.userId, p]));
     return data.staff.map((u) => ({ ...u, ...per.get(u.id)! }));
   }, [data, dates]);
   const stateOf = (userId: string, date: string) => summary.find((p) => p.id === userId)?.days.find((d) => d.date === date)?.state;
@@ -139,6 +162,17 @@ export function AttendancePage() {
       {loading && !data && <Spinner className="mx-auto my-10" />}
       {data && (
         <div className="mt-4 flex flex-col gap-4">
+          {data.countFrom && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl bg-surface-2 px-4 py-3 text-sm">
+              <span>
+                Absensi dihitung sejak <b>{formatDateLabel(data.countFrom)}</b>
+                {data.countFromAuto ? ' (otomatis: absen pertama tercatat)' : ''}. Jadwal masuk sebelum tanggal itu dianggap hadir dan tetap dibayar.
+              </span>
+              <Link to="/admin/pengaturan?bagian=kasir" className="font-semibold text-primary">
+                Ubah →
+              </Link>
+            </p>
+          )}
           <section className="tile p-1">
             <ul className="flex flex-col divide-y divide-line sm:hidden">
               {summary.map((u) => (
@@ -153,6 +187,7 @@ export function AttendancePage() {
                   </p>
                   <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-fg-muted tabular">
                     <span className="text-success">{u.onTime} tepat waktu</span>
+                    {u.assumed > 0 && <span>{u.assumed} dianggap hadir</span>}
                     <span className={u.late ? 'text-[#8a5a00]' : ''}>
                       {u.late} telat{u.lateTotal ? ` (${u.lateTotal} menit)` : ''}
                     </span>
@@ -160,7 +195,7 @@ export function AttendancePage() {
                     {u.excused > 0 && <span className="text-primary">{leaveLabel(u)}</span>}
                   </p>
                   <div className="mt-2">
-                    <DayStrip days={u.days} />
+                    <DayStrip days={u.days} onMark={(date) => void markPresent(u, date)} />
                   </div>
                 </li>
               ))}
@@ -189,6 +224,7 @@ export function AttendancePage() {
                       <td className="px-3 py-3 text-right tabular">
                         <span className="font-bold">{u.present}</span>
                         <span className="text-fg-muted"> / {u.workDays}</span>
+                        {u.assumed > 0 && <span className="block text-xs text-fg-muted">{u.assumed} dianggap hadir</span>}
                       </td>
                       <td className={cx('px-3 py-3 text-right font-semibold tabular', u.onTime ? 'text-success' : 'text-fg-subtle')}>{u.onTime}</td>
                       <td className="px-3 py-3 text-right tabular">
@@ -200,7 +236,7 @@ export function AttendancePage() {
                       </td>
                       <td className={cx('px-3 py-3 text-right tabular', u.excused ? 'font-semibold text-primary' : 'text-fg-subtle')}>{u.excused ? leaveLabel(u) : '0'}</td>
                       <td className="px-4 py-3">
-                        <DayStrip days={u.days} />
+                        <DayStrip days={u.days} onMark={(date) => void markPresent(u, date)} />
                       </td>
                     </tr>
                   ))}
@@ -211,11 +247,11 @@ export function AttendancePage() {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 pt-1 pb-3 text-xs text-fg-muted">
               {LEGEND.map((k) => (
                 <span key={k} className="flex items-center gap-1.5">
-                  <span className={cx('size-3 rounded', DAY_STYLE[k].cls)} /> {k === 'izin' ? 'izin/sakit' : DAY_STYLE[k].label}
+                  <span className={cx('size-3 rounded', DAY_STYLE[k].cls)} /> {k === 'izin' ? 'izin/sakit' : k === 'dianggap' ? 'dianggap hadir' : DAY_STYLE[k].label}
                 </span>
               ))}
               <span className="basis-full">
-                Hari kerja = hari dijadwalkan masuk sampai hari ini (hari ini dihitung setelah absen; hari tanpa jadwal: hari toko buka). Hadir = tepat waktu + telat. Izin/sakit dari jadwal tidak dihitung hari kerja. Jam masuk mengikuti shift di jadwal; tanpa jadwal {data.settings.startTime}
+                Hari kerja = hari dijadwalkan masuk sampai hari ini (hari ini dihitung setelah absen; hari tanpa jadwal: hari toko buka). Hadir = tepat waktu + telat + dianggap hadir. Izin/sakit dari jadwal tidak dihitung hari kerja. Gaji hanya membayar hari yang hadir; ketuk kotak merah bila ia masuk tetapi lupa absen. Jam masuk mengikuti shift di jadwal; tanpa jadwal {data.settings.startTime}
                 {data.settings.graceMinutes ? `, toleransi ${data.settings.graceMinutes} menit` : ''}.
               </span>
             </div>
@@ -257,7 +293,7 @@ export function AttendancePage() {
                           <p className="mt-1 flex flex-wrap items-center gap-1.5">
                             <Badge tone={r.lateMinutes ? 'amber' : 'green'}>{lateLabel(r.lateMinutes)}</Badge>
                             <span className="text-[11px] text-fg-muted tabular">jadwal {r.dueTime}</span>
-                            <span className="text-[11px] text-fg-muted">{r.source === 'hp' ? `HP${r.distanceM !== null ? ` · ${r.distanceM} m dari toko` : ''}` : (r.deviceName ?? 'Tablet')}</span>
+                            <span className="text-[11px] text-fg-muted">{r.source === 'owner' ? 'Ditandai owner' : r.source === 'hp' ? `HP${r.distanceM !== null ? ` · ${r.distanceM} m dari toko` : ''}` : (r.deviceName ?? 'Tablet')}</span>
                             {delayed && <span className="text-[11px] text-fg-muted">· terkirim {formatTime(r.receivedAt, data.timezone)}</span>}
                           </p>
                         </div>
@@ -292,6 +328,9 @@ export function AttendancePage() {
                         <p className="truncate font-semibold">{u.name}</p>
                         {stateOf(u.id, date) === 'belum' ? <Badge>Belum absen</Badge> : <Badge tone="red">Tidak hadir</Badge>}
                       </div>
+                      <Button size="sm" variant="outline" loading={busy === `mark:${u.id}:${date}`} onClick={() => void markPresent(u, date)}>
+                        Tandai hadir
+                      </Button>
                     </li>
                   ))}
                 </ul>
@@ -339,19 +378,23 @@ function Selfie({ row }: { row: AttendanceRow }) {
   );
 }
 
-/** Status tiap hari satu orang: kotak berwarna dengan tanggalnya. */
-function DayStrip({ days }: { days: { date: string; state: DayState; lateMinutes: number }[] }) {
+/** Status tiap hari satu orang: kotak berwarna dengan tanggalnya. Kotak "tidak hadir" bisa diketuk untuk menandai hadir. */
+function DayStrip({ days, onMark }: { days: { date: string; state: DayState; lateMinutes: number }[]; onMark?: (date: string) => void }) {
   return (
     <div className="flex max-w-[448px] flex-wrap gap-1">
-      {days.map((d) => (
-        <span
-          key={d.date}
-          title={`${formatDateLabel(d.date)}: ${d.state === 'telat' ? `telat ${d.lateMinutes} menit` : DAY_STYLE[d.state].label}`}
-          className={cx('grid size-6 place-items-center rounded-md text-[10px] font-bold tabular', DAY_STYLE[d.state].cls)}
-        >
-          {Number(d.date.slice(8))}
-        </span>
-      ))}
+      {days.map((d) => {
+        const title = `${formatDateLabel(d.date)}: ${d.state === 'telat' ? `telat ${d.lateMinutes} menit` : DAY_STYLE[d.state].label}`;
+        const cls = cx('grid size-6 place-items-center rounded-md text-[10px] font-bold tabular', DAY_STYLE[d.state].cls);
+        return onMark && d.state === 'tidak-hadir' ? (
+          <button key={d.date} title={`${title} · ketuk untuk menandai hadir`} aria-label={`${title}, tandai hadir`} onClick={() => onMark(d.date)} className={cx(cls, 'press transition-shadow hover:ring-2 hover:ring-danger/40')}>
+            {Number(d.date.slice(8))}
+          </button>
+        ) : (
+          <span key={d.date} title={title} className={cls}>
+            {Number(d.date.slice(8))}
+          </span>
+        );
+      })}
     </div>
   );
 }

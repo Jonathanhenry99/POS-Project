@@ -158,6 +158,25 @@ export interface PersonPayroll {
   takeHome: number;
 }
 
+/** Catatan pada jadwal "masuk" yang lewat tanpa absen (diperlakukan sebagai tidak masuk, tidak dibayar). */
+export const NO_ATTENDANCE_NOTE = 'Tidak absen';
+
+/**
+ * Gaji mengikuti absen: sejak absensi dihitung (`countFrom`), jadwal "masuk" yang sudah lewat tanpa absen di hari itu
+ * menjadi tidak masuk (tidak dibayar, tidak dihitung bonus/lembur). Jadwal sebelum `countFrom` dianggap masuk; hari
+ * ini dan setelahnya belum dinilai. `attended` berisi kunci `tanggal|userId` yang ada absennya.
+ */
+export function applyAttendance<T extends { date: string; userId: string; status: ScheduleStatus; note: string }>(
+  entries: T[],
+  opts: { countFrom: string | null; today: string; attended: Set<string> },
+): T[] {
+  const from = opts.countFrom;
+  if (!from) return entries;
+  return entries.map((e) =>
+    e.status === 'masuk' && e.date >= from && e.date < opts.today && !opts.attended.has(`${e.date}|${e.userId}`) ? { ...e, status: 'alpa' as const, note: NO_ATTENDANCE_NOTE } : e,
+  );
+}
+
 export function computePayroll(input: {
   month: string;
   users: { id: string; name: string; role: string }[];

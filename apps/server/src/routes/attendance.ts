@@ -1,13 +1,14 @@
 // Absensi karyawan: dicatat dari tablet kasir (PIN + selfie), dilihat owner di back office.
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
-import { businessDate, checkLocation, clockToMinutes, formatTime, lateLabel, lateMinutes, minutesOfDay, type AttendanceSettings, type GeoPoint, type PublicUser } from '@mourden/shared';
+import { businessDate, checkLocation, localToUtcIso, clockToMinutes, formatTime, lateLabel, lateMinutes, minutesOfDay, type AttendanceSettings, type GeoPoint, type PublicUser } from '@mourden/shared';
 import { need, needDevice, needUser } from '../auth';
 import { audit, pool } from '../db';
 import { badRequest, dateRangeQuery, forbidden, notFound, parse } from '../http';
 import { noticeToOwners } from '../notify';
 import { getSettings } from '../repo';
-import { attendanceDuty, OFF_LABEL, recalcAttendance, scheduleToday } from './team';
+import { attendanceCountFrom, attendanceDuty, OFF_LABEL, recalcAttendance, scheduleToday } from './team';
 
 export const attendanceRouter = Router();
 
@@ -185,7 +186,8 @@ attendanceRouter.get('/attendance', need('admin'), async (req, res) => {
       [q.from, q.to],
     ),
   ]);
-  res.json({ settings: s.attendance as AttendanceSettings, timezone: s.store.timezone, today: businessDate(new Date().toISOString(), s.store.timezone), staff, rows, schedule });
+  const countFrom = await attendanceCountFrom(pool);
+  res.json({ settings: s.attendance as AttendanceSettings, timezone: s.store.timezone, today: businessDate(new Date().toISOString(), s.store.timezone), countFrom: countFrom.date, countFromAuto: countFrom.auto, staff, rows, schedule });
 });
 
 /**
@@ -199,6 +201,33 @@ attendanceRouter.post('/attendance/:id/recalc', need('admin'), async (req, res) 
   if (r.off) throw badRequest(`${r.userName} ${OFF_LABEL[r.off]} di jadwal tanggal itu. Betulkan jadwalnya dulu, atau hapus absen ini.`);
   if (r.changed) await audit(pool, req.auth.user!.id, 'recalc', 'attendance', id, { before: r.before, after: { dueTime: r.dueTime, lateMinutes: r.lateMinutes } });
   res.json({ ok: true, dueTime: r.dueTime, shiftName: r.shiftName, lateMinutes: r.lateMinutes, changed: r.changed });
+});
+
+/**
+ * Owner menandai hadir karyawan yang lupa absen (mis. HP mati). Tanpa selfie, jam absen = jam masuk shift-nya (tidak
+ * telat), sumber "owner", dan tercatat di log atas nama owner. Gaji hari itu ikut dibayar.
+ */
+attendanceRouter.post('/attendance/mark', need('admin'), async (req, res) => {
+  const b = parse(z.object({ userId: uuid, date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), note: z.string().trim().max(120).default('') }), req.body);
+  const s = await getSettings(pool);
+  const cfg = s.attendance!;
+  const tz = s.store.timezone;
+  if (b.date > businessDate(new Date().toISOString(), tz)) throw badRequest('Tidak bisa menandai hadir untuk tanggal yang belum lewat');
+  const { rows: users } = await pool.query<{ name: string; role: string }>('select name, role from users where id = $1 and deleted_at is null', [b.userId]);
+  if (!users[0]) throw notFound('Karyawan tidak ditemukan');
+  if (users[0].role === 'owner') throw badRequest('Owner tidak perlu absen');
+  const { shift, off } = await attendanceDuty(pool, b.userId, b.date);
+  if (off) throw badRequest(`${users[0].name} ${OFF_LABEL[off]} di jadwal tanggal itu. Ubah jadwalnya dulu bila ia ternyata masuk.`);
+  const due = shift?.startTime ?? cfg.startTime;
+  const id = randomUUID();
+  const { rowCount } = await pool.query(
+    `insert into attendance (id, user_id, user_name, device_id, business_date, clocked_at, due_time, grace_minutes, late_minutes, source)
+     values ($1,$2,$3,null,$4,$5,$6,$7,0,'owner') on conflict do nothing`,
+    [id, b.userId, users[0].name, b.date, localToUtcIso(`${b.date}T${due}:00`, tz), due, cfg.graceMinutes],
+  );
+  if (!rowCount) throw badRequest(`${users[0].name} sudah tercatat absen tanggal itu`);
+  await audit(pool, req.auth.user!.id, 'mark-present', 'attendance', id, { userId: b.userId, date: b.date, note: b.note });
+  res.status(201).json({ ok: true, id, dueTime: due });
 });
 
 /** Owner menghapus satu absen (mis. hasil uji): orang itu bisa absen lagi hari itu. */

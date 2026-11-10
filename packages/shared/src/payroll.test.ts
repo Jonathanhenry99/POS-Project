@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { bonusWeeksOfMonth, computePayroll, computeWeekBonus, DEFAULT_BONUS_TIERS, feeOn, teamBonus, weekStartOf, type ScheduleEntry, type ShiftTemplate } from './payroll';
+import { applyAttendance, bonusWeeksOfMonth, computePayroll, computeWeekBonus, DEFAULT_BONUS_TIERS, feeOn, teamBonus, weekStartOf, type ScheduleEntry, type ShiftTemplate } from './payroll';
 
 const shift1: ShiftTemplate = { id: 's1', name: 'Shift 1', startTime: '09:00', endTime: '16:00', role: 'barista', sort: 0, active: true, rates: [{ fee: 75000, effectiveFrom: '2026-01-01' }, { fee: 80000, effectiveFrom: '2026-11-16' }] };
 const kitchen: ShiftTemplate = { id: 'k', name: 'Kitchen', startTime: '14:00', endTime: '21:00', role: 'kitchen', sort: 2, active: true, rates: [{ fee: 70000, effectiveFrom: '2026-01-01' }] };
@@ -72,4 +72,21 @@ it('lembur: jam x tarif saat dicatat, masuk gaji; lembur di hari izin tidak diba
     { date: '2026-11-06', templateName: 'Shift 1', hours: 1.5, rate: 12_000, amount: 18_000, note: '' },
   ]);
   expect(restu).toMatchObject({ gross: 150_000, overtimeTotal: 38_000, takeHome: 188_000 });
+});
+
+it('gaji mengikuti absen: sebelum absensi dipakai dianggap masuk, setelahnya tanpa absen = tidak masuk, hari ini belum dinilai', () => {
+  const e = (date: string, status: ScheduleEntry['status'] = 'masuk') => ({ id: date, date, templateId: 't', userId: 'u', userName: 'U', status, note: '' });
+  const out = applyAttendance([e('2026-11-03'), e('2026-11-06'), e('2026-11-07'), e('2026-11-08', 'sakit'), e('2026-11-10')], {
+    countFrom: '2026-11-06',
+    today: '2026-11-10',
+    attended: new Set(['2026-11-07|u']),
+  });
+  expect(out.map((x) => [x.date, x.status, x.note])).toEqual([
+    ['2026-11-03', 'masuk', ''],
+    ['2026-11-06', 'alpa', 'Tidak absen'],
+    ['2026-11-07', 'masuk', ''],
+    ['2026-11-08', 'sakit', ''],
+    ['2026-11-10', 'masuk', ''],
+  ]);
+  expect(applyAttendance([e('2026-11-06')], { countFrom: null, today: '2026-11-10', attended: new Set() })[0].status).toBe('masuk');
 });
