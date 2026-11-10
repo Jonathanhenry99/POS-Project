@@ -47,6 +47,11 @@ const DAY_STYLE: Record<DayState, { cls: string; label: string }> = {
 };
 const LEGEND: DayState[] = ['tepat', 'telat', 'tidak-hadir', 'belum', 'izin', 'libur'];
 
+/** "2 sakit, 1 izin" dari jadwal; kosong bila tidak ada. */
+function leaveLabel(u: { sick: number; leave: number; marked: number }): string {
+  return [u.sick && `${u.sick} sakit`, u.leave && `${u.leave} izin`, u.marked && `${u.marked} alpa`].filter(Boolean).join(', ');
+}
+
 /** Absen yang dibuat offline baru tiba belakangan; selisih besar antara jam tablet dan server ditandai agar bisa dicek. */
 const DELAY_FLAG_MINUTES = 30;
 
@@ -151,7 +156,7 @@ export function AttendancePage() {
                       {u.late} telat{u.lateTotal ? ` (${u.lateTotal} menit)` : ''}
                     </span>
                     <span className={u.absent ? 'text-danger' : ''}>{u.absent} tidak hadir</span>
-                    {u.excused > 0 && <span>{u.excused} izin/sakit</span>}
+                    {u.excused > 0 && <span className="text-primary">{leaveLabel(u)}</span>}
                   </p>
                   <div className="mt-2">
                     <DayStrip days={u.days} />
@@ -190,7 +195,7 @@ export function AttendancePage() {
                       </td>
                       <td className="px-3 py-3 text-right tabular">
                         <span className={cx('font-semibold', u.absent ? 'text-danger' : 'text-fg-subtle')}>{u.absent}</span>
-                        {u.excused > 0 && <span className="block text-xs text-fg-muted">+{u.excused} izin/sakit</span>}
+                        {u.excused > 0 && <span className="block text-xs text-primary">+{leaveLabel(u)}</span>}
                       </td>
                       <td className="px-4 py-3">
                         <DayStrip days={u.days} />

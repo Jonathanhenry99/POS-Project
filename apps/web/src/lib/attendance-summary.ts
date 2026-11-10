@@ -27,17 +27,24 @@ export interface PersonSummary {
   absent: number;
   /** Izin/sakit/tidak masuk yang tercatat di jadwal. */
   excused: number;
+  sick: number;
+  leave: number;
+  /** Ditandai "tidak masuk" (alpa) di jadwal. */
+  marked: number;
 }
 
 export function summarizeAttendance(input: SummaryInput): PersonSummary[] {
   const att = new Map(input.rows.map((r) => [`${r.date}|${r.userId}`, r]));
   const scheduled = new Set(input.schedule.filter((e) => e.status === 'masuk').map((e) => e.date));
   const openDays = new Set(input.rows.map((r) => r.date));
-  // Satu orang bisa punya beberapa baris jadwal sehari; "masuk" menang atas izin/sakit.
+  // Satu orang bisa punya beberapa baris jadwal sehari (mis. dua shift, satu ditandai sakit). Tanpa absen, izin/sakit/
+  // alpa menang atas "masuk": orang yang sakit tidak hadir seharian, bukan bolos di shift lainnya.
+  const rank = { sakit: 3, izin: 2, alpa: 1, masuk: 0 } as const;
   const entry = new Map<string, SummaryInput['schedule'][number]['status']>();
   for (const e of input.schedule) {
     const k = `${e.date}|${e.userId}`;
-    if (e.status === 'masuk' || !entry.has(k)) entry.set(k, e.status);
+    const cur = entry.get(k);
+    if (!cur || rank[e.status] > rank[cur]) entry.set(k, e.status);
   }
 
   return input.staff.map((u) => {
@@ -68,6 +75,9 @@ export function summarizeAttendance(input: SummaryInput): PersonSummary[] {
       lateTotal: lateDays.reduce((n, d) => n + d.lateMinutes, 0),
       absent: count('tidak-hadir'),
       excused: count('izin', 'sakit', 'alpa'),
+      sick: count('sakit'),
+      leave: count('izin'),
+      marked: count('alpa'),
     };
   });
 }

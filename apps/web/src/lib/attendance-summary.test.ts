@@ -53,4 +53,20 @@ describe('summarizeAttendance', () => {
     expect(b.days.map((d) => d.state)).toEqual(['kosong', 'tidak-hadir', 'kosong', 'kosong']);
     expect(b).toMatchObject({ workDays: 1, absent: 1 });
   });
+
+  it('dua jadwal sehari, satu ditandai sakit: tanpa absen dihitung sakit, bukan tidak hadir', () => {
+    const [daffa] = summarizeAttendance({
+      dates: ['2026-11-02', '2026-11-03'],
+      today: '2026-11-07',
+      staff: [{ id: 'daffa' }],
+      rows: [],
+      schedule: [
+        { userId: 'daffa', date: '2026-11-02', status: 'sakit' },
+        { userId: 'daffa', date: '2026-11-03', status: 'masuk' },
+        { userId: 'daffa', date: '2026-11-03', status: 'sakit' },
+      ],
+    });
+    expect(daffa.days.map((d) => d.state)).toEqual(['sakit', 'sakit']);
+    expect(daffa).toMatchObject({ workDays: 0, absent: 0, sick: 2, excused: 2 });
+  });
 });
